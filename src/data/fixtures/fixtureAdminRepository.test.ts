@@ -508,6 +508,7 @@ describe("FixtureAdminRepository", () => {
 
     const competing = structuredClone(original);
     competing.id = "candidate-change-E023-competing";
+    if (competing.changeProposal.state !== "known") throw new Error("Missing competing proposal");
     competing.changeProposal.value.id = "change-E023-competing";
     const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
     internal.candidates.push(competing);
@@ -527,7 +528,7 @@ describe("FixtureAdminRepository", () => {
         actor: reviewer,
         expectedVersion: await currentVersion(repository, competing.id),
         kind: "change_proposal",
-        targetId: competing.changeProposal.value.id,
+        targetId: "change-E023-competing",
         disposition: "accepted",
         reason: "Stale reviewer attempts to overwrite the current occurrence",
       }),
