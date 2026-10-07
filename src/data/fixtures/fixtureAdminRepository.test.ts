@@ -150,8 +150,9 @@ describe("FixtureAdminRepository", () => {
     const occurrence = published.items.find((item) => item.id === "published-candidate-valid-E019");
     expect(occurrence).toBeDefined();
 
-    const publishedFixture = (repository as unknown as { published: Array<{ id: string; protectedCorrections: string[] }> })
-      .published.find((item) => item.id === "published-candidate-valid-E019");
+    const publishedFixture = (
+      repository as unknown as { published: Array<{ id: string; protectedCorrections: string[] }> }
+    ).published.find((item) => item.id === "published-candidate-valid-E019");
     expect(publishedFixture?.protectedCorrections).toContain("title");
   });
 
