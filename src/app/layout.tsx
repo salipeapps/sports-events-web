@@ -20,8 +20,8 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="es">
-      <body className={manrope.variable}>{children}</body>
+    <html className={manrope.variable} lang="es">
+      <body>{children}</body>
     </html>
   );
 }
