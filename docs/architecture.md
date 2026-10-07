@@ -55,3 +55,12 @@ current default fails closed; local development can explicitly enable a developm
 independently through `requireAdminCapability()`.
 
 A route being hidden or marked `noindex` is not a security boundary. See `docs/admin-auth.md`.
+
+
+## Location-agnostic Admin
+
+The Admin shell, branding and structural copy must remain location-agnostic. Cities, regions and
+other geographic scopes are catalog data and future filter/workspace dimensions; they must not be
+hardcoded into Admin navigation, authentication states, global headers or product identity.
+
+Pilot fixtures may contain Valencia-specific data without making Valencia part of the Admin shell.
