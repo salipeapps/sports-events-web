@@ -13,7 +13,7 @@ export function parseAppEnvironment(value: string | undefined): AppEnvironment {
 }
 
 export function getServerConfig(environment?: { APP_ENV?: string }) {
-  const appEnv = environment?.APP_ENV ?? process.env.APP_ENV;
+  const appEnv = environment === undefined ? process.env.APP_ENV : environment.APP_ENV;
 
   return {
     appEnv: parseAppEnvironment(appEnv),
