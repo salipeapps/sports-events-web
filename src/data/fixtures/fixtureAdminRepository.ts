@@ -495,30 +495,65 @@ export class FixtureAdminRepository implements AdminRepository {
     candidateForApproval.history.push(historyEntry(candidateForApproval, "approved", input.actor, input.reason));
     candidateForApproval.history.push(historyEntry(candidateForApproval, "published", input.actor, input.reason));
 
-    const publishedOccurrence = this.published.some((occurrence) =>
+    const correctedFields = new Set<keyof EventDetails>([
+      ...(this.protectedCorrectionFields.get(candidateId) ?? []),
+      ...((input.corrections ? Object.keys(input.corrections) : []) as (keyof EventDetails)[]),
+    ]);
+    const existingOccurrence = this.published.find((occurrence) =>
       occurrence.sourceRecordIds.includes(candidateForApproval.sourceRecordId),
-    )
+    );
+    let updatedOccurrence: PublishedOccurrence | null = null;
+
+    if (existingOccurrence) {
+      const proposal = candidateForApproval.changeProposal;
+      if (
+        proposal.state !== "known" ||
+        proposal.value.publishedOccurrenceId !== existingOccurrence.id ||
+        proposal.value.status === "pending"
+      ) {
+        throw new Error("Existing published occurrence requires a reviewed matching change proposal.");
+      }
+
+      updatedOccurrence = clone(existingOccurrence);
+      const editableEvent = updatedOccurrence.event as unknown as Record<string, FieldValue<unknown>>;
+      for (const field of correctedFields) {
+        editableEvent[field] = clone(candidateForApproval.final[field]);
+      }
+      if (correctedFields.has("organizerId")) updatedOccurrence.organizerId = organizerId;
+      updatedOccurrence.lastCheckedAt = candidateForApproval.lastCheckedAt;
+      updatedOccurrence.protectedCorrections = Array.from(
+        new Set([...updatedOccurrence.protectedCorrections, ...correctedFields]),
+      );
+      updatedOccurrence.evidenceIds = Array.from(
+        new Set([...updatedOccurrence.evidenceIds, ...candidateForApproval.evidence.map((evidence) => evidence.id)]),
+      );
+      updatedOccurrence.history.push({
+        id: `history-${updatedOccurrence.id}-${updatedOccurrence.history.length + 1}`,
+        action: "corrected",
+        at: new Date().toISOString(),
+        actor: clone(input.actor),
+        reason: { state: "known", value: input.reason ?? "Published occurrence reviewed and corrected" },
+      });
+    }
+
+    const publishedOccurrence: PublishedOccurrence | null = existingOccurrence
       ? null
       : {
           id: `published-${candidateForApproval.id}`,
           sourceRecordIds: [candidateForApproval.sourceRecordId],
           organizerId,
-          editorialStatus: "published" as const,
+          editorialStatus: "published",
           temporalStatus: candidateForApproval.temporalStatus,
           publishedAt: new Date().toISOString(),
           lastCheckedAt: candidateForApproval.lastCheckedAt,
           event: clone(candidateForApproval.final),
           evidenceIds: candidateForApproval.evidence.map((evidence) => evidence.id),
-          protectedCorrections: Array.from(
-            new Set<keyof EventDetails>([
-              ...(this.protectedCorrectionFields.get(candidateId) ?? []),
-              ...((input.corrections ? Object.keys(input.corrections) : []) as (keyof EventDetails)[]),
-            ]),
-          ),
+          protectedCorrections: Array.from(correctedFields),
           history: clone(candidateForApproval.history),
         };
 
     Object.assign(candidate, candidateForApproval);
+    if (existingOccurrence && updatedOccurrence) Object.assign(existingOccurrence, updatedOccurrence);
     if (publishedOccurrence) this.published.push(publishedOccurrence);
 
     return clone(candidateForApproval);
