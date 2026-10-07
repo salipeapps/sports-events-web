@@ -48,6 +48,12 @@ function validateNumber(value: unknown, path: string, errors: string[]): void {
   }
 }
 
+function validateNonNegativeNumber(value: unknown, path: string, errors: string[]): void {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    errors.push(`${path} must be a non-negative finite number`);
+  }
+}
+
 function validateNonNegativeInteger(value: unknown, path: string, errors: string[]): void {
   if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
     errors.push(`${path} must be a non-negative integer`);
@@ -506,7 +512,7 @@ function validateRunShape(value: unknown): string[] {
   validateFieldValue(value.query, "run.query", errors, validateString);
   validateString(value.startedAt, "run.startedAt", errors);
   validateFieldValue(value.finishedAt, "run.finishedAt", errors, validateString);
-  validateFieldValue(value.durationSeconds, "run.durationSeconds", errors, validateNumber);
+  validateFieldValue(value.durationSeconds, "run.durationSeconds", errors, validateNonNegativeNumber);
   validateEnum(value.status, ["queued", "running", "succeeded", "partial", "failed"], "run.status", errors);
   validateFieldValue(value.cost, "run.cost", errors, validateCost);
   validateFieldValue(value.incident, "run.incident", errors, validateString);
