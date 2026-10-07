@@ -24,8 +24,10 @@ export function candidateReviewVersion(candidate: AdminCandidate): string {
   return `review-v1-${hashSnapshot(snapshot)}`;
 }
 
-export function assertExpectedCandidateVersion(candidate: AdminCandidate, expectedVersion?: string): void {
-  if (!expectedVersion) return;
+export function assertExpectedCandidateVersion(candidate: AdminCandidate, expectedVersion: string): void {
+  if (!expectedVersion.trim()) {
+    throw new Error("Falta la versión esperada de la candidatura. Recarga la página antes de realizar la acción.");
+  }
 
   if (expectedVersion !== candidateReviewVersion(candidate)) {
     throw new Error(
