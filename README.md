@@ -45,7 +45,7 @@ npm run quality
 ```
 
 `npm run quality` runs formatting, linting, type checking, tests and a production build. The same
-quality command runs in GitHub Actions for pull requests and pushes to `master`.
+quality command runs in GitHub Actions for pull requests and pushes to `develop` (and release branches such as `master`).
 
 ## Project structure
 
