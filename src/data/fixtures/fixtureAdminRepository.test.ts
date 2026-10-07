@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { known } from "@/domain/admin";
+import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
 import { FixtureAdminRepository } from "./fixtureAdminRepository";
 
 const reviewer = { id: "reviewer-1", role: "reviewer", displayName: "Fixture reviewer" } as const;
@@ -100,6 +101,58 @@ describe("FixtureAdminRepository", () => {
     ).rejects.toThrow("organizer does not exist");
 
     expect(await repository.getCandidate("candidate-valid-E019")).toEqual(before);
+  });
+
+  it("rejects a stale expected version atomically at the repository boundary", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getCandidate("candidate-valid-E019");
+    if (!before) throw new Error("Expected candidate fixture");
+    const expectedVersion = candidateReviewVersion(before);
+
+    await repository.updateCandidateFinal("candidate-valid-E019", {
+      actor: reviewer,
+      expectedVersion,
+      corrections: { title: known("First concurrent edit") },
+    });
+
+    await expect(
+      repository.updateCandidateFinal("candidate-valid-E019", {
+        actor: reviewer,
+        expectedVersion,
+        corrections: { location: known("Stale concurrent location") },
+      }),
+    ).rejects.toThrow("ha cambiado");
+
+    expect((await repository.getCandidate("candidate-valid-E019"))?.final.location).toEqual(before.final.location);
+  });
+
+  it("retains saved correction fields as protected when publishing later", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getCandidate("candidate-valid-E019");
+    if (!before) throw new Error("Expected candidate fixture");
+
+    await repository.updateCandidateFinal("candidate-valid-E019", {
+      actor: reviewer,
+      expectedVersion: candidateReviewVersion(before),
+      corrections: { title: known("Protected editorial title") },
+    });
+
+    const saved = await repository.getCandidate("candidate-valid-E019");
+    if (!saved) throw new Error("Expected corrected candidate");
+
+    await repository.approveCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      expectedVersion: candidateReviewVersion(saved),
+      reason: "Publish after saved correction",
+    });
+
+    const published = await repository.listActivities({ statuses: ["published"] });
+    const occurrence = published.items.find((item) => item.id === "published-candidate-valid-E019");
+    expect(occurrence).toBeDefined();
+
+    const publishedFixture = (repository as unknown as { published: Array<{ id: string; protectedCorrections: string[] }> })
+      .published.find((item) => item.id === "published-candidate-valid-E019");
+    expect(publishedFixture?.protectedCorrections).toContain("title");
   });
 
   it("does not persist corrections when approval fails", async () => {

@@ -8,7 +8,7 @@ import type { AdminCapability, AdminSession } from "@/domain/adminAccess";
 import { requireAdminCapability } from "@/domain/adminAccess";
 import type { EditorialActor } from "@/domain/admin";
 import { getAdminAccess } from "@/integrations/auth/adminAuth";
-import { assertCandidateReviewVersion, buildCandidateCorrections } from "@/presentation/admin/candidateReviewForm";
+import { buildCandidateCorrections } from "@/presentation/admin/candidateReviewForm";
 
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -81,11 +81,10 @@ export async function saveCandidateAction(formData: FormData): Promise<never> {
   return completeAction(candidateId, "Cambios editoriales guardados.", async () => {
     const candidate = await repository.getCandidate(candidateId);
     if (!candidate) throw new Error("La candidatura ya no existe.");
-    assertCandidateReviewVersion(formData, candidate);
-
     const corrections = buildCandidateCorrections(formData, candidate);
     await repository.updateCandidateFinal(candidateId, {
       actor,
+      expectedVersion: formString(formData, "candidateVersion"),
       reason: "Corrección editorial guardada desde Admin",
       corrections,
     });
@@ -100,11 +99,10 @@ export async function approveCandidateAction(formData: FormData): Promise<never>
   return completeAction(candidateId, "Candidatura aprobada y publicada.", async () => {
     const candidate = await repository.getCandidate(candidateId);
     if (!candidate) throw new Error("La candidatura ya no existe.");
-    assertCandidateReviewVersion(formData, candidate);
-
     const corrections = buildCandidateCorrections(formData, candidate);
     await repository.approveCandidate(candidateId, {
       actor,
+      expectedVersion: formString(formData, "candidateVersion"),
       reason: "Aprobación editorial desde Admin",
       corrections,
     });
@@ -120,8 +118,11 @@ export async function rejectCandidateAction(formData: FormData): Promise<never> 
     const repository = getAdminRepository();
     const candidate = await repository.getCandidate(candidateId);
     if (!candidate) throw new Error("La candidatura ya no existe.");
-    assertCandidateReviewVersion(formData, candidate);
-    await repository.rejectCandidate(candidateId, { actor, reason });
+    await repository.rejectCandidate(candidateId, {
+      actor,
+      expectedVersion: formString(formData, "candidateVersion"),
+      reason,
+    });
   });
 }
 
@@ -134,8 +135,11 @@ export async function blockCandidateAction(formData: FormData): Promise<never> {
     const repository = getAdminRepository();
     const candidate = await repository.getCandidate(candidateId);
     if (!candidate) throw new Error("La candidatura ya no existe.");
-    assertCandidateReviewVersion(formData, candidate);
-    await repository.blockCandidate(candidateId, { actor, reason });
+    await repository.blockCandidate(candidateId, {
+      actor,
+      expectedVersion: formString(formData, "candidateVersion"),
+      reason,
+    });
   });
 }
 
@@ -148,8 +152,11 @@ export async function requeryCandidateAction(formData: FormData): Promise<never>
     const repository = getAdminRepository();
     const candidate = await repository.getCandidate(candidateId);
     if (!candidate) throw new Error("La candidatura ya no existe.");
-    assertCandidateReviewVersion(formData, candidate);
-    await repository.requestRequery(candidateId, { actor, reason: reason || undefined });
+    await repository.requestRequery(candidateId, {
+      actor,
+      expectedVersion: formString(formData, "candidateVersion"),
+      reason: reason || undefined,
+    });
   });
 }
 
@@ -162,7 +169,10 @@ export async function reprocessCandidateAction(formData: FormData): Promise<neve
     const repository = getAdminRepository();
     const candidate = await repository.getCandidate(candidateId);
     if (!candidate) throw new Error("La candidatura ya no existe.");
-    assertCandidateReviewVersion(formData, candidate);
-    await repository.requestReprocess(candidateId, { actor, reason: reason || undefined });
+    await repository.requestReprocess(candidateId, {
+      actor,
+      expectedVersion: formString(formData, "candidateVersion"),
+      reason: reason || undefined,
+    });
   });
 }

@@ -14,23 +14,27 @@ import type {
 
 export interface CandidateApprovalInput {
   actor: EditorialActor;
+  expectedVersion?: string;
   reason?: string;
   corrections?: Partial<EventDetails>;
 }
 
 export interface CandidateCorrectionInput {
   actor: EditorialActor;
+  expectedVersion?: string;
   reason?: string;
   corrections: Partial<EventDetails>;
 }
 
 export interface CandidateDecisionInput {
   actor: EditorialActor;
+  expectedVersion?: string;
   reason: string;
 }
 
 export interface CandidateActionInput {
   actor: EditorialActor;
+  expectedVersion?: string;
   reason?: string;
 }
 

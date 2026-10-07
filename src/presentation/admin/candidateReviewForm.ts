@@ -120,7 +120,7 @@ function parsePrice(value: string, kindValue: string, currentField: EventDetails
 
   if (!trimmed) return unknown("not_provided");
 
-  const amounts = Array.from(trimmed.matchAll(/\d+(?:[.,]\d+)?/g)).map((match) =>
+  const amounts = Array.from(trimmed.matchAll(/[+-]?\d+(?:[.,]\d+)?/g)).map((match) =>
     Number.parseFloat(match[0].replace(",", ".")),
   );
 
@@ -150,7 +150,7 @@ function parsePrice(value: string, kindValue: string, currentField: EventDetails
       };
     }),
     perSessionComparable: current?.perSessionComparable ?? !["annual_membership", "annual_insurance"].includes(kind),
-    note: trimmed,
+    note: current?.note ?? trimmed,
   });
 }
 
@@ -161,40 +161,6 @@ function sameValue(left: unknown, right: unknown): boolean {
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
-}
-
-function hashSnapshot(value: string): string {
-  let hash = 2166136261;
-
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-
-  return (hash >>> 0).toString(16).padStart(8, "0");
-}
-
-export function candidateReviewVersion(candidate: AdminCandidate): string {
-  const snapshot = JSON.stringify({
-    final: candidate.final,
-    editorialStatus: candidate.editorialStatus,
-    conflicts: candidate.conflicts.map(({ id, status, blocking, summary }) => ({ id, status, blocking, summary })),
-    matches: candidate.matches.map(({ id, status, relation }) => ({ id, status, relation })),
-    changeProposal: candidate.changeProposal,
-    history: candidate.history.map(({ id, action, at }) => ({ id, action, at })),
-  });
-
-  return `review-v1-${hashSnapshot(snapshot)}`;
-}
-
-export function assertCandidateReviewVersion(formData: FormData, candidate: AdminCandidate): void {
-  const submitted = formString(formData, "candidateVersion");
-
-  if (!submitted || submitted !== candidateReviewVersion(candidate)) {
-    throw new Error(
-      "La candidatura ha cambiado desde que abriste esta revisión. Recarga la página antes de guardar o decidir.",
-    );
-  }
 }
 
 export function buildCandidateCorrections(formData: FormData, candidate: AdminCandidate): Partial<EventDetails> {

@@ -15,6 +15,7 @@ import type {
   SourceConfig,
 } from "@/domain/admin";
 import { parseAdminCandidate, publicationBlockReasons } from "@/domain/adminValidation";
+import { assertExpectedCandidateVersion } from "@/domain/candidateReviewVersion";
 import type {
   AdminRepository,
   CandidateActionInput,
@@ -230,6 +231,7 @@ function assertActionableCandidate(candidate: AdminCandidate, action: string): v
 export class FixtureAdminRepository implements AdminRepository {
   private candidates = clone(candidateFixtures);
   private published = clone(publishedOccurrenceFixtures);
+  private protectedCorrectionFields = new Map<string, Set<keyof EventDetails>>();
   private sources = clone(sourceFixtures);
   private runs = clone(runFixtures);
 
@@ -387,6 +389,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async updateCandidateFinal(candidateId: string, input: CandidateCorrectionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "corrected");
 
     if (Object.keys(input.corrections).length === 0) return clone(candidate);
@@ -406,13 +409,19 @@ export class FixtureAdminRepository implements AdminRepository {
     }
 
     correctedCandidate.history.push(historyEntry(correctedCandidate, "corrected", input.actor, input.reason));
+
+    const protectedFields = this.protectedCorrectionFields.get(candidateId) ?? new Set<keyof EventDetails>();
+    for (const field of Object.keys(input.corrections) as (keyof EventDetails)[]) protectedFields.add(field);
+
     Object.assign(candidate, correctedCandidate);
+    this.protectedCorrectionFields.set(candidateId, protectedFields);
     return clone(candidate);
   }
 
   async approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "approved again");
     const candidateForApproval = clone(candidate);
 
@@ -454,7 +463,12 @@ export class FixtureAdminRepository implements AdminRepository {
           lastCheckedAt: candidateForApproval.lastCheckedAt,
           event: clone(candidateForApproval.final),
           evidenceIds: candidateForApproval.evidence.map((evidence) => evidence.id),
-          protectedCorrections: input.corrections ? (Object.keys(input.corrections) as (keyof EventDetails)[]) : [],
+          protectedCorrections: Array.from(
+            new Set<keyof EventDetails>([
+              ...(this.protectedCorrectionFields.get(candidateId) ?? []),
+              ...((input.corrections ? Object.keys(input.corrections) : []) as (keyof EventDetails)[]),
+            ]),
+          ),
           history: clone(candidateForApproval.history),
         };
 
@@ -467,6 +481,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "rejected");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "rejected";
@@ -477,6 +492,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "blocked");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "blocked";
@@ -487,6 +503,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "requeried");
     candidate.history.push(historyEntry(candidate, "requery_requested", input.actor, input.reason));
     return clone(candidate);
@@ -495,6 +512,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async requestReprocess(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "reprocessed");
     candidate.history.push(historyEntry(candidate, "reprocess_requested", input.actor, input.reason));
     return clone(candidate);

@@ -19,7 +19,8 @@ import {
   statusLabels,
   statusTone,
 } from "./adminPresentation";
-import { candidateReviewVersion, editablePriceKind, formatEditablePrice } from "./candidateReviewForm";
+import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
+import { editablePriceKind, formatEditablePrice } from "./candidateReviewForm";
 import {
   approveCandidateAction,
   blockCandidateAction,
