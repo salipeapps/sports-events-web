@@ -49,6 +49,7 @@ export interface AdminRepository {
   approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate>;
   rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
   blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
+  unblockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
   requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate>;
   requestReprocess(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate>;
   listSources(): Promise<SourceConfig[]>;
