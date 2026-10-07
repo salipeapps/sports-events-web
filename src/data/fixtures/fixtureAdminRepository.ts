@@ -233,6 +233,26 @@ function assertActionableCandidate(candidate: AdminCandidate, action: string): v
   }
 }
 
+function hasOpenCandidateBlocker(candidate: AdminCandidate, input: CandidateBlockerResolutionInput): boolean {
+  switch (input.kind) {
+    case "conflict":
+      return candidate.conflicts.some(
+        (conflict) => conflict.id === input.targetId && conflict.status === "open" && conflict.blocking,
+      );
+    case "rule":
+      return candidate.rules.some((rule) => rule.id === input.targetId && rule.outcome === "block");
+    case "match":
+      return candidate.matches.some((match) => match.id === input.targetId && match.status === "pending");
+    case "change_proposal":
+      return (
+        candidate.changeProposal.state === "known" &&
+        candidate.changeProposal.value.id === input.targetId &&
+        candidate.changeProposal.value.status === "pending" &&
+        candidate.changeProposal.value.essential
+      );
+  }
+}
+
 export class FixtureAdminRepository implements AdminRepository {
   private candidates = clone(candidateFixtures);
   private published = clone(publishedOccurrenceFixtures);
@@ -545,21 +565,7 @@ export class FixtureAdminRepository implements AdminRepository {
       throw new Error(`Candidate blocker is already resolved: ${input.kind}:${input.targetId}.`);
     }
 
-    const exists =
-      input.kind === "conflict"
-        ? candidate.conflicts.some(
-            (conflict) => conflict.id === input.targetId && conflict.status === "open" && conflict.blocking,
-          )
-        : input.kind === "rule"
-          ? candidate.rules.some((rule) => rule.id === input.targetId && rule.outcome === "block")
-          : input.kind === "match"
-            ? candidate.matches.some((match) => match.id === input.targetId && match.status === "pending")
-            : candidate.changeProposal.state === "known" &&
-              candidate.changeProposal.value.id === input.targetId &&
-              candidate.changeProposal.value.status === "pending" &&
-              candidate.changeProposal.value.essential;
-
-    if (!exists) {
+    if (!hasOpenCandidateBlocker(candidate, input)) {
       throw new Error(`Unknown or non-blocking candidate blocker: ${input.kind}:${input.targetId}.`);
     }
 
