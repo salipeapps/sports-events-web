@@ -3,11 +3,7 @@ import { describe, expect, it } from "vitest";
 import { FixtureAdminRepository } from "@/data/fixtures/fixtureAdminRepository";
 import type { AdminCandidate } from "@/domain/admin";
 import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
-import {
-  buildCandidateCorrections,
-  editablePriceKind,
-  formatEditablePrice,
-} from "./candidateReviewForm";
+import { buildCandidateCorrections, editablePriceKind, formatEditablePrice } from "./candidateReviewForm";
 
 function formFor(candidate: AdminCandidate): FormData {
   const form = new FormData();
