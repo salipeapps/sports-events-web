@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import { FixtureAdminRepository } from "@/data/fixtures/fixtureAdminRepository";
 import type { AdminCandidate } from "@/domain/admin";
 import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
-import { buildCandidateCorrections, editablePriceKind, formatEditablePrice } from "./candidateReviewForm";
+import {
+  buildCandidateCorrections,
+  editablePriceKind,
+  formatEditablePrice,
+  formatObservedPrice,
+} from "./candidateReviewForm";
 
 function formFor(candidate: AdminCandidate): FormData {
   const form = new FormData();
@@ -119,6 +124,16 @@ describe("candidate review form", () => {
 
     expect(corrections.price.value.options[0]?.paymentMethod).toBeUndefined();
     expect(corrections.price.value.options[1]?.paymentMethod).toBe("card");
+  });
+
+  it("renders structured transport qualifiers in observed prices", async () => {
+    const candidate = await new FixtureAdminRepository().getCandidate("candidate-price-conflict-E064");
+    if (!candidate || candidate.extracted.price.state !== "known") throw new Error("fixture price missing");
+
+    const rendered = formatObservedPrice(candidate.extracted.price.value);
+
+    expect(rendered).toContain("54 € with transport");
+    expect(rendered).toContain("18 € hike only · without transport");
   });
 
   it("stores transport qualifiers as labels instead of payment methods", async () => {
