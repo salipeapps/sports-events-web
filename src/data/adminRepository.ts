@@ -3,6 +3,7 @@ import type {
   ActivityListItem,
   AdminCandidate,
   CandidateFilters,
+  CandidateBlockerKind,
   DashboardSummary,
   EditorialActor,
   EngineRun,
@@ -38,6 +39,11 @@ export interface CandidateActionInput {
   reason?: string;
 }
 
+export interface CandidateBlockerResolutionInput extends CandidateDecisionInput {
+  kind: CandidateBlockerKind;
+  targetId: string;
+}
+
 export interface AdminRepository {
   getDashboardSummary(): Promise<DashboardSummary>;
   listActivities(filters?: ActivityFilters): Promise<PageResult<ActivityListItem>>;
@@ -50,6 +56,7 @@ export interface AdminRepository {
   rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
   blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
   unblockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
+  resolveCandidateBlocker(candidateId: string, input: CandidateBlockerResolutionInput): Promise<AdminCandidate>;
   requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate>;
   requestReprocess(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate>;
   listSources(): Promise<SourceConfig[]>;
