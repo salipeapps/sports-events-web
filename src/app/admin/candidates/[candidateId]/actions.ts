@@ -166,6 +166,9 @@ export async function resolveCandidateBlockerAction(formData: FormData): Promise
   const blockerKind = formString(formData, "blockerKind") as CandidateBlockerKind;
   const blockerId = formString(formData, "blockerId");
   const reason = formString(formData, "blockerReason");
+  const dispositionValue = formString(formData, "blockerDisposition");
+  const disposition =
+    dispositionValue === "accepted" || dispositionValue === "rejected" ? dispositionValue : undefined;
 
   if (!candidateBlockerKinds.includes(blockerKind)) {
     throw new Error("El tipo de bloqueo no es válido.");
@@ -182,6 +185,7 @@ export async function resolveCandidateBlockerAction(formData: FormData): Promise
       reason,
       kind: blockerKind,
       targetId: blockerId,
+      disposition,
     });
   });
 }
