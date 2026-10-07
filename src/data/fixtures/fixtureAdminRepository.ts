@@ -3,6 +3,7 @@ import type {
   ActivityListItem,
   AdminCandidate,
   CandidateFilters,
+  ChangeField,
   DashboardSummary,
   EditorialAction,
   EditorialHistoryEntry,
@@ -227,6 +228,17 @@ function assertActionableCandidate(candidate: AdminCandidate, action: string): v
       `Candidate in terminal state ${candidate.editorialStatus} cannot be ${action} without an explicit reopen operation.`,
     );
   }
+}
+
+function applyChangeFields(event: EventDetails, fields: ChangeField[], side: "before" | "after"): EventDetails {
+  const updated = clone(event);
+  const mutable = updated as unknown as Record<string, FieldValue<unknown>>;
+
+  for (const change of fields) {
+    mutable[change.field] = clone(change[side]);
+  }
+
+  return updated;
 }
 
 function hasOpenCandidateBlocker(candidate: AdminCandidate, input: CandidateBlockerResolutionInput): boolean {
@@ -565,20 +577,74 @@ export class FixtureAdminRepository implements AdminRepository {
       throw new Error(`Unknown or non-blocking candidate blocker: ${input.kind}:${input.targetId}.`);
     }
 
-    candidate.blockerResolutions ??= [];
-    candidate.blockerResolutions.push({
-      id: `blocker-resolution-${candidate.id}-${candidate.blockerResolutions.length + 1}`,
+    const candidateForResolution = clone(candidate);
+    let occurrenceUpdate: { current: PublishedOccurrence; next: PublishedOccurrence } | null = null;
+
+    if (input.kind === "change_proposal") {
+      if (input.disposition !== "accepted" && input.disposition !== "rejected") {
+        throw new Error("Change proposal resolution requires an accepted or rejected disposition.");
+      }
+      if (candidateForResolution.changeProposal.state !== "known") {
+        throw new Error("Change proposal is no longer available.");
+      }
+
+      const proposal = candidateForResolution.changeProposal.value;
+      const side = input.disposition === "accepted" ? "after" : "before";
+      candidateForResolution.final = applyChangeFields(candidateForResolution.final, proposal.fields, side);
+      proposal.status = input.disposition === "accepted" ? "approved" : "rejected";
+
+      if (input.disposition === "accepted") {
+        const currentOccurrence = this.published.find((occurrence) => occurrence.id === proposal.publishedOccurrenceId);
+        if (!currentOccurrence) {
+          throw new Error(`Published occurrence does not exist: ${proposal.publishedOccurrenceId}.`);
+        }
+
+        const nextOccurrence = clone(currentOccurrence);
+        nextOccurrence.event = applyChangeFields(nextOccurrence.event, proposal.fields, "after");
+        nextOccurrence.lastCheckedAt = candidateForResolution.lastCheckedAt;
+        nextOccurrence.evidenceIds = Array.from(
+          new Set([...nextOccurrence.evidenceIds, ...proposal.fields.flatMap((field) => field.evidenceIds)]),
+        );
+        nextOccurrence.protectedCorrections = Array.from(
+          new Set([...nextOccurrence.protectedCorrections, ...proposal.fields.map((field) => field.field)]),
+        );
+        nextOccurrence.history.push({
+          id: `history-${nextOccurrence.id}-${nextOccurrence.history.length + 1}`,
+          action: "corrected",
+          at: new Date().toISOString(),
+          actor: clone(input.actor),
+          reason: { state: "known", value: `Accepted change proposal ${proposal.id}: ${reason}` },
+        });
+        occurrenceUpdate = { current: currentOccurrence, next: nextOccurrence };
+      }
+    } else if (input.disposition !== undefined) {
+      throw new Error("A disposition is only valid for change proposals.");
+    }
+
+    candidateForResolution.blockerResolutions ??= [];
+    candidateForResolution.blockerResolutions.push({
+      id: `blocker-resolution-${candidateForResolution.id}-${candidateForResolution.blockerResolutions.length + 1}`,
       kind: input.kind,
       targetId: input.targetId,
+      disposition: input.disposition,
       at: new Date().toISOString(),
       actor: clone(input.actor),
       reason,
     });
-    candidate.history.push(
-      historyEntry(candidate, "blocker_resolved", input.actor, `${input.kind}:${input.targetId} · ${reason}`),
+    candidateForResolution.history.push(
+      historyEntry(
+        candidateForResolution,
+        "blocker_resolved",
+        input.actor,
+        `${input.kind}:${input.targetId}${input.disposition ? ` · ${input.disposition}` : ""} · ${reason}`,
+      ),
     );
-    parseAdminCandidate(candidate);
-    return clone(candidate);
+    parseAdminCandidate(candidateForResolution);
+
+    Object.assign(candidate, candidateForResolution);
+    if (occurrenceUpdate) Object.assign(occurrenceUpdate.current, occurrenceUpdate.next);
+
+    return clone(candidateForResolution);
   }
 
   async requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
