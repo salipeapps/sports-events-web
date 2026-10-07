@@ -56,7 +56,10 @@ export interface ActivityCatalogModel {
   total: number;
 }
 
-function statusCount(distribution: Array<{ status: EditorialStatus; count: number }>, statuses: EditorialStatus[]): number {
+function statusCount(
+  distribution: Array<{ status: EditorialStatus; count: number }>,
+  statuses: EditorialStatus[],
+): number {
   return statuses.reduce(
     (total, status) => total + (distribution.find((item) => item.status === status)?.count ?? 0),
     0,
@@ -69,7 +72,8 @@ export async function loadActivityCatalog(
   scope: ActivityCatalogScope,
 ): Promise<ActivityCatalogModel> {
   const query = resolveActivityQuery(searchParams, scope);
-  const listMethod = scope === "candidates" ? repository.listCandidates.bind(repository) : repository.listActivities.bind(repository);
+  const listMethod =
+    scope === "candidates" ? repository.listCandidates.bind(repository) : repository.listActivities.bind(repository);
 
   const [page, sources, organizers, summary] = await Promise.all([
     listMethod(query.filters),

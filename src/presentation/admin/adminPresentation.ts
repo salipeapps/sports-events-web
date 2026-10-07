@@ -1,9 +1,4 @@
-import type {
-  ActivityCategory,
-  EditorialStatus,
-  FieldValue,
-  UnknownReason,
-} from "@/domain/admin";
+import type { ActivityCategory, EditorialStatus, FieldValue, UnknownReason } from "@/domain/admin";
 
 export const categoryLabels: Record<ActivityCategory, string> = {
   pilates: "Pilates",

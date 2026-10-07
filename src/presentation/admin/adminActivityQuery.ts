@@ -49,13 +49,14 @@ function validStatus(value: string): value is EditorialStatus {
 
 function resolveTab(scope: ActivityCatalogScope, value: string): ActivityTab {
   const allowedTabs = scope === "activities" ? activityTabs : candidateTabs;
-  return allowedTabs.some((tab) => tab.id === value) ? (value as ActivityTab) : scope === "activities" ? "published" : "candidates";
+  return allowedTabs.some((tab) => tab.id === value)
+    ? (value as ActivityTab)
+    : scope === "activities"
+      ? "published"
+      : "candidates";
 }
 
-export function resolveActivityQuery(
-  searchParams: AdminSearchParams,
-  scope: ActivityCatalogScope,
-): ActivityQueryState {
+export function resolveActivityQuery(searchParams: AdminSearchParams, scope: ActivityCatalogScope): ActivityQueryState {
   const activeTab = resolveTab(scope, param(searchParams, "tab"));
   const tab = activityTabs.find((item) => item.id === activeTab) ?? activityTabs[0];
   const category = param(searchParams, "category");
@@ -92,11 +93,7 @@ export function resolveActivityQuery(
   };
 }
 
-export function tabHref(
-  basePath: string,
-  searchParams: AdminSearchParams,
-  tab: ActivityTab,
-): string {
+export function tabHref(basePath: string, searchParams: AdminSearchParams, tab: ActivityTab): string {
   const query = new URLSearchParams();
 
   for (const [key, rawValue] of Object.entries(searchParams)) {

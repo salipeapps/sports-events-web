@@ -9,7 +9,7 @@ function numberValue(field: FieldValue<number>): string {
 }
 
 function metricHint(field: FieldValue<unknown>): string {
-  return field.state === "known" ? "Dato del adaptador" : field.note ?? "No verificado";
+  return field.state === "known" ? "Dato del adaptador" : (field.note ?? "No verificado");
 }
 
 function countFor(summary: DashboardSummary, status: EditorialStatus): number {
@@ -70,15 +70,12 @@ export function AdminDashboard({ summary }: { summary: DashboardSummary }) {
       hint:
         coverage.state === "known"
           ? `${coverage.value.published} de ${coverage.value.target}`
-          : coverage.note ?? "No verificada",
+          : (coverage.note ?? "No verificada"),
     },
   ];
 
   const categories = [...summary.categoryCoverage]
-    .sort(
-      (a, b) =>
-        b.publishedCount + b.candidateCount - (a.publishedCount + a.candidateCount),
-    )
+    .sort((a, b) => b.publishedCount + b.candidateCount - (a.publishedCount + a.candidateCount))
     .slice(0, 6);
 
   return (
@@ -122,7 +119,7 @@ export function AdminDashboard({ summary }: { summary: DashboardSummary }) {
               <strong>Sin histórico verificable</strong>
               <p>
                 {summary.coverageTrend.state === "unknown"
-                  ? summary.coverageTrend.note ?? "Todavía no hay una serie temporal disponible."
+                  ? (summary.coverageTrend.note ?? "Todavía no hay una serie temporal disponible.")
                   : "Todavía no hay una serie temporal disponible."}
               </p>
             </div>
@@ -186,8 +183,7 @@ export function AdminDashboard({ summary }: { summary: DashboardSummary }) {
           {summary.urgentItems.length > 0 ? (
             <ul className="admin-urgent-list">
               {summary.urgentItems.slice(0, 6).map((item) => {
-                const href =
-                  item.candidateId.state === "known" ? `/admin/candidates/${item.candidateId.value}` : null;
+                const href = item.candidateId.state === "known" ? `/admin/candidates/${item.candidateId.value}` : null;
                 const content = (
                   <>
                     <span>

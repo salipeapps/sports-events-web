@@ -2,13 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { getAdminRepository } from "@/data/adminRepositoryProvider";
-import { displayField, formatCheckedAt, formatLocalDateTime, statusLabels, statusTone } from "@/presentation/admin/adminPresentation";
+import {
+  displayField,
+  formatCheckedAt,
+  formatLocalDateTime,
+  statusLabels,
+  statusTone,
+} from "@/presentation/admin/adminPresentation";
 
-export default async function CandidateSummaryPage({
-  params,
-}: {
-  params: Promise<{ candidateId: string }>;
-}) {
+export default async function CandidateSummaryPage({ params }: { params: Promise<{ candidateId: string }> }) {
   const { candidateId } = await params;
   const candidate = await getAdminRepository().getCandidate(candidateId);
 

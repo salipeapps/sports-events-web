@@ -34,7 +34,9 @@ export function AdminActivityTable({ rows }: { rows: ActivityRowViewModel[] }) {
     return (
       <div className="admin-empty-state">
         <strong>No hay resultados con estos filtros</strong>
-        <p>Prueba a cambiar el estado, la fecha o la búsqueda. No se sustituyen datos ausentes por valores ficticios.</p>
+        <p>
+          Prueba a cambiar el estado, la fecha o la búsqueda. No se sustituyen datos ausentes por valores ficticios.
+        </p>
       </div>
     );
   }
@@ -94,7 +96,9 @@ export function AdminActivityTable({ rows }: { rows: ActivityRowViewModel[] }) {
                   <div className="admin-table-title">
                     {row.detailHref ? <Link href={row.detailHref}>{row.title}</Link> : <strong>{row.title}</strong>}
                     {row.reasonCodes.length > 0 ? (
-                      <small>{row.reasonCodes.length} señal{row.reasonCodes.length === 1 ? "" : "es"} de revisión</small>
+                      <small>
+                        {row.reasonCodes.length} señal{row.reasonCodes.length === 1 ? "" : "es"} de revisión
+                      </small>
                     ) : null}
                   </div>
                 </td>
