@@ -8,6 +8,6 @@ describe("AdminPage", () => {
     const html = renderToStaticMarkup(await AdminPage());
 
     expect(html).toContain("Resumen");
-    expect(html).toContain("Visión general del estado de la plataforma");
+    expect(html).toContain("Visión general del estado operativo de la plataforma y del catálogo.");
   });
 });
