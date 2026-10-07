@@ -19,11 +19,7 @@ import {
   statusLabels,
   statusTone,
 } from "./adminPresentation";
-import {
-  candidateReviewVersion,
-  editablePriceKind,
-  formatEditablePrice,
-} from "./candidateReviewForm";
+import { candidateReviewVersion, editablePriceKind, formatEditablePrice } from "./candidateReviewForm";
 import {
   approveCandidateAction,
   blockCandidateAction,
@@ -163,10 +159,7 @@ export function CandidateReview({ candidate, organizers, source, result, error }
     ["Idioma", languages(candidate.extracted)],
     ["Nivel", displayField(candidate.extracted.level)],
     ["Registro", displayField(candidate.extracted.registrationUrl)],
-    [
-      "Acceso individual",
-      displayField(candidate.extracted.individualAccess, (value) => (value ? "Sí" : "No")),
-    ],
+    ["Acceso individual", displayField(candidate.extracted.individualAccess, (value) => (value ? "Sí" : "No"))],
     ["Fuente", sourceName],
   ];
 

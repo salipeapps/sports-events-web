@@ -107,11 +107,7 @@ function parsePriceKind(value: string): PriceDetails["kind"] | null {
   return value as PriceDetails["kind"];
 }
 
-function parsePrice(
-  value: string,
-  kindValue: string,
-  currentField: EventDetails["price"],
-): EventDetails["price"] {
+function parsePrice(value: string, kindValue: string, currentField: EventDetails["price"]): EventDetails["price"] {
   const trimmed = value.trim();
   const kind = parsePriceKind(kindValue);
 

@@ -8,10 +8,7 @@ import type { AdminCapability, AdminSession } from "@/domain/adminAccess";
 import { requireAdminCapability } from "@/domain/adminAccess";
 import type { EditorialActor } from "@/domain/admin";
 import { getAdminAccess } from "@/integrations/auth/adminAuth";
-import {
-  assertCandidateReviewVersion,
-  buildCandidateCorrections,
-} from "@/presentation/admin/candidateReviewForm";
+import { assertCandidateReviewVersion, buildCandidateCorrections } from "@/presentation/admin/candidateReviewForm";
 
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
