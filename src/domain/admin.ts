@@ -210,6 +210,18 @@ export interface EditorialActor {
   displayName: string;
 }
 
+export const candidateBlockerKinds = ["conflict", "rule", "match", "change_proposal"] as const;
+export type CandidateBlockerKind = (typeof candidateBlockerKinds)[number];
+
+export interface CandidateBlockerResolution {
+  id: string;
+  kind: CandidateBlockerKind;
+  targetId: string;
+  at: string;
+  actor: EditorialActor;
+  reason: string;
+}
+
 export type EditorialAction =
   | "captured"
   | "normalized"
@@ -220,6 +232,7 @@ export type EditorialAction =
   | "rejected"
   | "blocked"
   | "unblocked"
+  | "blocker_resolved"
   | "requery_requested"
   | "reprocess_requested"
   | "cancelled"
@@ -250,6 +263,7 @@ export interface AdminCandidate {
   conflicts: Conflict[];
   matches: CandidateMatch[];
   changeProposal: FieldValue<ChangeProposal>;
+  blockerResolutions?: CandidateBlockerResolution[];
   history: EditorialHistoryEntry[];
 }
 
