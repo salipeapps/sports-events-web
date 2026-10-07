@@ -233,5 +233,4 @@ describe("FixtureAdminRepository", () => {
     const published = await repository.listActivities({ statuses: ["published"], organizerId: "O999" });
     expect(published.items).toHaveLength(0);
   });
-
 });
