@@ -372,6 +372,7 @@ function validateHistory(value: unknown, path: string, errors: string[]): void {
       "rejected",
       "blocked",
       "unblocked",
+      "blocker_resolved",
       "requery_requested",
       "reprocess_requested",
       "cancelled",
@@ -382,6 +383,27 @@ function validateHistory(value: unknown, path: string, errors: string[]): void {
   );
   validateString(value.at, `${path}.at`, errors);
   validateFieldValue(value.reason, `${path}.reason`, errors, validateString);
+
+  if (!isRecord(value.actor)) {
+    errors.push(`${path}.actor must be an object`);
+  } else {
+    validateString(value.actor.id, `${path}.actor.id`, errors);
+    validateEnum(value.actor.role, ["admin", "reviewer", "system"], `${path}.actor.role`, errors);
+    validateString(value.actor.displayName, `${path}.actor.displayName`, errors);
+  }
+}
+
+function validateBlockerResolution(value: unknown, path: string, errors: string[]): void {
+  if (!isRecord(value)) {
+    errors.push(`${path} must be a blocker resolution object`);
+    return;
+  }
+
+  validateString(value.id, `${path}.id`, errors);
+  validateEnum(value.kind, ["conflict", "rule", "match", "change_proposal"], `${path}.kind`, errors);
+  validateString(value.targetId, `${path}.targetId`, errors);
+  validateString(value.at, `${path}.at`, errors);
+  validateString(value.reason, `${path}.reason`, errors);
 
   if (!isRecord(value.actor)) {
     errors.push(`${path}.actor must be an object`);
@@ -436,6 +458,16 @@ function validateCandidateShape(value: unknown): string[] {
   }
 
   validateFieldValue(value.changeProposal, "candidate.changeProposal", errors, validateChangeProposal);
+
+  if (value.blockerResolutions !== undefined) {
+    if (!Array.isArray(value.blockerResolutions)) {
+      errors.push("candidate.blockerResolutions must be an array when provided");
+    } else {
+      value.blockerResolutions.forEach((entry, index) =>
+        validateBlockerResolution(entry, `candidate.blockerResolutions[${index}]`, errors),
+      );
+    }
+  }
 
   if (!Array.isArray(value.history)) {
     errors.push("candidate.history must be an array");
@@ -566,12 +598,27 @@ export function deserializeEngineRun(serialized: string): EngineRun {
   return parseEngineRun(JSON.parse(serialized) as unknown);
 }
 
+export function isCandidateBlockerResolved(
+  candidate: AdminCandidate,
+  kind: "conflict" | "rule" | "match" | "change_proposal",
+  targetId: string,
+): boolean {
+  return candidate.blockerResolutions?.some((resolution) => resolution.kind === kind && resolution.targetId === targetId) ?? false;
+}
+
 export function hasBlockingConflict(candidate: AdminCandidate): boolean {
-  return candidate.conflicts.some((conflict) => conflict.status === "open" && conflict.blocking);
+  return candidate.conflicts.some(
+    (conflict) =>
+      conflict.status === "open" &&
+      conflict.blocking &&
+      !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+  );
 }
 
 export function hasBlockingRule(candidate: AdminCandidate): boolean {
-  return candidate.rules.some((rule) => rule.outcome === "block");
+  return candidate.rules.some(
+    (rule) => rule.outcome === "block" && !isCandidateBlockerResolved(candidate, "rule", rule.id),
+  );
 }
 
 export function publicationBlockReasons(candidate: AdminCandidate): string[] {
@@ -580,13 +627,18 @@ export function publicationBlockReasons(candidate: AdminCandidate): string[] {
   if (candidate.editorialStatus === "blocked") reasons.push("editorial_status_blocked");
   if (hasBlockingConflict(candidate)) reasons.push("open_blocking_conflict");
   if (hasBlockingRule(candidate)) reasons.push("blocking_rule");
-  if (candidate.matches.some((match) => match.status === "pending")) {
+  if (
+    candidate.matches.some(
+      (match) => match.status === "pending" && !isCandidateBlockerResolved(candidate, "match", match.id),
+    )
+  ) {
     reasons.push("pending_match");
   }
   if (
     candidate.changeProposal.state === "known" &&
     candidate.changeProposal.value.status === "pending" &&
-    candidate.changeProposal.value.essential
+    candidate.changeProposal.value.essential &&
+    !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
   ) {
     reasons.push("pending_essential_change");
   }
