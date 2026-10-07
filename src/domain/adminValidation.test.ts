@@ -71,11 +71,19 @@ describe("admin contracts", () => {
     expect(() => deserializeEngineRun(JSON.stringify(malformedRun))).toThrow(ContractValidationError);
   });
 
-  it("rejects negative run durations", () => {
-    const malformedRun = structuredClone(runFixtures[0]) as unknown as Record<string, unknown>;
-    malformedRun.durationSeconds = { state: "known", value: -1 };
+  it("rejects negative price amounts", () => {
+    const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
+    const final = malformed.final as Record<string, unknown>;
+    final.price = {
+      state: "known",
+      value: {
+        kind: "fixed",
+        options: [{ amount: -5, currency: "EUR" }],
+        perSessionComparable: true,
+      },
+    };
 
-    expect(() => deserializeEngineRun(JSON.stringify(malformedRun))).toThrow(ContractValidationError);
+    expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
   });
 
   it.each(["rules", "evidence", "conflicts", "matches", "history"])("rejects malformed elements inside %s", (field) => {

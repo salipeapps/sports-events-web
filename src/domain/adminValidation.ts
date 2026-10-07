@@ -147,7 +147,7 @@ function validatePriceDetails(value: unknown, path: string, errors: string[]): v
       errors.push(`${optionPath} must be an object`);
       return;
     }
-    validateNumber(option.amount, `${optionPath}.amount`, errors);
+    validateNonNegativeNumber(option.amount, `${optionPath}.amount`, errors);
     if (option.currency !== "EUR") {
       errors.push(`${optionPath}.currency must be EUR`);
     }
