@@ -14,7 +14,7 @@ administrative workflow that will inspect and curate events produced by the inge
 
 ## Requirements
 
-- Node.js 22.12 or newer
+- Node.js 24.x
 - npm
 
 ## Local development
