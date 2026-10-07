@@ -12,6 +12,7 @@ vi.mock("next/navigation", () => ({
   redirect: vi.fn((target: string): never => {
     throw new Error(`REDIRECT:${target}`);
   }),
+  usePathname: vi.fn(() => "/admin"),
 }));
 
 describe("AdminLayout", () => {
