@@ -646,7 +646,9 @@ export class FixtureAdminRepository implements AdminRepository {
         }
         for (const field of proposal.fields) {
           if (JSON.stringify(currentOccurrence.event[field.field]) !== JSON.stringify(field.before)) {
-            throw new Error(`Stale change proposal: published ${field.field} no longer matches the observed before value.`);
+            throw new Error(
+              `Stale change proposal: published ${field.field} no longer matches the observed before value.`,
+            );
           }
         }
 
