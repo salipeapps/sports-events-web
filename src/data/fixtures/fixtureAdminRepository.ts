@@ -19,6 +19,7 @@ import type {
   AdminRepository,
   CandidateActionInput,
   CandidateApprovalInput,
+  CandidateCorrectionInput,
   CandidateDecisionInput,
 } from "../adminRepository";
 import {
@@ -381,6 +382,32 @@ export class FixtureAdminRepository implements AdminRepository {
   async getOrganizer(organizerId: string): Promise<Organizer | null> {
     const organizer = organizerFixtures.find((item) => item.id === organizerId);
     return organizer ? clone(organizer) : null;
+  }
+
+  async updateCandidateFinal(candidateId: string, input: CandidateCorrectionInput): Promise<AdminCandidate> {
+    const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
+    assertActionableCandidate(candidate, "corrected");
+
+    if (Object.keys(input.corrections).length === 0) return clone(candidate);
+
+    const correctedCandidate = clone(candidate);
+    applyCorrections(correctedCandidate, input.corrections);
+
+    if (input.corrections.organizerId) {
+      correctedCandidate.organizerId = clone(correctedCandidate.final.organizerId);
+    }
+
+    parseAdminCandidate(correctedCandidate);
+
+    const organizerId = valueOrUndefined(correctedCandidate.final.organizerId);
+    if (organizerId && !organizerFixtures.some((organizer) => organizer.id === organizerId)) {
+      throw new Error(`Candidate organizer does not exist: ${organizerId}.`);
+    }
+
+    correctedCandidate.history.push(historyEntry(correctedCandidate, "corrected", input.actor, input.reason));
+    Object.assign(candidate, correctedCandidate);
+    return clone(candidate);
   }
 
   async approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate> {

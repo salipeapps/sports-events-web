@@ -72,6 +72,36 @@ describe("FixtureAdminRepository", () => {
     expect(candidate.history.some((entry) => entry.action === "published")).toBe(true);
   });
 
+  it("stores editorial corrections only in final data and keeps extracted evidence unchanged", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getCandidate("candidate-valid-E019");
+
+    const corrected = await repository.updateCandidateFinal("candidate-valid-E019", {
+      actor: reviewer,
+      reason: "Clarify the editorial title before publication",
+      corrections: { title: known("Editorially corrected title") },
+    });
+
+    expect(corrected.final.title).toEqual(known("Editorially corrected title"));
+    expect(corrected.extracted.title).toEqual(before?.extracted.title);
+    expect(corrected.evidence).toEqual(before?.evidence);
+    expect(corrected.history.at(-1)?.action).toBe("corrected");
+  });
+
+  it("rejects a correction that points to an unknown organizer", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getCandidate("candidate-valid-E019");
+
+    await expect(
+      repository.updateCandidateFinal("candidate-valid-E019", {
+        actor: reviewer,
+        corrections: { organizerId: known("O999") },
+      }),
+    ).rejects.toThrow("organizer does not exist");
+
+    expect(await repository.getCandidate("candidate-valid-E019")).toEqual(before);
+  });
+
   it("does not persist corrections when approval fails", async () => {
     const repository = new FixtureAdminRepository();
     const before = await repository.getCandidate("candidate-conflict-E023");

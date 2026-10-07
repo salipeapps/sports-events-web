@@ -18,6 +18,12 @@ export interface CandidateApprovalInput {
   corrections?: Partial<EventDetails>;
 }
 
+export interface CandidateCorrectionInput {
+  actor: EditorialActor;
+  reason?: string;
+  corrections: Partial<EventDetails>;
+}
+
 export interface CandidateDecisionInput {
   actor: EditorialActor;
   reason: string;
@@ -35,6 +41,7 @@ export interface AdminRepository {
   getCandidate(candidateId: string): Promise<AdminCandidate | null>;
   listOrganizers(): Promise<Organizer[]>;
   getOrganizer(organizerId: string): Promise<Organizer | null>;
+  updateCandidateFinal(candidateId: string, input: CandidateCorrectionInput): Promise<AdminCandidate>;
   approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate>;
   rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
   blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
