@@ -121,6 +121,24 @@ describe("candidate review form", () => {
     expect(corrections.price.value.options[1]?.paymentMethod).toBe("card");
   });
 
+  it("stores transport qualifiers as labels instead of payment methods", async () => {
+    const candidate = await new FixtureAdminRepository().getCandidate("candidate-price-conflict-E064");
+    if (!candidate) throw new Error("fixture candidate missing");
+
+    const form = formFor(candidate);
+    form.set("priceKind", "transport_included");
+    form.set("price", "54 € with transport / 18 € hike only");
+
+    const corrections = buildCandidateCorrections(form, candidate);
+    if (corrections.price?.state !== "known") throw new Error("expected known price");
+
+    expect(corrections.price.value.options).toEqual([
+      { amount: 54, currency: "EUR", label: "with transport" },
+      { amount: 18, currency: "EUR", label: "hike only" },
+    ]);
+    expect(corrections.price.value.options.every((option) => option.paymentMethod === undefined)).toBe(true);
+  });
+
   it("rejects a malformed edited price instead of silently discarding it", async () => {
     const candidate = await new FixtureAdminRepository().getCandidate("candidate-valid-E019");
     if (!candidate) throw new Error("fixture candidate missing");
