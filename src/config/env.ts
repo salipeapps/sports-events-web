@@ -12,8 +12,10 @@ export function parseAppEnvironment(value: string | undefined): AppEnvironment {
   throw new Error(`Invalid APP_ENV "${candidate}". Expected one of: ${APP_ENVIRONMENTS.join(", ")}.`);
 }
 
-export function getServerConfig(environment: { APP_ENV?: string } = process.env) {
+export function getServerConfig(environment?: { APP_ENV?: string }) {
+  const appEnv = environment?.APP_ENV ?? process.env.APP_ENV;
+
   return {
-    appEnv: parseAppEnvironment(environment.APP_ENV),
+    appEnv: parseAppEnvironment(appEnv),
   } as const;
 }
