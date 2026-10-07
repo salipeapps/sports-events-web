@@ -245,9 +245,7 @@ export class FixtureAdminRepository implements AdminRepository {
       (total, candidate) =>
         total +
         candidate.conflicts.filter(
-          (conflict) =>
-            conflict.status === "open" &&
-            !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+          (conflict) => conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
         ).length,
       0,
     );
@@ -536,10 +534,7 @@ export class FixtureAdminRepository implements AdminRepository {
     return clone(candidate);
   }
 
-  async resolveCandidateBlocker(
-    candidateId: string,
-    input: CandidateBlockerResolutionInput,
-  ): Promise<AdminCandidate> {
+  async resolveCandidateBlocker(candidateId: string, input: CandidateBlockerResolutionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
     assertExpectedCandidateVersion(candidate, input.expectedVersion);
