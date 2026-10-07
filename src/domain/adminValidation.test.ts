@@ -34,11 +34,33 @@ describe("admin contracts", () => {
     expect(deserializeEngineRun(serializeContract(run))).toEqual(run);
   });
 
-  it("rejects malformed field values", () => {
+  it("rejects malformed unknown reasons", () => {
     const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
     const final = malformed.final as Record<string, unknown>;
     final.title = { state: "unknown", reason: "made_up_reason" };
 
     expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
+  });
+
+  it.each([
+    ["title", { state: "known", value: 42 }],
+    ["individualAccess", { state: "known", value: "yes" }],
+    ["price", { state: "known", value: { kind: "fixed" } }],
+  ])("rejects invalid known values for %s", (field, invalidValue) => {
+    const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
+    const final = malformed.final as Record<string, unknown>;
+    final[field] = invalidValue;
+
+    expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
+  });
+
+  it("validates known values in source and run wrappers", () => {
+    const malformedSource = structuredClone(sourceFixtures[0]) as unknown as Record<string, unknown>;
+    malformedSource.frequency = { state: "known", value: 6 };
+    expect(() => deserializeSourceConfig(JSON.stringify(malformedSource))).toThrow(ContractValidationError);
+
+    const malformedRun = structuredClone(runFixtures[0]) as unknown as Record<string, unknown>;
+    malformedRun.durationSeconds = { state: "known", value: "134" };
+    expect(() => deserializeEngineRun(JSON.stringify(malformedRun))).toThrow(ContractValidationError);
   });
 });

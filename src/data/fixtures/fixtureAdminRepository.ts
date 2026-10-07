@@ -316,14 +316,20 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
-    applyCorrections(candidate, input.corrections);
+    const candidateForApproval = clone(candidate);
 
-    const publicationBlocks = publicationBlockReasons(candidate);
+    applyCorrections(candidateForApproval, input.corrections);
+    candidateForApproval.organizerId = clone(candidateForApproval.final.organizerId);
+
+    const publicationBlocks = publicationBlockReasons(candidateForApproval);
     if (publicationBlocks.length > 0) {
       throw new Error(
         `Candidate cannot be approved while an essential block is open: ${publicationBlocks.join(", ")}.`,
       );
     }
+
+    candidate.final = clone(candidateForApproval.final);
+    candidate.organizerId = clone(candidateForApproval.organizerId);
 
     if (input.corrections && Object.keys(input.corrections).length > 0) {
       candidate.history.push(historyEntry(candidate, "corrected", input.actor, input.reason));
@@ -333,7 +339,7 @@ export class FixtureAdminRepository implements AdminRepository {
     candidate.history.push(historyEntry(candidate, "published", input.actor, input.reason));
 
     if (!this.published.some((occurrence) => occurrence.sourceRecordIds.includes(candidate.sourceRecordId))) {
-      const organizerId = valueOrUndefined(candidate.organizerId);
+      const organizerId = valueOrUndefined(candidate.final.organizerId);
       if (!organizerId) throw new Error("Candidate requires a known organizer before publication.");
       this.published.push({
         id: `published-${candidate.id}`,

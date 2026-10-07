@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 
+import { known } from "@/domain/admin";
 import { FixtureAdminRepository } from "./fixtureAdminRepository";
 
 const reviewer = { id: "reviewer-1", role: "reviewer", displayName: "Fixture reviewer" } as const;
@@ -58,6 +59,41 @@ describe("FixtureAdminRepository", () => {
     expect(candidate.editorialStatus).toBe("published");
     expect(candidate.history.some((entry) => entry.action === "approved")).toBe(true);
     expect(candidate.history.some((entry) => entry.action === "published")).toBe(true);
+  });
+
+  it("does not persist corrections when approval fails", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getCandidate("candidate-conflict-E023");
+
+    await expect(
+      repository.approveCandidate("candidate-conflict-E023", {
+        actor: reviewer,
+        corrections: { title: known("Edited title that must roll back") },
+      }),
+    ).rejects.toThrow("essential block");
+
+    const after = await repository.getCandidate("candidate-conflict-E023");
+    expect(after?.final.title).toEqual(before?.final.title);
+    expect(after?.history).toEqual(before?.history);
+  });
+
+  it("uses the corrected organizer when publishing", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidate = await repository.approveCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      reason: "Correct organizer before publication",
+      corrections: { organizerId: known("O033") },
+    });
+
+    expect(candidate.organizerId).toEqual(known("O033"));
+    expect(candidate.final.organizerId).toEqual(known("O033"));
+
+    const published = await repository.listActivities({
+      statuses: ["published"],
+      organizerId: "O033",
+    });
+    const occurrence = published.items.find((item) => item.id === "published-candidate-valid-E019");
+    expect(occurrence?.organizerId).toEqual(known("O033"));
   });
 
   it("requires a reason when rejecting or blocking", async () => {
