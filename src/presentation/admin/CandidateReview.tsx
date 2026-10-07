@@ -582,9 +582,30 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
                     <span>Motivo de resolución</span>
                     <textarea name="blockerReason" required rows={3} />
                   </label>
-                  <button className="admin-secondary-button" type="submit">
-                    Marcar bloqueo como resuelto
-                  </button>
+                  {blocker.kind === "change_proposal" ? (
+                    <div className="admin-engine-actions">
+                      <button
+                        className="admin-primary-button"
+                        type="submit"
+                        name="blockerDisposition"
+                        value="accepted"
+                      >
+                        Aceptar cambio y actualizar publicación
+                      </button>
+                      <button
+                        className="admin-danger-button"
+                        type="submit"
+                        name="blockerDisposition"
+                        value="rejected"
+                      >
+                        Rechazar cambio
+                      </button>
+                    </div>
+                  ) : (
+                    <button className="admin-secondary-button" type="submit">
+                      Marcar bloqueo como resuelto
+                    </button>
+                  )}
                 </form>
               </details>
             ))}
