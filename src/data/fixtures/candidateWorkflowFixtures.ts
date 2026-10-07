@@ -69,9 +69,7 @@ export const workflowCandidateFixtures: AdminCandidate[] = [
         action: "review_requested",
         at: "2026-10-05T12:00:00.000Z",
         actor: systemActor,
-        reason: known(
-          "Fixture-only possible-duplicate scenario based on the documented mirror-source behavior.",
-        ),
+        reason: known("Fixture-only possible-duplicate scenario based on the documented mirror-source behavior."),
       },
     ],
   },
@@ -100,13 +98,28 @@ export const workflowCandidateFixtures: AdminCandidate[] = [
       },
     ],
     rules: [
-      { id: "rule-R018-no-occurrence", code: "announcement_without_occurrence", outcome: "block", field: known("startLocal"), reason: "A community announcement without an explicit occurrence must not become a fictitious event.", evidenceIds: ["ev-R018-announcement"] },
+      {
+        id: "rule-R018-no-occurrence",
+        code: "announcement_without_occurrence",
+        outcome: "block",
+        field: known("startLocal"),
+        reason: "A community announcement without an explicit occurrence must not become a fictitious event.",
+        evidenceIds: ["ev-R018-announcement"],
+      },
     ],
     aiEvaluation: { state: "not_run", reason: "Deterministic scope rule is sufficient for this fixture." },
     conflicts: [],
     matches: [],
     changeProposal: unknown("not_applicable"),
-    history: [{ id: "hist-R018-rejected", action: "rejected", at: "2026-10-05T12:00:00.000Z", actor: systemActor, reason: known("Not an explicit dated occurrence; preserve as organizer/recurrence evidence instead.") }],
+    history: [
+      {
+        id: "hist-R018-rejected",
+        action: "rejected",
+        at: "2026-10-05T12:00:00.000Z",
+        actor: systemActor,
+        reason: known("Not an explicit dated occurrence; preserve as organizer/recurrence evidence instead."),
+      },
+    ],
   },
   {
     id: "candidate-change-E023",
@@ -132,7 +145,16 @@ export const workflowCandidateFixtures: AdminCandidate[] = [
         excerpt: known("Meetup shows 18:30."),
       },
     ],
-    rules: [{ id: "rule-change-E023", code: "essential_change_requires_review", outcome: "block", field: known("startLocal"), reason: "A schedule change on a published fixture snapshot requires revalidation.", evidenceIds: ["ev-change-E023-meetup"] }],
+    rules: [
+      {
+        id: "rule-change-E023",
+        code: "essential_change_requires_review",
+        outcome: "block",
+        field: known("startLocal"),
+        reason: "A schedule change on a published fixture snapshot requires revalidation.",
+        evidenceIds: ["ev-change-E023-meetup"],
+      },
+    ],
     aiEvaluation: { state: "not_run", reason: "A deterministic essential change already requires review." },
     conflicts: [],
     matches: [],
@@ -151,7 +173,15 @@ export const workflowCandidateFixtures: AdminCandidate[] = [
         },
       ],
     }),
-    history: [{ id: "hist-change-E023", action: "review_requested", at: "2026-10-05T12:00:00.000Z", actor: systemActor, reason: known("Fixture-only published snapshot differs from newly observed Meetup time.") }],
+    history: [
+      {
+        id: "hist-change-E023",
+        action: "review_requested",
+        at: "2026-10-05T12:00:00.000Z",
+        actor: systemActor,
+        reason: known("Fixture-only published snapshot differs from newly observed Meetup time."),
+      },
+    ],
   },
   {
     id: "candidate-payment-variant-E049",
@@ -177,11 +207,28 @@ export const workflowCandidateFixtures: AdminCandidate[] = [
         excerpt: known("8 EUR cash / 9 EUR Bizum."),
       },
     ],
-    rules: [{ id: "rule-E049-payment", code: "payment_variant_not_duplicate", outcome: "pass", field: known("price"), reason: "Cash/Bizum prices are variants of one session, not duplicate events.", evidenceIds: ["ev-E049-volley"] }],
+    rules: [
+      {
+        id: "rule-E049-payment",
+        code: "payment_variant_not_duplicate",
+        outcome: "pass",
+        field: known("price"),
+        reason: "Cash/Bizum prices are variants of one session, not duplicate events.",
+        evidenceIds: ["ev-E049-volley"],
+      },
+    ],
     aiEvaluation: { state: "not_run", reason: "Dataset v0.1 contains no recorded AI evaluation." },
     conflicts: [],
     matches: [],
     changeProposal: unknown("not_applicable"),
-    history: [{ id: "hist-E049-captured", action: "captured", at: "2026-10-05T12:00:00.000Z", actor: systemActor, reason: known("Imported from dataset v0.1.") }],
+    history: [
+      {
+        id: "hist-E049-captured",
+        action: "captured",
+        at: "2026-10-05T12:00:00.000Z",
+        actor: systemActor,
+        reason: known("Imported from dataset v0.1."),
+      },
+    ],
   },
 ];

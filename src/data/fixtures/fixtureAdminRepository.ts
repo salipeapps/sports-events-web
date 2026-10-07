@@ -49,7 +49,9 @@ function reasonCodes(candidate: AdminCandidate): string[] {
 }
 
 function candidateToListItem(candidate: AdminCandidate): ActivityListItem {
-  const organizerName = organizerFixtures.find((organizer) => organizer.id === valueOrUndefined(candidate.organizerId))?.name;
+  const organizerName = organizerFixtures.find(
+    (organizer) => organizer.id === valueOrUndefined(candidate.organizerId),
+  )?.name;
   const sourceName = sourceFixtures.find((source) => source.id === candidate.sourceId)?.name;
   return {
     id: candidate.id,
@@ -62,9 +64,7 @@ function candidateToListItem(candidate: AdminCandidate): ActivityListItem {
       ? { state: "known", value: organizerName }
       : { state: "unknown", reason: "not_observed" },
     sourceId: { state: "known", value: candidate.sourceId },
-    sourceName: sourceName
-      ? { state: "known", value: sourceName }
-      : { state: "unknown", reason: "not_observed" },
+    sourceName: sourceName ? { state: "known", value: sourceName } : { state: "unknown", reason: "not_observed" },
     editorialStatus: candidate.editorialStatus,
     temporalStatus: candidate.temporalStatus,
     lastCheckedAt: candidate.lastCheckedAt,
@@ -82,9 +82,15 @@ function publishedToListItem(occurrence: PublishedOccurrence): ActivityListItem 
     organizerId: { state: "known", value: occurrence.organizerId },
     organizerName: (() => {
       const name = organizerFixtures.find((organizer) => organizer.id === occurrence.organizerId)?.name;
-      return name ? { state: "known" as const, value: name } : { state: "unknown" as const, reason: "not_observed" as const };
+      return name
+        ? { state: "known" as const, value: name }
+        : { state: "unknown" as const, reason: "not_observed" as const };
     })(),
-    sourceId: { state: "unknown", reason: "not_observed", note: "Published fixture links evidence IDs rather than one canonical source." },
+    sourceId: {
+      state: "unknown",
+      reason: "not_observed",
+      note: "Published fixture links evidence IDs rather than one canonical source.",
+    },
     sourceName: { state: "unknown", reason: "not_observed" },
     editorialStatus: occurrence.editorialStatus,
     temporalStatus: occurrence.temporalStatus,
@@ -108,7 +114,8 @@ function matchesFilters(item: ActivityListItem, filters: ActivityFilters): boole
     if (normalizedSearch.length > 0) {
       const title = valueOrUndefined(item.title)?.toLocaleLowerCase("es") ?? "";
       const organizerId = valueOrUndefined(item.organizerId);
-      const organizerName = organizerFixtures.find((organizer) => organizer.id === organizerId)?.name.toLocaleLowerCase("es") ?? "";
+      const organizerName =
+        organizerFixtures.find((organizer) => organizer.id === organizerId)?.name.toLocaleLowerCase("es") ?? "";
       if (!title.includes(normalizedSearch) && !organizerName.includes(normalizedSearch)) return false;
     }
   }
@@ -134,7 +141,10 @@ function historyEntry(
     action,
     at: new Date().toISOString(),
     actor,
-    reason: reason && reason.trim().length > 0 ? { state: "known", value: reason.trim() } : { state: "unknown", reason: "not_provided" },
+    reason:
+      reason && reason.trim().length > 0
+        ? { state: "known", value: reason.trim() }
+        : { state: "unknown", reason: "not_provided" },
   };
 }
 
@@ -160,7 +170,9 @@ export class FixtureAdminRepository implements AdminRepository {
       (total, candidate) => total + candidate.conflicts.filter((conflict) => conflict.status === "open").length,
       0,
     );
-    const pendingCandidates = this.candidates.filter((candidate) => ["candidate", "review", "blocked"].includes(candidate.editorialStatus)).length;
+    const pendingCandidates = this.candidates.filter((candidate) =>
+      ["candidate", "review", "blocked"].includes(candidate.editorialStatus),
+    ).length;
     const activeSources = this.sources.filter((source) => source.status === "active").length;
 
     const statuses = new Map<string, number>();
@@ -189,14 +201,29 @@ export class FixtureAdminRepository implements AdminRepository {
 
     return {
       metrics: {
-        publishedActivities: { state: "known", value: this.published.filter((item) => item.editorialStatus === "published").length },
+        publishedActivities: {
+          state: "known",
+          value: this.published.filter((item) => item.editorialStatus === "published").length,
+        },
         pendingCandidates: { state: "known", value: pendingCandidates },
         conflicts: { state: "known", value: openConflicts },
         activeSources: { state: "known", value: activeSources },
-        runsToday: { state: "unknown", reason: "not_verified", note: "Fixture run timestamps are fixed research scenarios; they are not compared with the current clock." },
-        coverageNext14Days: { state: "unknown", reason: "not_verified", note: "The seed research contains candidates, not a confirmed published 14-day catalog." },
+        runsToday: {
+          state: "unknown",
+          reason: "not_verified",
+          note: "Fixture run timestamps are fixed research scenarios; they are not compared with the current clock.",
+        },
+        coverageNext14Days: {
+          state: "unknown",
+          reason: "not_verified",
+          note: "The seed research contains candidates, not a confirmed published 14-day catalog.",
+        },
       },
-      coverageTrend: { state: "unknown", reason: "not_observed", note: "Dataset v0.1 is one snapshot and contains no historical coverage series." },
+      coverageTrend: {
+        state: "unknown",
+        reason: "not_observed",
+        note: "Dataset v0.1 is one snapshot and contains no historical coverage series.",
+      },
       statusDistribution: Array.from(statuses.entries()).map(([status, count]) => ({
         status: status as DashboardSummary["statusDistribution"][number]["status"],
         count,
@@ -245,33 +272,31 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async listActivities(filters: ActivityFilters = {}): Promise<PageResult<ActivityListItem>> {
     const items = [
-      ...this.candidates
-        .filter((candidate) => candidate.editorialStatus !== "published")
-        .map(candidateToListItem),
+      ...this.candidates.filter((candidate) => candidate.editorialStatus !== "published").map(candidateToListItem),
       ...this.published.map(publishedToListItem),
     ]
       .filter((item) => matchesFilters(item, filters))
-      .sort((a, b) => (valueOrUndefined(a.startLocal) ?? "9999").localeCompare(valueOrUndefined(b.startLocal) ?? "9999"));
+      .sort((a, b) =>
+        (valueOrUndefined(a.startLocal) ?? "9999").localeCompare(valueOrUndefined(b.startLocal) ?? "9999"),
+      );
     return clone(paginate(items, filters));
   }
 
   async listCandidates(filters: CandidateFilters = {}): Promise<PageResult<ActivityListItem>> {
-    let candidates = this.candidates.filter(
-      (candidate) => candidate.editorialStatus !== "published",
-    );
+    let candidates = this.candidates.filter((candidate) => candidate.editorialStatus !== "published");
     if (filters.reason) {
       candidates = candidates.filter((candidate) => reasonCodes(candidate).includes(filters.reason ?? ""));
     }
     if (filters.executionId) {
-      candidates = candidates.filter(
-        (candidate) => valueOrUndefined(candidate.runId) === filters.executionId,
-      );
+      candidates = candidates.filter((candidate) => valueOrUndefined(candidate.runId) === filters.executionId);
     }
 
     const items = candidates
       .map(candidateToListItem)
       .filter((item) => matchesFilters(item, filters))
-      .sort((a, b) => (valueOrUndefined(a.startLocal) ?? "9999").localeCompare(valueOrUndefined(b.startLocal) ?? "9999"));
+      .sort((a, b) =>
+        (valueOrUndefined(a.startLocal) ?? "9999").localeCompare(valueOrUndefined(b.startLocal) ?? "9999"),
+      );
     return clone(paginate(items, filters));
   }
 
@@ -295,7 +320,9 @@ export class FixtureAdminRepository implements AdminRepository {
 
     const publicationBlocks = publicationBlockReasons(candidate);
     if (publicationBlocks.length > 0) {
-      throw new Error(`Candidate cannot be approved while an essential block is open: ${publicationBlocks.join(", ")}.`);
+      throw new Error(
+        `Candidate cannot be approved while an essential block is open: ${publicationBlocks.join(", ")}.`,
+      );
     }
 
     if (input.corrections && Object.keys(input.corrections).length > 0) {

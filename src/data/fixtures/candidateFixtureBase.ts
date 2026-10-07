@@ -1,15 +1,17 @@
-import {
-  known,
-  unknown,
-  type EventDetails,
-} from "@/domain/admin";
+import { known, unknown, type EventDetails } from "@/domain/admin";
 
 export const systemActor = { id: "fixture-import", role: "system", displayName: "Dataset v0.1 import" } as const;
 
-export const unknownDescription = unknown<string>("not_observed", "The research dataset does not provide a normalized description.");
+export const unknownDescription = unknown<string>(
+  "not_observed",
+  "The research dataset does not provide a normalized description.",
+);
 export const unknownDeparture = unknown<string>("not_applicable");
 export const unknownDestination = unknown<string>("not_applicable");
-export const unknownLanguage = unknown<string[]>("not_verified", "The observed text does not confirm the actual session language.");
+export const unknownLanguage = unknown<string[]>(
+  "not_verified",
+  "The observed text does not confirm the actual session language.",
+);
 export const unknownLevel = unknown<string>("not_verified");
 
 export function eventDetails(overrides: Partial<EventDetails>): EventDetails {
@@ -46,7 +48,9 @@ export const buenoTournamentExtracted = eventDetails({
     perSessionComparable: true,
   }),
   level: known("all"),
-  registrationUrl: known("https://docs.google.com/forms/d/e/1FAIpQLSdETKAEIpVLo2aNgOMqV4xoxFSKEiEy34UY5W4E13hZ73C2bQ/viewform"),
+  registrationUrl: known(
+    "https://docs.google.com/forms/d/e/1FAIpQLSdETKAEIpVLo2aNgOMqV4xoxFSKEiEy34UY5W4E13hZ73C2bQ/viewform",
+  ),
   individualAccess: known(true),
 });
 
@@ -117,14 +121,20 @@ export const penyagolosaExtracted = eventDetails({
 
 export const penyagolosaFinal = eventDetails({
   ...penyagolosaExtracted,
-  price: unknown("conflict", "Summary shows 49 EUR while description shows 54 EUR with transport; 18 EUR is a distinct hike-only modality."),
+  price: unknown(
+    "conflict",
+    "Summary shows 49 EUR while description shows 54 EUR with transport; 18 EUR is a distinct hike-only modality.",
+  ),
 });
 
 export const cyclingAnnouncement = eventDetails({
   title: known("Cicloturismo social"),
   category: known("cycling"),
   organizerId: known("O053"),
-  startLocal: unknown("not_observed", "The source explicitly says to ignore the header date/time; it is a community announcement."),
+  startLocal: unknown(
+    "not_observed",
+    "The source explicitly says to ignore the header date/time; it is a community announcement.",
+  ),
   endLocal: unknown("not_observed"),
   location: unknown("not_observed"),
   registrationUrl: known("https://www.amigosvalencia.com/evento/grupo-de-cicloturismo-social-valencia/22134"),

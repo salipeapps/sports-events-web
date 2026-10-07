@@ -1,9 +1,4 @@
-import {
-  known,
-  unknown,
-  type Organizer,
-  type SourceConfig,
-} from "@/domain/admin";
+import { known, unknown, type Organizer, type SourceConfig } from "@/domain/admin";
 
 export const fixtureMetadata = {
   researchSnapshot: "dataset-valencia-v0.1 / 2026-10-05",
@@ -100,7 +95,11 @@ export const sourceFixtures: SourceConfig[] = [
     lastRunAt: known("2026-10-05T14:32:00.000Z"),
     budget: unknown("not_observed", "Dataset v0.1 did not measure automated acquisition cost."),
     capabilities: ["public event pages", "source identity", "schedule and participation fields"],
-    limitations: ["taxonomy can be wrong", "RSVP is not observed attendance", "recurring calendars need occurrence-level dedupe"],
+    limitations: [
+      "taxonomy can be wrong",
+      "RSVP is not observed attendance",
+      "recurring calendars need occurrence-level dedupe",
+    ],
     notes: ["Operational status/frequency are Admin v0 simulation values."],
   },
   {

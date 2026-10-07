@@ -40,7 +40,9 @@ export const runFixtures: EngineRun[] = [
     status: "failed",
     counters: { discovered: 0, created: 0, updated: 0, discarded: 0, review: 0 },
     cost: unknown("not_observed"),
-    incident: known("Fixture-only failed run used to exercise error states; no production run existed in dataset v0.1."),
+    incident: known(
+      "Fixture-only failed run used to exercise error states; no production run existed in dataset v0.1.",
+    ),
     retryCount: 1,
   },
 ];

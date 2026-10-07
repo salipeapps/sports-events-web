@@ -32,19 +32,11 @@ export type EditorialStatus = (typeof editorialStatuses)[number];
 export const temporalStatuses = ["upcoming", "ongoing", "past", "unknown"] as const;
 export type TemporalStatus = (typeof temporalStatuses)[number];
 
-export const unknownReasons = [
-  "not_observed",
-  "not_provided",
-  "not_verified",
-  "conflict",
-  "not_applicable",
-] as const;
+export const unknownReasons = ["not_observed", "not_provided", "not_verified", "conflict", "not_applicable"] as const;
 
 export type UnknownReason = (typeof unknownReasons)[number];
 
-export type FieldValue<T> =
-  | { state: "known"; value: T }
-  | { state: "unknown"; reason: UnknownReason; note?: string };
+export type FieldValue<T> = { state: "known"; value: T } | { state: "unknown"; reason: UnknownReason; note?: string };
 
 export function known<T>(value: T): FieldValue<T> {
   return { state: "known", value };
@@ -119,12 +111,7 @@ export interface Organizer {
 
 export type EvidenceMethod = "page" | "search" | "structured" | "import" | "manual";
 export type EvidenceSourceRole =
-  | "organizer_published"
-  | "aggregator"
-  | "search_result"
-  | "booking_platform"
-  | "community_platform"
-  | "import";
+  "organizer_published" | "aggregator" | "search_result" | "booking_platform" | "community_platform" | "import";
 
 export interface EvidenceRecord {
   id: string;
@@ -190,11 +177,7 @@ export interface Conflict {
 }
 
 export type MatchRelation =
-  | "exact_source_identity"
-  | "same_event"
-  | "same_series"
-  | "possible_duplicate"
-  | "different_event";
+  "exact_source_identity" | "same_event" | "same_series" | "possible_duplicate" | "different_event";
 
 export interface CandidateMatch {
   id: string;
@@ -283,11 +266,7 @@ export interface PublishedOccurrence {
   history: EditorialHistoryEntry[];
 }
 
-export type PublicationPolicy =
-  | "capture_only"
-  | "capture_and_evaluate"
-  | "human_review"
-  | "auto_publish";
+export type PublicationPolicy = "capture_only" | "capture_and_evaluate" | "human_review" | "auto_publish";
 
 export type SourceStatus = "active" | "paused" | "blocked" | "proposed";
 
