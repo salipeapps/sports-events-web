@@ -139,7 +139,6 @@ describe("FixtureAdminRepository", () => {
 
     await repository.updateCandidateFinal("candidate-valid-E019", {
       actor: reviewer,
-      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       expectedVersion,
       corrections: { title: known("First concurrent edit") },
     });
@@ -147,7 +146,6 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.updateCandidateFinal("candidate-valid-E019", {
         actor: reviewer,
-        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         expectedVersion,
         corrections: { location: known("Stale concurrent location") },
       }),
@@ -355,6 +353,7 @@ describe("FixtureAdminRepository", () => {
 
     await repository.rejectCandidate("candidate-valid-E019", {
       actor,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       reason: "Audit actor snapshot",
     });
     actor.displayName = "After mutation";
