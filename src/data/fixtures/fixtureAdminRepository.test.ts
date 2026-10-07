@@ -382,6 +382,30 @@ describe("FixtureAdminRepository", () => {
     expect(occurrence?.organizerId).toEqual(known("O033"));
   });
 
+  it("allows an explicitly blocked candidate to return to review with audit history", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await repository.blockCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
+      reason: "Temporary editorial hold",
+    });
+
+    const blocked = await repository.getCandidate("candidate-valid-E019");
+    expect(blocked?.editorialStatus).toBe("blocked");
+
+    await repository.unblockCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
+      reason: "Hold resolved after verification",
+    });
+
+    const reopened = await repository.getCandidate("candidate-valid-E019");
+    expect(reopened?.editorialStatus).toBe("review");
+    expect(reopened?.history.at(-1)?.action).toBe("unblocked");
+    expect(reopened?.history.at(-1)?.reason).toEqual(known("Hold resolved after verification"));
+  });
+
   it("does not allow a published candidate to be rejected or blocked", async () => {
     const repository = new FixtureAdminRepository();
 
