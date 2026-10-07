@@ -114,6 +114,26 @@ describe("admin contracts", () => {
     expect(() => deserializeEngineRun(JSON.stringify(malformedRun))).toThrow(ContractValidationError);
   });
 
+  it("rejects an invalid change-proposal disposition", () => {
+    const source = candidateFixtures.find((candidate) => candidate.id === "candidate-change-E023");
+    if (!source) throw new Error("Expected change fixture");
+
+    const malformed = structuredClone(source) as unknown as Record<string, unknown>;
+    malformed.blockerResolutions = [
+      {
+        id: "resolution-invalid",
+        kind: "change_proposal",
+        targetId: "change-E023-time",
+        disposition: "maybe",
+        at: "2026-10-07T12:00:00.000Z",
+        actor: { id: "reviewer-1", role: "reviewer", displayName: "Reviewer" },
+        reason: "Invalid disposition fixture",
+      },
+    ];
+
+    expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
+  });
+
   it.each(["rules", "evidence", "conflicts", "matches", "blockerResolutions", "history"])(
     "rejects malformed elements inside %s",
     (field) => {
