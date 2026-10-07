@@ -107,6 +107,4 @@ describe("candidate review form", () => {
 
     expect(() => buildCandidateCorrections(form, candidate)).toThrow("Introduce un precio");
   });
-
-
 });
