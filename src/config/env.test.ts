@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  getServerConfig,
-  parseAdminDevAuthMode,
-  parseAdminDevRole,
-  parseAppEnvironment,
-} from "./env";
+import { getServerConfig, parseAdminDevAuthMode, parseAdminDevRole, parseAppEnvironment } from "./env";
 
 describe("server environment", () => {
   it("defaults to development with insecure admin auth disabled", () => {

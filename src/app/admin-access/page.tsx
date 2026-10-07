@@ -13,11 +13,7 @@ export const metadata: Metadata = {
 
 const knownReasons = new Set<AdminAccessFailureReason>(["missing_session", "expired", "unauthorized"]);
 
-export default async function AdminAccessPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ reason?: string }>;
-}) {
+export default async function AdminAccessPage({ searchParams }: { searchParams: Promise<{ reason?: string }> }) {
   const { reason } = await searchParams;
   const safeReason: AdminAccessFailureReason =
     reason && knownReasons.has(reason as AdminAccessFailureReason)

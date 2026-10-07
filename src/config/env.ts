@@ -30,9 +30,7 @@ export function parseAdminDevAuthMode(value: string | undefined): AdminDevAuthMo
     return candidate as AdminDevAuthMode;
   }
 
-  throw new Error(
-    `Invalid ADMIN_DEV_AUTH_MODE "${candidate}". Expected one of: ${ADMIN_DEV_AUTH_MODES.join(", ")}.`,
-  );
+  throw new Error(`Invalid ADMIN_DEV_AUTH_MODE "${candidate}". Expected one of: ${ADMIN_DEV_AUTH_MODES.join(", ")}.`);
 }
 
 export function parseAdminDevRole(value: string | undefined): AdminDevRole {

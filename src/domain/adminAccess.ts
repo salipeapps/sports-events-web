@@ -29,10 +29,7 @@ const capabilitiesByRole: Record<AdminRole, readonly AdminCapability[]> = {
 };
 
 export class AdminAuthorizationError extends Error {
-  constructor(
-    readonly role: AdminRole,
-    readonly capability: AdminCapability,
-  ) {
+  constructor(readonly role: AdminRole, readonly capability: AdminCapability) {
     super(`Role "${role}" is not allowed to perform "${capability}".`);
     this.name = "AdminAuthorizationError";
   }
