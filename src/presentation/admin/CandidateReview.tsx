@@ -584,20 +584,10 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
                   </label>
                   {blocker.kind === "change_proposal" ? (
                     <div className="admin-engine-actions">
-                      <button
-                        className="admin-primary-button"
-                        type="submit"
-                        name="blockerDisposition"
-                        value="accepted"
-                      >
+                      <button className="admin-primary-button" type="submit" name="blockerDisposition" value="accepted">
                         Aceptar cambio y actualizar publicación
                       </button>
-                      <button
-                        className="admin-danger-button"
-                        type="submit"
-                        name="blockerDisposition"
-                        value="rejected"
-                      >
+                      <button className="admin-danger-button" type="submit" name="blockerDisposition" value="rejected">
                         Rechazar cambio
                       </button>
                     </div>
