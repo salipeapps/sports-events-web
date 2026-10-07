@@ -6,7 +6,7 @@ import { redirect } from "next/navigation";
 import { getAdminRepository } from "@/data/adminRepositoryProvider";
 import type { AdminCapability, AdminSession } from "@/domain/adminAccess";
 import { requireAdminCapability } from "@/domain/adminAccess";
-import type { EditorialActor } from "@/domain/admin";
+import { candidateBlockerKinds, type CandidateBlockerKind, type EditorialActor } from "@/domain/admin";
 import { getAdminAccess } from "@/integrations/auth/adminAuth";
 import { buildCandidateCorrections } from "@/presentation/admin/candidateReviewForm";
 
@@ -156,6 +156,32 @@ export async function unblockCandidateAction(formData: FormData): Promise<never>
       actor,
       expectedVersion: formString(formData, "candidateVersion"),
       reason,
+    });
+  });
+}
+
+export async function resolveCandidateBlockerAction(formData: FormData): Promise<never> {
+  const candidateId = candidateIdFromForm(formData);
+  const actor = await requireEditorialActor("catalog.review");
+  const blockerKind = formString(formData, "blockerKind") as CandidateBlockerKind;
+  const blockerId = formString(formData, "blockerId");
+  const reason = formString(formData, "blockerReason");
+
+  if (!candidateBlockerKinds.includes(blockerKind)) {
+    throw new Error("El tipo de bloqueo no es válido.");
+  }
+  if (!blockerId) throw new Error("No se ha indicado el bloqueo a resolver.");
+
+  return completeAction(candidateId, "Bloqueo editorial resuelto.", async () => {
+    const repository = getAdminRepository();
+    const candidate = await repository.getCandidate(candidateId);
+    if (!candidate) throw new Error("La candidatura ya no existe.");
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor,
+      expectedVersion: formString(formData, "candidateVersion"),
+      reason,
+      kind: blockerKind,
+      targetId: blockerId,
     });
   });
 }
