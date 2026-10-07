@@ -25,6 +25,7 @@ import {
   approveCandidateAction,
   blockCandidateAction,
   rejectCandidateAction,
+  unblockCandidateAction,
   reprocessCandidateAction,
   requeryCandidateAction,
   saveCandidateAction,
@@ -33,7 +34,7 @@ import {
 interface CandidateReviewProps {
   candidate: AdminCandidate;
   organizers: Organizer[];
-  source: SourceConfig | null;
+  sources: SourceConfig[];
   result?: string;
   error?: string;
 }
@@ -61,6 +62,7 @@ const actionLabels: Record<EditorialAction, string> = {
   corrected: "Datos finales corregidos",
   rejected: "Rechazada",
   blocked: "Bloqueada",
+  unblocked: "Desbloqueada",
   requery_requested: "Reconsulta solicitada",
   reprocess_requested: "Reproceso solicitado",
   cancelled: "Cancelada",
@@ -141,11 +143,11 @@ function unknownHint(field: FieldValue<unknown>): string | null {
   return field.state === "unknown" ? displayField(field) : null;
 }
 
-export function CandidateReview({ candidate, organizers, source, result, error }: CandidateReviewProps) {
+export function CandidateReview({ candidate, organizers, sources, result, error }: CandidateReviewProps) {
   const blockReasons = publicationBlockReasons(candidate);
   const terminal = terminalStatuses.has(candidate.editorialStatus);
   const canApprove = !terminal && blockReasons.length === 0;
-  const sourceName = source?.name ?? candidate.sourceId;
+  const sourceName = sources.find((source) => source.id === candidate.sourceId)?.name ?? candidate.sourceId;
   const openConflicts = candidate.conflicts.filter((conflict) => conflict.status === "open");
   const reviewVersion = candidateReviewVersion(candidate);
 
@@ -423,7 +425,7 @@ export function CandidateReview({ candidate, organizers, source, result, error }
           <div className="admin-evidence-list">
             {candidate.evidence.map((evidence) => (
               <section className="admin-evidence-item" key={evidence.id}>
-                <strong>{sourceName}</strong>
+                <strong>{sources.find((source) => source.id === evidence.sourceId)?.name ?? evidence.sourceId}</strong>
                 <p>{displayField(evidence.excerpt)}</p>
                 <dl>
                   <div>
@@ -523,7 +525,7 @@ export function CandidateReview({ candidate, organizers, source, result, error }
         <section className="admin-review-actions-card">
           <div>
             <h2>Decisiones editoriales</h2>
-            <p>Rechazar y bloquear exigen un motivo y quedan registrados en el historial.</p>
+            <p>Rechazar, bloquear y desbloquear exigen un motivo y quedan registrados en el historial.</p>
           </div>
 
           <div className="admin-review-decision-grid">
@@ -542,20 +544,37 @@ export function CandidateReview({ candidate, organizers, source, result, error }
               </form>
             </details>
 
-            <details>
-              <summary>Bloquear</summary>
-              <form action={blockCandidateAction}>
-                <input type="hidden" name="candidateId" value={candidate.id} />
-                <input type="hidden" name="candidateVersion" value={reviewVersion} />
-                <label>
-                  <span>Motivo del bloqueo</span>
-                  <textarea name="decisionReason" required rows={3} />
-                </label>
-                <button className="admin-warning-button" type="submit">
-                  Confirmar bloqueo
-                </button>
-              </form>
-            </details>
+            {candidate.editorialStatus === "blocked" ? (
+              <details>
+                <summary>Desbloquear</summary>
+                <form action={unblockCandidateAction}>
+                  <input type="hidden" name="candidateId" value={candidate.id} />
+                  <input type="hidden" name="candidateVersion" value={reviewVersion} />
+                  <label>
+                    <span>Motivo del desbloqueo</span>
+                    <textarea name="decisionReason" required rows={3} />
+                  </label>
+                  <button className="admin-secondary-button" type="submit">
+                    Desbloquear y volver a revisión
+                  </button>
+                </form>
+              </details>
+            ) : (
+              <details>
+                <summary>Bloquear</summary>
+                <form action={blockCandidateAction}>
+                  <input type="hidden" name="candidateId" value={candidate.id} />
+                  <input type="hidden" name="candidateVersion" value={reviewVersion} />
+                  <label>
+                    <span>Motivo del bloqueo</span>
+                    <textarea name="decisionReason" required rows={3} />
+                  </label>
+                  <button className="admin-warning-button" type="submit">
+                    Confirmar bloqueo
+                  </button>
+                </form>
+              </details>
+            )}
 
             <div className="admin-engine-actions">
               <form action={requeryCandidateAction}>
