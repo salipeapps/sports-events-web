@@ -64,13 +64,10 @@ describe("admin contracts", () => {
     expect(() => deserializeEngineRun(JSON.stringify(malformedRun))).toThrow(ContractValidationError);
   });
 
-  it.each(["rules", "evidence", "conflicts", "matches", "history"])(
-    "rejects malformed elements inside %s",
-    (field) => {
-      const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
-      malformed[field] = [null];
+  it.each(["rules", "evidence", "conflicts", "matches", "history"])("rejects malformed elements inside %s", (field) => {
+    const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
+    malformed[field] = [null];
 
-      expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
-    },
-  );
+    expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
+  });
 });

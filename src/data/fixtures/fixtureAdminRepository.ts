@@ -161,9 +161,7 @@ function applyCorrections(candidate: AdminCandidate, corrections?: Partial<Event
 
 function assertNotPublished(candidate: AdminCandidate, action: string): void {
   if (candidate.editorialStatus === "published") {
-    throw new Error(
-      `Published candidate cannot be ${action}; use the published occurrence lifecycle instead.`,
-    );
+    throw new Error(`Published candidate cannot be ${action}; use the published occurrence lifecycle instead.`);
   }
 }
 
