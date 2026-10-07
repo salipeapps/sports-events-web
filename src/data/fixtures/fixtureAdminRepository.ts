@@ -345,9 +345,7 @@ export class FixtureAdminRepository implements AdminRepository {
     if (!organizerId) throw new Error("Candidate requires a known organizer before publication.");
 
     if (input.corrections && Object.keys(input.corrections).length > 0) {
-      candidateForApproval.history.push(
-        historyEntry(candidateForApproval, "corrected", input.actor, input.reason),
-      );
+      candidateForApproval.history.push(historyEntry(candidateForApproval, "corrected", input.actor, input.reason));
     }
     candidateForApproval.editorialStatus = "published";
     candidateForApproval.history.push(historyEntry(candidateForApproval, "approved", input.actor, input.reason));
@@ -367,9 +365,7 @@ export class FixtureAdminRepository implements AdminRepository {
           lastCheckedAt: candidateForApproval.lastCheckedAt,
           event: clone(candidateForApproval.final),
           evidenceIds: candidateForApproval.evidence.map((evidence) => evidence.id),
-          protectedCorrections: input.corrections
-            ? (Object.keys(input.corrections) as (keyof EventDetails)[])
-            : [],
+          protectedCorrections: input.corrections ? (Object.keys(input.corrections) as (keyof EventDetails)[]) : [],
           history: clone(candidateForApproval.history),
         };
 
