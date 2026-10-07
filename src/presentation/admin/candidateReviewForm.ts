@@ -110,10 +110,7 @@ function formString(formData: FormData, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
-export function buildCandidateCorrections(
-  formData: FormData,
-  candidate: AdminCandidate,
-): Partial<EventDetails> {
+export function buildCandidateCorrections(formData: FormData, candidate: AdminCandidate): Partial<EventDetails> {
   const corrections: Partial<EventDetails> = {};
 
   const candidates: Array<{

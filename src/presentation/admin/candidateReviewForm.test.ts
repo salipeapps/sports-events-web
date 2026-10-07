@@ -17,7 +17,10 @@ describe("candidate review form", () => {
     form.set("organizerId", candidate.final.organizerId.state === "known" ? candidate.final.organizerId.value : "");
     form.set("price", formatEditablePrice(candidate.final.price));
     form.set("level", candidate.final.level.state === "known" ? candidate.final.level.value : "");
-    form.set("languages", candidate.final.languages.state === "known" ? candidate.final.languages.value.join(", ") : "");
+    form.set(
+      "languages",
+      candidate.final.languages.state === "known" ? candidate.final.languages.value.join(", ") : "",
+    );
 
     expect(buildCandidateCorrections(form, candidate)).toEqual({});
   });
@@ -59,7 +62,10 @@ describe("candidate review form", () => {
     form.set("organizerId", candidate.final.organizerId.state === "known" ? candidate.final.organizerId.value : "");
     form.set("price", "precio pendiente");
     form.set("level", candidate.final.level.state === "known" ? candidate.final.level.value : "");
-    form.set("languages", candidate.final.languages.state === "known" ? candidate.final.languages.value.join(", ") : "");
+    form.set(
+      "languages",
+      candidate.final.languages.state === "known" ? candidate.final.languages.value.join(", ") : "",
+    );
 
     expect(() => buildCandidateCorrections(form, candidate)).toThrow("Introduce un precio");
   });

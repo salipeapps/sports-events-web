@@ -55,11 +55,7 @@ function revalidateCandidate(candidateId: string): void {
   revalidatePath(`/admin/candidates/${candidateId}`);
 }
 
-async function completeAction(
-  candidateId: string,
-  result: string,
-  operation: () => Promise<void>,
-): Promise<never> {
+async function completeAction(candidateId: string, result: string, operation: () => Promise<void>): Promise<never> {
   let failure: string | null = null;
 
   try {

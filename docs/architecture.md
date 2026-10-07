@@ -64,7 +64,6 @@ hardcoded into Admin navigation, authentication states, global headers or produc
 
 Pilot fixtures may contain Valencia-specific data without making Valencia part of the Admin shell.
 
-
 ## Editorial candidate review
 
 The review UI keeps four layers explicit: source evidence, extracted values, final editorial values and

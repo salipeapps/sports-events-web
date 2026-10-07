@@ -165,8 +165,8 @@ export function CandidateReview({ candidate, organizers, source, result, error }
             </span>
           </div>
           <p>
-            Actividad detectada automáticamente desde {sourceName}. Revisa información, evidencia y conflictos antes
-            de publicar.
+            Actividad detectada automáticamente desde {sourceName}. Revisa información, evidencia y conflictos antes de
+            publicar.
           </p>
         </div>
 
@@ -265,7 +265,9 @@ export function CandidateReview({ candidate, organizers, source, result, error }
                 defaultValue={knownString(candidate.final.startLocal)}
                 disabled={terminal}
               />
-              {unknownHint(candidate.final.startLocal) ? <small>{unknownHint(candidate.final.startLocal)}</small> : null}
+              {unknownHint(candidate.final.startLocal) ? (
+                <small>{unknownHint(candidate.final.startLocal)}</small>
+              ) : null}
             </label>
 
             <label>
@@ -314,7 +316,9 @@ export function CandidateReview({ candidate, organizers, source, result, error }
               <span>Idioma</span>
               <input
                 name="languages"
-                defaultValue={candidate.final.languages.state === "known" ? candidate.final.languages.value.join(", ") : ""}
+                defaultValue={
+                  candidate.final.languages.state === "known" ? candidate.final.languages.value.join(", ") : ""
+                }
                 placeholder="ES, EN"
                 disabled={terminal}
               />
@@ -322,7 +326,11 @@ export function CandidateReview({ candidate, organizers, source, result, error }
             </label>
 
             {!terminal ? (
-              <button className="admin-secondary-button admin-review-save" type="submit" formAction={saveCandidateAction}>
+              <button
+                className="admin-secondary-button admin-review-save"
+                type="submit"
+                formAction={saveCandidateAction}
+              >
                 Guardar cambios
               </button>
             ) : null}
