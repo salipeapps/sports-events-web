@@ -132,8 +132,7 @@ describe("FixtureAdminRepository", () => {
     expect(
       (await repository.getDashboardSummary()).urgentItems.some(
         (item) =>
-          item.candidateId.state === "known" &&
-          item.candidateId.value === "candidate-possible-duplicate-E019-mirror",
+          item.candidateId.state === "known" && item.candidateId.value === "candidate-possible-duplicate-E019-mirror",
       ),
     ).toBe(true);
 
@@ -145,8 +144,7 @@ describe("FixtureAdminRepository", () => {
     expect(
       (await repository.getDashboardSummary()).urgentItems.some(
         (item) =>
-          item.candidateId.state === "known" &&
-          item.candidateId.value === "candidate-possible-duplicate-E019-mirror",
+          item.candidateId.state === "known" && item.candidateId.value === "candidate-possible-duplicate-E019-mirror",
       ),
     ).toBe(false);
   });
