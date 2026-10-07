@@ -26,7 +26,7 @@ export default async function CandidateReviewPage({
     <CandidateReview
       candidate={candidate}
       organizers={organizers}
-      source={sources.find((source) => source.id === candidate.sourceId) ?? null}
+      sources={sources}
       result={query.result}
       error={query.error}
     />
