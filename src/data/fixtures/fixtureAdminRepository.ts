@@ -500,6 +500,21 @@ export class FixtureAdminRepository implements AdminRepository {
     return clone(candidate);
   }
 
+  async unblockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
+    const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
+    const reason = requireReason(input.reason);
+
+    if (candidate.editorialStatus !== "blocked") {
+      throw new Error(`Only a blocked candidate can be unblocked; current state is ${candidate.editorialStatus}.`);
+    }
+
+    candidate.editorialStatus = "review";
+    candidate.history.push(historyEntry(candidate, "unblocked", input.actor, reason));
+    return clone(candidate);
+  }
+
   async requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
