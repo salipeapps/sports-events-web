@@ -219,6 +219,7 @@ export type EditorialAction =
   | "corrected"
   | "rejected"
   | "blocked"
+  | "unblocked"
   | "requery_requested"
   | "reprocess_requested"
   | "cancelled"
