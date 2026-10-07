@@ -603,7 +603,11 @@ export function isCandidateBlockerResolved(
   kind: "conflict" | "rule" | "match" | "change_proposal",
   targetId: string,
 ): boolean {
-  return candidate.blockerResolutions?.some((resolution) => resolution.kind === kind && resolution.targetId === targetId) ?? false;
+  return (
+    candidate.blockerResolutions?.some(
+      (resolution) => resolution.kind === kind && resolution.targetId === targetId,
+    ) ?? false
+  );
 }
 
 export function hasBlockingConflict(candidate: AdminCandidate): boolean {
