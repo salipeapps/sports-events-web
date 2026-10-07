@@ -55,10 +55,7 @@ function validateNonNegativeInteger(value: unknown, path: string, errors: string
 }
 
 function validateStringArray(value: unknown, path: string, errors: string[]): void {
-  if (
-    !Array.isArray(value) ||
-    value.some((entry) => typeof entry !== "string" || entry.trim().length === 0)
-  ) {
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string" || entry.trim().length === 0)) {
     errors.push(`${path} must be an array of non-empty strings`);
   }
 }
@@ -69,12 +66,7 @@ function validateEnum(value: unknown, allowed: readonly string[], path: string, 
   }
 }
 
-function validateFieldValue(
-  value: unknown,
-  path: string,
-  errors: string[],
-  validateKnown?: KnownValueValidator,
-): void {
+function validateFieldValue(value: unknown, path: string, errors: string[], validateKnown?: KnownValueValidator): void {
   if (!isRecord(value)) {
     errors.push(`${path} must be a field value`);
     return;
@@ -159,12 +151,7 @@ function validatePriceDetails(value: unknown, path: string, errors: string[]): v
   });
 }
 
-function validateEventFieldValue(
-  field: keyof EventDetails,
-  value: unknown,
-  path: string,
-  errors: string[],
-): void {
+function validateEventFieldValue(field: keyof EventDetails, value: unknown, path: string, errors: string[]): void {
   switch (field) {
     case "category":
       validateFieldValue(value, path, errors, (knownValue, knownPath, knownErrors) =>
@@ -214,14 +201,7 @@ function validateEvidence(value: unknown, path: string, errors: string[]): void 
   validateString(value.sourceUrl, `${path}.sourceUrl`, errors);
   validateEnum(
     value.sourceRole,
-    [
-      "organizer_published",
-      "aggregator",
-      "search_result",
-      "booking_platform",
-      "community_platform",
-      "import",
-    ],
+    ["organizer_published", "aggregator", "search_result", "booking_platform", "community_platform", "import"],
     `${path}.sourceRole`,
     errors,
   );
@@ -276,15 +256,9 @@ function validateAiEvaluation(value: unknown, path: string, errors: string[]): v
       value.proposedCategory,
       `${path}.proposedCategory`,
       errors,
-      (knownValue, knownPath, knownErrors) =>
-        validateEnum(knownValue, activityCategories, knownPath, knownErrors),
+      (knownValue, knownPath, knownErrors) => validateEnum(knownValue, activityCategories, knownPath, knownErrors),
     );
-    validateFieldValue(
-      value.modelReportedConfidence,
-      `${path}.modelReportedConfidence`,
-      errors,
-      validateNumber,
-    );
+    validateFieldValue(value.modelReportedConfidence, `${path}.modelReportedConfidence`, errors, validateNumber);
     validateStringArray(value.reasons, `${path}.reasons`, errors);
 
     if (!Array.isArray(value.missingFields)) {
