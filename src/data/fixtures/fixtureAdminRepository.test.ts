@@ -126,6 +126,72 @@ describe("FixtureAdminRepository", () => {
     expect(result.items.map((item) => item.id)).toContain("candidate-valid-E019");
   });
 
+  it("preserves millisecond precision when comparing zoned timestamp bounds", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await repository.approveCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      reason: "Exercise millisecond precision",
+      corrections: { startLocal: known("2026-10-24T16:00:00.000") },
+    });
+
+    const result = await repository.listActivities({
+      statuses: ["published"],
+      dateTo: "2026-10-24T14:00:00.000Z",
+    });
+
+    expect(result.items.map((item) => item.id)).toContain("published-candidate-valid-E019");
+  });
+
+  it("removes published candidates from candidate category coverage", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getDashboardSummary();
+    const beforeBeach = before.categoryCoverage.find((item) => item.category === "beach_sports");
+    if (!beforeBeach) throw new Error("Expected beach_sports coverage");
+
+    await repository.approveCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      reason: "Publish before checking coverage",
+    });
+
+    const after = await repository.getDashboardSummary();
+    const afterBeach = after.categoryCoverage.find((item) => item.category === "beach_sports");
+    if (!afterBeach) throw new Error("Expected beach_sports coverage");
+
+    expect(afterBeach.candidateCount).toBe(beforeBeach.candidateCount - 1);
+    expect(afterBeach.publishedCount).toBe(beforeBeach.publishedCount + 1);
+  });
+
+  it("prevents transitions out of terminal candidate states", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await repository.rejectCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      reason: "Terminal decision",
+    });
+
+    await expect(
+      repository.approveCandidate("candidate-valid-E019", {
+        actor: reviewer,
+        reason: "Must require explicit reopen",
+      }),
+    ).rejects.toThrow("terminal state rejected");
+
+    await expect(
+      repository.blockCandidate("candidate-valid-E019", {
+        actor: reviewer,
+        reason: "Must require explicit reopen",
+      }),
+    ).rejects.toThrow("terminal state rejected");
+
+    await expect(
+      repository.requestReprocess("candidate-valid-E019", {
+        actor: reviewer,
+        reason: "Must require explicit reopen",
+      }),
+    ).rejects.toThrow("terminal state rejected");
+  });
+
   it("removes terminal candidates from urgent dashboard items", async () => {
     const repository = new FixtureAdminRepository();
 

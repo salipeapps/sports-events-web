@@ -110,12 +110,22 @@ const madridDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
   hourCycle: "h23",
 });
 
+function normalizeLocalDateTimePrecision(value: string): string {
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?$/);
+  if (!match) return value;
+
+  const milliseconds = (match[2] ?? "").padEnd(3, "0").slice(0, 3);
+  return `${match[1]}.${milliseconds}`;
+}
+
 function toMadridLocalDateTime(value: string, boundary: "from" | "to"): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     return boundary === "from" ? `${value}T00:00:00.000` : `${value}T23:59:59.999`;
   }
 
-  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) return value;
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) {
+    return normalizeLocalDateTimePrecision(value);
+  }
 
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -126,8 +136,9 @@ function toMadridLocalDateTime(value: string, boundary: "from" | "to"): string {
       .filter((part) => part.type !== "literal")
       .map((part) => [part.type, part.value]),
   );
+  const milliseconds = String(parsed.getUTCMilliseconds()).padStart(3, "0");
 
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${milliseconds}`;
 }
 
 function matchesFilters(item: ActivityListItem, filters: ActivityFilters): boolean {
@@ -137,13 +148,14 @@ function matchesFilters(item: ActivityListItem, filters: ActivityFilters): boole
   if (filters.category && valueOrUndefined(item.category) !== filters.category) return false;
 
   const start = valueOrUndefined(item.startLocal);
+  const normalizedStart = start ? normalizeLocalDateTimePrecision(start) : undefined;
   if (filters.dateFrom) {
     const normalizedDateFrom = toMadridLocalDateTime(filters.dateFrom, "from");
-    if (!start || start < normalizedDateFrom) return false;
+    if (!normalizedStart || normalizedStart < normalizedDateFrom) return false;
   }
   if (filters.dateTo) {
     const normalizedDateTo = toMadridLocalDateTime(filters.dateTo, "to");
-    if (!start || start > normalizedDateTo) return false;
+    if (!normalizedStart || normalizedStart > normalizedDateTo) return false;
   }
 
   if (filters.search) {
@@ -202,9 +214,14 @@ function applyCorrections(candidate: AdminCandidate, corrections?: Partial<Event
   candidate.final = { ...candidate.final, ...clone(corrections) };
 }
 
-function assertNotPublished(candidate: AdminCandidate, action: string): void {
+function assertActionableCandidate(candidate: AdminCandidate, action: string): void {
   if (candidate.editorialStatus === "published") {
     throw new Error(`Published candidate cannot be ${action}; use the published occurrence lifecycle instead.`);
+  }
+  if (["rejected", "cancelled", "archived"].includes(candidate.editorialStatus)) {
+    throw new Error(
+      `Candidate in terminal state ${candidate.editorialStatus} cannot be ${action} without an explicit reopen operation.`,
+    );
   }
 }
 
@@ -233,7 +250,7 @@ export class FixtureAdminRepository implements AdminRepository {
     }
 
     const categories = new Map<string, { candidateCount: number; publishedCount: number }>();
-    for (const candidate of this.candidates) {
+    for (const candidate of this.candidates.filter((item) => item.editorialStatus !== "published")) {
       const category = valueOrUndefined(candidate.final.category);
       if (!category) continue;
       const current = categories.get(category) ?? { candidateCount: 0, publishedCount: 0 };
@@ -368,7 +385,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
-    assertNotPublished(candidate, "approved again");
+    assertActionableCandidate(candidate, "approved again");
     const candidateForApproval = clone(candidate);
 
     applyCorrections(candidateForApproval, input.corrections);
@@ -422,7 +439,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
-    assertNotPublished(candidate, "rejected");
+    assertActionableCandidate(candidate, "rejected");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "rejected";
     candidate.history.push(historyEntry(candidate, "rejected", input.actor, reason));
@@ -432,7 +449,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
-    assertNotPublished(candidate, "blocked");
+    assertActionableCandidate(candidate, "blocked");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "blocked";
     candidate.history.push(historyEntry(candidate, "blocked", input.actor, reason));
@@ -442,6 +459,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertActionableCandidate(candidate, "requeried");
     candidate.history.push(historyEntry(candidate, "requery_requested", input.actor, input.reason));
     return clone(candidate);
   }
@@ -449,6 +467,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async requestReprocess(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertActionableCandidate(candidate, "reprocessed");
     candidate.history.push(historyEntry(candidate, "reprocess_requested", input.actor, input.reason));
     return clone(candidate);
   }
