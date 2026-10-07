@@ -20,8 +20,7 @@ export interface AdminSession {
 export type AdminAccessFailureReason = "missing_session" | "expired" | "unauthorized";
 
 export type AdminAccessResult =
-  | { status: "authenticated"; session: AdminSession }
-  | { status: "unauthenticated"; reason: AdminAccessFailureReason };
+  { status: "authenticated"; session: AdminSession } | { status: "unauthenticated"; reason: AdminAccessFailureReason };
 
 const capabilitiesByRole: Record<AdminRole, readonly AdminCapability[]> = {
   admin: adminCapabilities,
@@ -29,7 +28,10 @@ const capabilitiesByRole: Record<AdminRole, readonly AdminCapability[]> = {
 };
 
 export class AdminAuthorizationError extends Error {
-  constructor(readonly role: AdminRole, readonly capability: AdminCapability) {
+  constructor(
+    readonly role: AdminRole,
+    readonly capability: AdminCapability,
+  ) {
     super(`Role "${role}" is not allowed to perform "${capability}".`);
     this.name = "AdminAuthorizationError";
   }
