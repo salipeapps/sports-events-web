@@ -34,7 +34,4 @@ jobs:
         run: npm ci
 
       - name: Run quality checks
-        run: |
-          npx prettier --write src/app/admin/candidates/[candidateId]/actions.ts src/presentation/admin/CandidateReview.tsx
-          git diff -- src/app/admin/candidates/[candidateId]/actions.ts src/presentation/admin/CandidateReview.tsx
-          exit 1
+        run: npm run quality
