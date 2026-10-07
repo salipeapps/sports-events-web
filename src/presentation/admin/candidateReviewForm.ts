@@ -54,8 +54,13 @@ export function formatEditablePrice(field: EventDetails["price"]): string {
   return field.value.options
     .map((option) => {
       const amount = Number.isInteger(option.amount) ? String(option.amount) : String(option.amount).replace(".", ",");
-      const method = option.paymentMethod ? ` ${option.paymentMethod}` : "";
-      return `${amount} €${method}`;
+      const qualifier =
+        field.value.kind === "payment_variant"
+          ? option.paymentMethod
+          : field.value.kind === "transport_included"
+            ? option.label
+            : (option.paymentMethod ?? option.label);
+      return `${amount} €${qualifier ? ` ${qualifier}` : ""}`;
     })
     .join(" / ");
 }
@@ -143,7 +148,7 @@ function parsePrice(value: string, kindValue: string, currentField: EventDetails
 
   return known<PriceDetails>({
     kind,
-    options: parsedOptions.map(({ amount, paymentMethod }, index) => {
+    options: parsedOptions.map(({ amount, paymentMethod: qualifier }, index) => {
       const existing = current?.options[index];
       const option: PriceDetails["options"][number] = {
         ...existing,
@@ -151,8 +156,15 @@ function parsePrice(value: string, kindValue: string, currentField: EventDetails
         currency: "EUR",
       };
 
-      if (paymentMethod) option.paymentMethod = paymentMethod;
-      else delete option.paymentMethod;
+      if (kind === "payment_variant" || (kind !== "transport_included" && existing?.paymentMethod)) {
+        if (qualifier) option.paymentMethod = qualifier;
+        else delete option.paymentMethod;
+        if (kind === "payment_variant") delete option.label;
+      } else {
+        if (qualifier) option.label = qualifier;
+        else delete option.label;
+        if (kind === "transport_included") delete option.paymentMethod;
+      }
 
       return option;
     }),
