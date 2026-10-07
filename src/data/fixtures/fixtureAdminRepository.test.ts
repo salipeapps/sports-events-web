@@ -414,16 +414,24 @@ describe("FixtureAdminRepository", () => {
   it("requires a reason when rejecting or blocking", async () => {
     const repository = new FixtureAdminRepository();
 
-    await expect(repository.rejectCandidate("candidate-valid-E019", { actor: reviewer, expectedVersion: await currentVersion(repository, "candidate-valid-E019"), reason: "  " })).rejects.toThrow(
-      "non-empty reason",
-    );
+    await expect(
+      repository.rejectCandidate("candidate-valid-E019", {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
+        reason: "  ",
+      }),
+    ).rejects.toThrow("non-empty reason");
   });
 
   it("keeps repository instances isolated", async () => {
     const first = new FixtureAdminRepository();
     const second = new FixtureAdminRepository();
 
-    await first.rejectCandidate("candidate-valid-E019", { actor: reviewer, expectedVersion: await currentVersion(first, "candidate-valid-E019"), reason: "Fixture-only rejection" });
+    await first.rejectCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(first, "candidate-valid-E019"),
+      reason: "Fixture-only rejection",
+    });
 
     expect((await first.getCandidate("candidate-valid-E019"))?.editorialStatus).toBe("rejected");
     expect((await second.getCandidate("candidate-valid-E019"))?.editorialStatus).toBe("review");
