@@ -13,10 +13,10 @@ export function AdminShell({ session, children }: AdminShellProps) {
   return (
     <div className="admin-shell">
       <aside className="admin-sidebar">
-        <div className="admin-brand" aria-label="Valencia Admin">
+        <div className="admin-brand" aria-label="Sports Events Admin">
           <span className="admin-brand-mark" aria-hidden="true" />
           <span className="admin-brand-copy">
-            <strong>Valencia</strong>
+            <strong>Sports Events</strong>
             <small>Admin</small>
           </span>
         </div>
@@ -30,7 +30,7 @@ export function AdminShell({ session, children }: AdminShellProps) {
 
       <div className="admin-workspace">
         <header className="admin-topbar">
-          <strong className="admin-context">Valencia</strong>
+          <strong className="admin-context">Panel de administración</strong>
           <div className="admin-topbar-actions">
             <div className="admin-language" aria-label="Idioma de interfaz">
               <span className="admin-language-active">ES</span>

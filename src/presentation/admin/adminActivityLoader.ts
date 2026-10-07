@@ -110,7 +110,7 @@ export async function loadActivityCatalog(
     title: scope === "activities" ? "Actividades" : "Candidatos",
     subtitle:
       scope === "activities"
-        ? "Gestiona las actividades deportivas y de comunidad en Valencia."
+        ? "Gestiona las actividades deportivas y de comunidad del catálogo."
         : "Revisa las candidaturas captadas antes de incorporarlas al catálogo.",
     basePath,
     activeTab: query.activeTab,

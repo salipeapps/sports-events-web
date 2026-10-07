@@ -24,7 +24,7 @@ export function AdminAccessState({ reason }: { reason: AdminAccessFailureReason 
     <main className="admin-access-page">
       <section className="admin-access-card" aria-labelledby="admin-access-title">
         <span className="admin-access-mark" aria-hidden="true" />
-        <p className="admin-access-eyebrow">Valencia · Admin</p>
+        <p className="admin-access-eyebrow">Sports Events · Admin</p>
         <h1 id="admin-access-title">{message.title}</h1>
         <p>{message.description}</p>
         <Link href="/">Volver al sitio público</Link>

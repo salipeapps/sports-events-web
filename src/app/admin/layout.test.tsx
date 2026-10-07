@@ -43,7 +43,9 @@ describe("AdminLayout", () => {
 
     const html = renderToStaticMarkup(await AdminLayout({ children: <div>Private content</div> }));
 
-    expect(html).toContain("Valencia");
+    expect(html).toContain("Sports Events");
+    expect(html).toContain("Panel de administración");
+    expect(html).not.toContain("Valencia");
     expect(html).toContain("Reviewer");
     expect(html).toContain("Private content");
     expect(html).toContain("Solo admin");
