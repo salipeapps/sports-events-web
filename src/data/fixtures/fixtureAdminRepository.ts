@@ -14,11 +14,7 @@ import type {
   PublishedOccurrence,
   SourceConfig,
 } from "@/domain/admin";
-import {
-  isCandidateBlockerResolved,
-  parseAdminCandidate,
-  publicationBlockReasons,
-} from "@/domain/adminValidation";
+import { isCandidateBlockerResolved, parseAdminCandidate, publicationBlockReasons } from "@/domain/adminValidation";
 import { assertExpectedCandidateVersion } from "@/domain/candidateReviewVersion";
 import type {
   AdminRepository,
@@ -265,8 +261,7 @@ export class FixtureAdminRepository implements AdminRepository {
       (total, candidate) =>
         total +
         candidate.conflicts.filter(
-          (conflict) =>
-            conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+          (conflict) => conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
         ).length,
       0,
     );
