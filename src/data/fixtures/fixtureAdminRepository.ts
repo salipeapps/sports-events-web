@@ -159,6 +159,12 @@ function requireReason(reason: string): string {
   return trimmed;
 }
 
+function assertValidActor(actor: CandidateActionInput["actor"]): void {
+  if (!actor.id.trim() || !actor.displayName.trim() || !["admin", "reviewer", "system"].includes(actor.role)) {
+    throw new Error("A valid editorial actor is required.");
+  }
+}
+
 function applyCorrections(candidate: AdminCandidate, corrections?: Partial<EventDetails>): void {
   if (!corrections) return;
   candidate.final = { ...candidate.final, ...clone(corrections) };
@@ -327,6 +333,7 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
     assertNotPublished(candidate, "approved again");
     const candidateForApproval = clone(candidate);
 
@@ -343,6 +350,9 @@ export class FixtureAdminRepository implements AdminRepository {
 
     const organizerId = valueOrUndefined(candidateForApproval.final.organizerId);
     if (!organizerId) throw new Error("Candidate requires a known organizer before publication.");
+    if (!organizerFixtures.some((organizer) => organizer.id === organizerId)) {
+      throw new Error(`Candidate organizer does not exist: ${organizerId}.`);
+    }
 
     if (input.corrections && Object.keys(input.corrections).length > 0) {
       candidateForApproval.history.push(historyEntry(candidateForApproval, "corrected", input.actor, input.reason));
@@ -377,6 +387,7 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
     assertNotPublished(candidate, "rejected");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "rejected";
@@ -386,6 +397,7 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
     assertNotPublished(candidate, "blocked");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "blocked";
@@ -395,12 +407,14 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
     candidate.history.push(historyEntry(candidate, "requery_requested", input.actor, input.reason));
     return clone(candidate);
   }
 
   async requestReprocess(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
     candidate.history.push(historyEntry(candidate, "reprocess_requested", input.actor, input.reason));
     return clone(candidate);
   }
