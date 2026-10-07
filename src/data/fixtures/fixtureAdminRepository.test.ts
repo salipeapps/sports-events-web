@@ -88,6 +88,48 @@ describe("FixtureAdminRepository", () => {
     expect(after?.history).toEqual(before?.history);
   });
 
+  it("validates corrections before mutating or publishing a candidate", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getCandidate("candidate-valid-E019");
+
+    await expect(
+      repository.approveCandidate("candidate-valid-E019", {
+        actor: reviewer,
+        corrections: { organizerId: known("") },
+      }),
+    ).rejects.toThrow("Invalid admin contract");
+
+    const after = await repository.getCandidate("candidate-valid-E019");
+    expect(after).toEqual(before);
+
+    const published = await repository.listActivities({ statuses: ["published"] });
+    expect(published.items.map((item) => item.id)).not.toContain("published-candidate-valid-E019");
+  });
+
+  it("includes the whole final day when dateTo is date-only", async () => {
+    const repository = new FixtureAdminRepository();
+    const result = await repository.listCandidates({
+      dateFrom: "2026-10-24",
+      dateTo: "2026-10-24",
+    });
+
+    expect(result.items.map((item) => item.id)).toContain("candidate-valid-E019");
+  });
+
+  it("stores an immutable snapshot of the editorial actor in history", async () => {
+    const repository = new FixtureAdminRepository();
+    const actor = { id: "reviewer-mutable", role: "reviewer" as const, displayName: "Before mutation" };
+
+    await repository.rejectCandidate("candidate-valid-E019", {
+      actor,
+      reason: "Audit actor snapshot",
+    });
+    actor.displayName = "After mutation";
+
+    const candidate = await repository.getCandidate("candidate-valid-E019");
+    expect(candidate?.history.at(-1)?.actor.displayName).toBe("Before mutation");
+  });
+
   it("uses the corrected organizer when publishing", async () => {
     const repository = new FixtureAdminRepository();
     const candidate = await repository.approveCandidate("candidate-valid-E019", {

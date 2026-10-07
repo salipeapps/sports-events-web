@@ -14,7 +14,7 @@ import type {
   PublishedOccurrence,
   SourceConfig,
 } from "@/domain/admin";
-import { publicationBlockReasons } from "@/domain/adminValidation";
+import { parseAdminCandidate, publicationBlockReasons } from "@/domain/adminValidation";
 import type {
   AdminRepository,
   CandidateActionInput,
@@ -107,7 +107,12 @@ function matchesFilters(item: ActivityListItem, filters: ActivityFilters): boole
 
   const start = valueOrUndefined(item.startLocal);
   if (filters.dateFrom && (!start || start < filters.dateFrom)) return false;
-  if (filters.dateTo && (!start || start > filters.dateTo)) return false;
+  if (filters.dateTo) {
+    const inclusiveDateTo = /^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo)
+      ? `${filters.dateTo}T23:59:59.999`
+      : filters.dateTo;
+    if (!start || start > inclusiveDateTo) return false;
+  }
 
   if (filters.search) {
     const normalizedSearch = filters.search.trim().toLocaleLowerCase("es");
@@ -140,7 +145,7 @@ function historyEntry(
     id: `history-${candidate.id}-${candidate.history.length + 1}`,
     action,
     at: new Date().toISOString(),
-    actor,
+    actor: clone(actor),
     reason:
       reason && reason.trim().length > 0
         ? { state: "known", value: reason.trim() }
@@ -327,6 +332,7 @@ export class FixtureAdminRepository implements AdminRepository {
 
     applyCorrections(candidateForApproval, input.corrections);
     candidateForApproval.organizerId = clone(candidateForApproval.final.organizerId);
+    parseAdminCandidate(candidateForApproval);
 
     const publicationBlocks = publicationBlockReasons(candidateForApproval);
     if (publicationBlocks.length > 0) {
@@ -335,35 +341,42 @@ export class FixtureAdminRepository implements AdminRepository {
       );
     }
 
-    candidate.final = clone(candidateForApproval.final);
-    candidate.organizerId = clone(candidateForApproval.organizerId);
+    const organizerId = valueOrUndefined(candidateForApproval.final.organizerId);
+    if (!organizerId) throw new Error("Candidate requires a known organizer before publication.");
 
     if (input.corrections && Object.keys(input.corrections).length > 0) {
-      candidate.history.push(historyEntry(candidate, "corrected", input.actor, input.reason));
+      candidateForApproval.history.push(
+        historyEntry(candidateForApproval, "corrected", input.actor, input.reason),
+      );
     }
-    candidate.editorialStatus = "published";
-    candidate.history.push(historyEntry(candidate, "approved", input.actor, input.reason));
-    candidate.history.push(historyEntry(candidate, "published", input.actor, input.reason));
+    candidateForApproval.editorialStatus = "published";
+    candidateForApproval.history.push(historyEntry(candidateForApproval, "approved", input.actor, input.reason));
+    candidateForApproval.history.push(historyEntry(candidateForApproval, "published", input.actor, input.reason));
 
-    if (!this.published.some((occurrence) => occurrence.sourceRecordIds.includes(candidate.sourceRecordId))) {
-      const organizerId = valueOrUndefined(candidate.final.organizerId);
-      if (!organizerId) throw new Error("Candidate requires a known organizer before publication.");
-      this.published.push({
-        id: `published-${candidate.id}`,
-        sourceRecordIds: [candidate.sourceRecordId],
-        organizerId,
-        editorialStatus: "published",
-        temporalStatus: candidate.temporalStatus,
-        publishedAt: new Date().toISOString(),
-        lastCheckedAt: candidate.lastCheckedAt,
-        event: clone(candidate.final),
-        evidenceIds: candidate.evidence.map((evidence) => evidence.id),
-        protectedCorrections: input.corrections ? (Object.keys(input.corrections) as (keyof EventDetails)[]) : [],
-        history: clone(candidate.history),
-      });
-    }
+    const publishedOccurrence = this.published.some((occurrence) =>
+      occurrence.sourceRecordIds.includes(candidateForApproval.sourceRecordId),
+    )
+      ? null
+      : {
+          id: `published-${candidateForApproval.id}`,
+          sourceRecordIds: [candidateForApproval.sourceRecordId],
+          organizerId,
+          editorialStatus: "published" as const,
+          temporalStatus: candidateForApproval.temporalStatus,
+          publishedAt: new Date().toISOString(),
+          lastCheckedAt: candidateForApproval.lastCheckedAt,
+          event: clone(candidateForApproval.final),
+          evidenceIds: candidateForApproval.evidence.map((evidence) => evidence.id),
+          protectedCorrections: input.corrections
+            ? (Object.keys(input.corrections) as (keyof EventDetails)[])
+            : [],
+          history: clone(candidateForApproval.history),
+        };
 
-    return clone(candidate);
+    Object.assign(candidate, candidateForApproval);
+    if (publishedOccurrence) this.published.push(publishedOccurrence);
+
+    return clone(candidateForApproval);
   }
 
   async rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
