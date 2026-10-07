@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - master
+      - main
   push:
     branches:
       - master
+      - main
 
 permissions:
   contents: read
@@ -27,6 +29,13 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+
+      - name: Export generated lockfile
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-lock
+          path: package-lock.json
+          retention-days: 1
 
       - name: Run quality checks
         run: npm run quality
