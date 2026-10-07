@@ -28,7 +28,7 @@ export const activityTabs: Array<{ id: ActivityTab; label: string; statuses: Edi
   { id: "candidates", label: "Candidatas", statuses: ["candidate"] },
   { id: "review", label: "Revisión", statuses: ["review", "blocked"] },
   { id: "cancelled", label: "Canceladas", statuses: ["cancelled"] },
-  { id: "archived", label: "Archivadas", statuses: ["archived"] },
+  { id: "archived", label: "Archivadas", statuses: ["archived", "rejected"] },
 ];
 
 export const candidateTabs = activityTabs.filter((tab) => tab.id === "candidates" || tab.id === "review");

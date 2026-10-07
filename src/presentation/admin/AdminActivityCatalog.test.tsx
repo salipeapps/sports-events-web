@@ -19,6 +19,15 @@ describe("AdminActivityCatalog", () => {
     expect(html).toContain("Acciones en lote");
   });
 
+  it("recovers from a requested page beyond the available result set", async () => {
+    const model = await loadActivityCatalog(new FixtureAdminRepository(), { page: "999" }, "activities");
+
+    expect(model.total).toBeGreaterThan(0);
+    expect(model.pagination.page).toBe(1);
+    expect(model.rows.length).toBeGreaterThan(0);
+    expect(model.pagination.from).toBe(1);
+  });
+
   it("reuses the same catalog pattern for the candidates shortcut", async () => {
     const model = await loadActivityCatalog(new FixtureAdminRepository(), {}, "candidates");
     const html = renderToStaticMarkup(<AdminActivityCatalog model={model} />);

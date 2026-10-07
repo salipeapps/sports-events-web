@@ -53,6 +53,13 @@ describe("Admin activity query", () => {
     expect(query.values.status).toBe("");
   });
 
+  it("exposes rejected candidates through the terminal archived tab", () => {
+    const query = resolveActivityQuery({ tab: "archived", status: "rejected" }, "activities");
+
+    expect(query.filters.statuses).toEqual(["rejected"]);
+    expect(query.values.status).toBe("rejected");
+  });
+
   it("keeps compatible filters but clears page and status when changing tabs", () => {
     expect(
       tabHref(

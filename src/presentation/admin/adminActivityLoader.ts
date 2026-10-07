@@ -85,12 +85,18 @@ export async function loadActivityCatalog(
   const listMethod =
     scope === "candidates" ? repository.listCandidates.bind(repository) : repository.listActivities.bind(repository);
 
-  const [page, sources, organizers, summary] = await Promise.all([
+  const [initialPage, sources, organizers, summary] = await Promise.all([
     listMethod(query.filters),
     repository.listSources(),
     repository.listOrganizers(),
     repository.getDashboardSummary(),
   ]);
+
+  const initialTotalPages = Math.max(1, Math.ceil(initialPage.total / initialPage.pageSize));
+  const page =
+    initialPage.total > 0 && initialPage.page > initialTotalPages
+      ? await listMethod({ ...query.filters, page: initialTotalPages })
+      : initialPage;
 
   const basePath = scope === "activities" ? "/admin/activities" : "/admin/candidates";
   const tabs = scope === "activities" ? activityTabs : candidateTabs;
