@@ -35,3 +35,9 @@ jobs:
 
       - name: Run quality checks
         run: npm run quality
+
+      - name: Show Prettier diff on failure
+        if: failure()
+        run: |
+          npx prettier --write src/domain/adminAccess.ts
+          git diff -- src/domain/adminAccess.ts
