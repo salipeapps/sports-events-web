@@ -18,19 +18,25 @@ src/presentation
        |
        v
 src/data
-  stable data-access contracts/ports
+  AdminRepository port + replaceable adapters
        |
        v
 src/domain
-  business concepts and rules
+  business contracts, evidence model and validation helpers
 
 src/integrations
   concrete adapters for external services and infrastructure
 ```
 
-Presentation code must not bind itself to scraper payloads or a future database SDK. The next step
-(issue #2) is to define Admin domain contracts and an interchangeable data source backed initially
-by fixtures.
+Presentation code must not bind itself to scraper payloads or a future database SDK. Admin v0 now
+has stable domain contracts plus `AdminRepository`; development/tests use `FixtureAdminRepository`.
+A future backend implementation can replace that adapter without changing presentation contracts.
+
+The event model deliberately separates evidence, extracted values, final editorial values,
+deterministic rules, AI evaluation, conflicts and duplicate/change proposals. Editorial status and
+temporal status are independent.
+
+See `docs/admin-data-contracts.md` for the contract and fixture conventions.
 
 ## Environment variables
 
@@ -42,5 +48,5 @@ by fixtures.
 ## Admin route
 
 `/admin` exists from the bootstrap so the administrative product can evolve in parallel with
-ingestion. Real authentication/authorization is deliberately out of scope for issue #1 and is
+ingestion. Real authentication/authorization is deliberately out of scope for issue #2 and is
 tracked by issue #3. A route being hidden or marked `noindex` is not a security boundary.
