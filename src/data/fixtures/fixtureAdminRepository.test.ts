@@ -443,11 +443,62 @@ describe("FixtureAdminRepository", () => {
       expectedVersion: await currentVersion(repository, "candidate-change-E023"),
       kind: "change_proposal",
       targetId: "change-E023-time",
+      disposition: "accepted",
       reason: "Essential schedule change reviewed editorially",
     });
     const changeCandidate = await repository.getCandidate("candidate-change-E023");
-    if (!changeCandidate) throw new Error("Expected change fixture");
+    if (!changeCandidate || changeCandidate.changeProposal.state !== "known") {
+      throw new Error("Expected change fixture");
+    }
     expect(publicationBlockReasons(changeCandidate)).not.toContain("pending_essential_change");
+    expect(changeCandidate.changeProposal.value.status).toBe("approved");
+    expect(changeCandidate.blockerResolutions?.at(-1)?.disposition).toBe("accepted");
+
+    const published = await repository.listActivities({ statuses: ["published"] });
+    const updatedOccurrence = published.items.find((item) => item.id === "pub-fixture-E023-web-1900");
+    expect(updatedOccurrence?.startLocal).toEqual(known("2026-10-07T18:30:00"));
+  });
+
+  it("rejects a change proposal without modifying the published occurrence", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await repository.resolveCandidateBlocker("candidate-change-E023", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-change-E023"),
+      kind: "change_proposal",
+      targetId: "change-E023-time",
+      disposition: "rejected",
+      reason: "Keep the currently published schedule",
+    });
+
+    const candidate = await repository.getCandidate("candidate-change-E023");
+    if (!candidate || candidate.changeProposal.state !== "known") throw new Error("Expected change fixture");
+    expect(candidate.changeProposal.value.status).toBe("rejected");
+    expect(candidate.final.startLocal).toEqual(known("2026-10-07T19:00:00"));
+
+    const published = await repository.listActivities({ statuses: ["published"] });
+    const occurrence = published.items.find((item) => item.id === "pub-fixture-E023-web-1900");
+    expect(occurrence?.startLocal).toEqual(known("2026-10-07T19:00:00"));
+  });
+
+  it("does not record acceptance when the target published occurrence is missing", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getCandidate("candidate-change-E023");
+    const internal = repository as unknown as { published: Array<{ id: string }> };
+    internal.published.splice(0, internal.published.length);
+
+    await expect(
+      repository.resolveCandidateBlocker("candidate-change-E023", {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-change-E023"),
+        kind: "change_proposal",
+        targetId: "change-E023-time",
+        disposition: "accepted",
+        reason: "Accept only if the published occurrence can be updated",
+      }),
+    ).rejects.toThrow("Published occurrence does not exist");
+
+    expect(await repository.getCandidate("candidate-change-E023")).toEqual(before);
   });
 
   it("allows an explicitly blocked candidate to return to review with audit history", async () => {
