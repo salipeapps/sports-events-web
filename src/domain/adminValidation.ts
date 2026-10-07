@@ -402,6 +402,9 @@ function validateBlockerResolution(value: unknown, path: string, errors: string[
   validateString(value.id, `${path}.id`, errors);
   validateEnum(value.kind, ["conflict", "rule", "match", "change_proposal"], `${path}.kind`, errors);
   validateString(value.targetId, `${path}.targetId`, errors);
+  if (value.disposition !== undefined) {
+    validateEnum(value.disposition, ["accepted", "rejected"], `${path}.disposition`, errors);
+  }
   validateString(value.at, `${path}.at`, errors);
   validateString(value.reason, `${path}.reason`, errors);
 
