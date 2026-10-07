@@ -71,6 +71,13 @@ describe("admin contracts", () => {
     expect(() => deserializeEngineRun(JSON.stringify(malformedRun))).toThrow(ContractValidationError);
   });
 
+  it("rejects negative run durations", () => {
+    const malformedRun = structuredClone(runFixtures[0]) as unknown as Record<string, unknown>;
+    malformedRun.durationSeconds = { state: "known", value: -1 };
+
+    expect(() => deserializeEngineRun(JSON.stringify(malformedRun))).toThrow(ContractValidationError);
+  });
+
   it.each(["rules", "evidence", "conflicts", "matches", "history"])("rejects malformed elements inside %s", (field) => {
     const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
     malformed[field] = [null];
