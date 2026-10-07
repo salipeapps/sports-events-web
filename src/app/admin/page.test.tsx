@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import AdminPage from "./page";
 
 describe("AdminPage", () => {
-  it("renders the Admin v0 entry point", () => {
+  it("renders the Admin dashboard heading defined in Figma", () => {
     const html = renderToStaticMarkup(<AdminPage />);
 
-    expect(html).toContain("Admin v0");
-    expect(html).toContain("Motor y revisión editorial");
+    expect(html).toContain("Resumen");
+    expect(html).toContain("Visión general del estado de la plataforma");
   });
 });

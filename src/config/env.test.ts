@@ -1,18 +1,41 @@
 import { describe, expect, it } from "vitest";
 
-import { getServerConfig, parseAppEnvironment } from "./env";
+import {
+  getServerConfig,
+  parseAdminDevAuthMode,
+  parseAdminDevRole,
+  parseAppEnvironment,
+} from "./env";
 
 describe("server environment", () => {
-  it("defaults to development", () => {
-    expect(getServerConfig({}).appEnv).toBe("development");
+  it("defaults to development with insecure admin auth disabled", () => {
+    expect(getServerConfig({})).toMatchObject({
+      appEnv: "development",
+      adminDevAuthMode: "disabled",
+      adminDevAuthRole: "admin",
+    });
   });
 
-  it("accepts known environments", () => {
+  it("accepts known environments and development roles", () => {
     expect(parseAppEnvironment("test")).toBe("test");
     expect(parseAppEnvironment("production")).toBe("production");
+    expect(parseAdminDevAuthMode("enabled")).toBe("enabled");
+    expect(parseAdminDevRole("reviewer")).toBe("reviewer");
   });
 
-  it("rejects unknown environments", () => {
+  it("rejects unknown configuration values", () => {
     expect(() => parseAppEnvironment("preview")).toThrow("Invalid APP_ENV");
+    expect(() => parseAdminDevAuthMode("sometimes")).toThrow("Invalid ADMIN_DEV_AUTH_MODE");
+    expect(() => parseAdminDevRole("editor")).toThrow("Invalid ADMIN_DEV_AUTH_ROLE");
+  });
+
+  it("fails closed if development bypass is enabled in production", () => {
+    expect(() =>
+      getServerConfig({
+        APP_ENV: "production",
+        ADMIN_DEV_AUTH_MODE: "enabled",
+        ADMIN_DEV_AUTH_ROLE: "admin",
+      }),
+    ).toThrow("development-only");
   });
 });
