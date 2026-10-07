@@ -371,6 +371,7 @@ function validateHistory(value: unknown, path: string, errors: string[]): void {
       "corrected",
       "rejected",
       "blocked",
+      "unblocked",
       "requery_requested",
       "reprocess_requested",
       "cancelled",
