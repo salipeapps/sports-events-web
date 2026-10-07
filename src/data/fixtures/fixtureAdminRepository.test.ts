@@ -126,6 +126,17 @@ describe("FixtureAdminRepository", () => {
     expect(result.items.map((item) => item.id)).toContain("candidate-valid-E019");
   });
 
+  it("normalizes minute-precision local bounds from datetime-local controls", async () => {
+    const repository = new FixtureAdminRepository();
+
+    const result = await repository.listCandidates({
+      dateFrom: "2026-10-24T16:00",
+      dateTo: "2026-10-24T16:00",
+    });
+
+    expect(result.items.map((item) => item.id)).toContain("candidate-valid-E019");
+  });
+
   it("preserves millisecond precision when comparing zoned timestamp bounds", async () => {
     const repository = new FixtureAdminRepository();
 

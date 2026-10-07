@@ -111,11 +111,12 @@ const madridDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
 });
 
 function normalizeLocalDateTimePrecision(value: string): string {
-  const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?$/);
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})(?::(\d{2})(?:\.(\d+))?)?$/);
   if (!match) return value;
 
-  const milliseconds = (match[2] ?? "").padEnd(3, "0").slice(0, 3);
-  return `${match[1]}.${milliseconds}`;
+  const seconds = match[2] ?? "00";
+  const milliseconds = (match[3] ?? "").padEnd(3, "0").slice(0, 3);
+  return `${match[1]}:${seconds}.${milliseconds}`;
 }
 
 function toMadridLocalDateTime(value: string, boundary: "from" | "to"): string {
