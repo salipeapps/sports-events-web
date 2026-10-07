@@ -32,5 +32,13 @@ describe("server environment", () => {
         ADMIN_DEV_AUTH_ROLE: "admin",
       }),
     ).toThrow("development-only");
+
+    expect(() =>
+      getServerConfig({
+        APP_ENV: "development",
+        NODE_ENV: "production",
+        ADMIN_DEV_AUTH_MODE: "enabled",
+      }),
+    ).toThrow("development-only");
   });
 });

@@ -8,6 +8,7 @@ export type AdminDevRole = (typeof ADMIN_ROLES)[number];
 
 export interface ServerEnvironment {
   APP_ENV?: string;
+  NODE_ENV?: string;
   ADMIN_DEV_AUTH_MODE?: string;
   ADMIN_DEV_AUTH_ROLE?: string;
   ADMIN_DEV_AUTH_NAME?: string;
@@ -46,16 +47,18 @@ export function parseAdminDevRole(value: string | undefined): AdminDevRole {
 export function getServerConfig(environment?: ServerEnvironment) {
   const source = environment ?? process.env;
   const appEnv = parseAppEnvironment(source.APP_ENV);
+  const nodeEnv = source.NODE_ENV;
   const adminDevAuthMode = parseAdminDevAuthMode(source.ADMIN_DEV_AUTH_MODE);
   const adminDevAuthRole = parseAdminDevRole(source.ADMIN_DEV_AUTH_ROLE);
   const adminDevAuthName = source.ADMIN_DEV_AUTH_NAME?.trim() || "Local Admin";
 
-  if (appEnv === "production" && adminDevAuthMode === "enabled") {
+  if ((appEnv === "production" || nodeEnv === "production") && adminDevAuthMode === "enabled") {
     throw new Error("ADMIN_DEV_AUTH_MODE=enabled is development-only and cannot be enabled in production.");
   }
 
   return {
     appEnv,
+    nodeEnv,
     adminDevAuthMode,
     adminDevAuthRole,
     adminDevAuthName,

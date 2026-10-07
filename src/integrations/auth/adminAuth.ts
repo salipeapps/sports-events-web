@@ -34,7 +34,7 @@ class LocalDevelopmentAdminSessionProvider implements AdminSessionProvider {
 export function createAdminSessionProvider(environment?: ServerEnvironment): AdminSessionProvider {
   const config = getServerConfig(environment);
 
-  if (config.appEnv === "development" && config.adminDevAuthMode === "enabled") {
+  if (config.appEnv === "development" && config.nodeEnv !== "production" && config.adminDevAuthMode === "enabled") {
     return new LocalDevelopmentAdminSessionProvider(config.adminDevAuthRole, config.adminDevAuthName);
   }
 

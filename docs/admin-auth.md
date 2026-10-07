@@ -23,8 +23,9 @@ ADMIN_DEV_AUTH_ROLE=admin
 ADMIN_DEV_AUTH_NAME=Local Admin
 ```
 
-It defaults to disabled. Configuration throws if the bypass is enabled with
-`APP_ENV=production`, so it cannot silently become a production access path.
+It defaults to disabled. Configuration throws if the bypass is enabled with either
+`APP_ENV=production` or the runtime `NODE_ENV=production`, so it cannot silently become a
+production access path.
 
 ## Roles and server authorization
 
