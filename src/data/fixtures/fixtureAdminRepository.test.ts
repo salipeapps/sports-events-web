@@ -6,6 +6,12 @@ import { FixtureAdminRepository } from "./fixtureAdminRepository";
 
 const reviewer = { id: "reviewer-1", role: "reviewer", displayName: "Fixture reviewer" } as const;
 
+async function currentVersion(repository: FixtureAdminRepository, candidateId: string): Promise<string> {
+  const candidate = await repository.getCandidate(candidateId);
+  if (!candidate) throw new Error(`Expected candidate fixture: ${candidateId}`);
+  return candidateReviewVersion(candidate);
+}
+
 describe("FixtureAdminRepository", () => {
   it("combines candidate filters and exposes dataset-derived states", async () => {
     const repository = new FixtureAdminRepository();
@@ -25,6 +31,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.approveCandidate("candidate-conflict-E023", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-conflict-E023"),
         reason: "Attempt to publish before resolving conflict",
       }),
     ).rejects.toThrow("essential block");
@@ -36,6 +43,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.approveCandidate("candidate-incomplete-E017", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-incomplete-E017"),
         reason: "Attempt to publish incomplete fixture",
       }),
     ).rejects.toThrow("essential block");
@@ -47,6 +55,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.approveCandidate("candidate-possible-duplicate-E019-mirror", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-possible-duplicate-E019-mirror"),
         reason: "Attempt to publish before resolving duplicate",
       }),
     ).rejects.toThrow("pending_match");
@@ -65,6 +74,7 @@ describe("FixtureAdminRepository", () => {
     const repository = new FixtureAdminRepository();
     const candidate = await repository.approveCandidate("candidate-valid-E019", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       reason: "Evidence checked in fixture workflow",
     });
 
@@ -79,6 +89,7 @@ describe("FixtureAdminRepository", () => {
 
     const corrected = await repository.updateCandidateFinal("candidate-valid-E019", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       reason: "Clarify the editorial title before publication",
       corrections: { title: known("Editorially corrected title") },
     });
@@ -96,11 +107,28 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.updateCandidateFinal("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         corrections: { organizerId: known("O999") },
       }),
     ).rejects.toThrow("organizer does not exist");
 
     expect(await repository.getCandidate("candidate-valid-E019")).toEqual(before);
+  });
+
+  it("rejects an empty expected version at the repository boundary", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await expect(
+      repository.updateCandidateFinal("candidate-valid-E019", {
+        actor: reviewer,
+        expectedVersion: "",
+        corrections: { title: known("Must not be persisted") },
+      }),
+    ).rejects.toThrow("Falta la versión esperada");
+
+    expect((await repository.getCandidate("candidate-valid-E019"))?.final.title).not.toEqual(
+      known("Must not be persisted"),
+    );
   });
 
   it("rejects a stale expected version atomically at the repository boundary", async () => {
@@ -111,6 +139,7 @@ describe("FixtureAdminRepository", () => {
 
     await repository.updateCandidateFinal("candidate-valid-E019", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       expectedVersion,
       corrections: { title: known("First concurrent edit") },
     });
@@ -118,6 +147,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.updateCandidateFinal("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         expectedVersion,
         corrections: { location: known("Stale concurrent location") },
       }),
@@ -163,6 +193,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.approveCandidate("candidate-conflict-E023", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-conflict-E023"),
         corrections: { title: known("Edited title that must roll back") },
       }),
     ).rejects.toThrow("essential block");
@@ -179,6 +210,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.approveCandidate("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         corrections: { organizerId: known("") },
       }),
     ).rejects.toThrow("Invalid admin contract");
@@ -226,6 +258,7 @@ describe("FixtureAdminRepository", () => {
 
     await repository.approveCandidate("candidate-valid-E019", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       reason: "Exercise millisecond precision",
       corrections: { startLocal: known("2026-10-24T16:00:00.000") },
     });
@@ -246,6 +279,7 @@ describe("FixtureAdminRepository", () => {
 
     await repository.approveCandidate("candidate-valid-E019", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       reason: "Publish before checking coverage",
     });
 
@@ -262,12 +296,14 @@ describe("FixtureAdminRepository", () => {
 
     await repository.rejectCandidate("candidate-valid-E019", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       reason: "Terminal decision",
     });
 
     await expect(
       repository.approveCandidate("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         reason: "Must require explicit reopen",
       }),
     ).rejects.toThrow("terminal state rejected");
@@ -275,6 +311,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.blockCandidate("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         reason: "Must require explicit reopen",
       }),
     ).rejects.toThrow("terminal state rejected");
@@ -282,6 +319,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.requestReprocess("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         reason: "Must require explicit reopen",
       }),
     ).rejects.toThrow("terminal state rejected");
@@ -299,6 +337,7 @@ describe("FixtureAdminRepository", () => {
 
     await repository.rejectCandidate("candidate-possible-duplicate-E019-mirror", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-possible-duplicate-E019-mirror"),
       reason: "Duplicate candidate resolved editorially",
     });
 
@@ -328,6 +367,7 @@ describe("FixtureAdminRepository", () => {
     const repository = new FixtureAdminRepository();
     const candidate = await repository.approveCandidate("candidate-valid-E019", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       reason: "Correct organizer before publication",
       corrections: { organizerId: known("O033") },
     });
@@ -348,12 +388,14 @@ describe("FixtureAdminRepository", () => {
 
     await repository.approveCandidate("candidate-valid-E019", {
       actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
       reason: "Publish before testing terminal decision guards",
     });
 
     await expect(
       repository.rejectCandidate("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         reason: "Must not revert a published candidate",
       }),
     ).rejects.toThrow("Published candidate cannot be rejected");
@@ -361,6 +403,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.blockCandidate("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         reason: "Must not block a published candidate",
       }),
     ).rejects.toThrow("Published candidate cannot be blocked");
@@ -371,7 +414,7 @@ describe("FixtureAdminRepository", () => {
   it("requires a reason when rejecting or blocking", async () => {
     const repository = new FixtureAdminRepository();
 
-    await expect(repository.rejectCandidate("candidate-valid-E019", { actor: reviewer, reason: "  " })).rejects.toThrow(
+    await expect(repository.rejectCandidate("candidate-valid-E019", { actor: reviewer, expectedVersion: await currentVersion(repository, "candidate-valid-E019"), reason: "  " })).rejects.toThrow(
       "non-empty reason",
     );
   });
@@ -380,7 +423,7 @@ describe("FixtureAdminRepository", () => {
     const first = new FixtureAdminRepository();
     const second = new FixtureAdminRepository();
 
-    await first.rejectCandidate("candidate-valid-E019", { actor: reviewer, reason: "Fixture-only rejection" });
+    await first.rejectCandidate("candidate-valid-E019", { actor: reviewer, expectedVersion: await currentVersion(first, "candidate-valid-E019"), reason: "Fixture-only rejection" });
 
     expect((await first.getCandidate("candidate-valid-E019"))?.editorialStatus).toBe("rejected");
     expect((await second.getCandidate("candidate-valid-E019"))?.editorialStatus).toBe("review");
@@ -403,6 +446,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.rejectCandidate("candidate-valid-E019", {
         actor: invalidActor,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         reason: "This must not be persisted",
       }),
     ).rejects.toThrow("valid editorial actor");
@@ -417,6 +461,7 @@ describe("FixtureAdminRepository", () => {
     await expect(
       repository.approveCandidate("candidate-valid-E019", {
         actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
         reason: "Invalid organizer correction",
         corrections: { organizerId: known("O999") },
       }),
