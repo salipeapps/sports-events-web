@@ -45,6 +45,22 @@ function booleanValue(field: EventDetails["individualAccess"]): string {
   return field.state === "known" ? String(field.value) : "";
 }
 
+export function formatObservedPrice(price: PriceDetails): string {
+  if (price.kind === "free") return "Gratis";
+  if (price.options.length === 0) return price.note ?? "Sin importe observado";
+
+  return price.options
+    .map((option) => {
+      const amount = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 }).format(option.amount);
+      const qualifiers =
+        price.kind === "transport_included"
+          ? [option.label, option.condition].filter(Boolean)
+          : [option.paymentMethod, option.label, option.condition].filter(Boolean);
+      return `${amount} €${qualifiers.length > 0 ? ` ${qualifiers.join(" · ")}` : ""}`;
+    })
+    .join(" / ");
+}
+
 export function formatEditablePrice(field: EventDetails["price"]): string {
   if (field.state === "unknown") return "";
   if (field.value.kind === "free") return "Gratis";
