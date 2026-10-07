@@ -56,7 +56,6 @@ independently through `requireAdminCapability()`.
 
 A route being hidden or marked `noindex` is not a security boundary. See `docs/admin-auth.md`.
 
-
 ## Location-agnostic Admin
 
 The Admin shell, branding and structural copy must remain location-agnostic. Cities, regions and
