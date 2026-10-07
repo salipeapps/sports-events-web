@@ -400,7 +400,12 @@ function validateBlockerResolution(value: unknown, path: string, errors: string[
   }
 
   validateString(value.id, `${path}.id`, errors);
-  validateEnum(value.kind, ["conflict", "rule", "match", "change_proposal"], `${path}.kind`, errors);
+  validateEnum(
+    value.kind,
+    ["conflict", "rule", "match", "change_proposal"],
+    `${path}.kind`,
+    errors,
+  );
   validateString(value.targetId, `${path}.targetId`, errors);
   validateString(value.at, `${path}.at`, errors);
   validateString(value.reason, `${path}.reason`, errors);
@@ -603,11 +608,8 @@ export function isCandidateBlockerResolved(
   kind: "conflict" | "rule" | "match" | "change_proposal",
   targetId: string,
 ): boolean {
-  return (
-    candidate.blockerResolutions?.some(
-      (resolution) => resolution.kind === kind && resolution.targetId === targetId,
-    ) ?? false
-  );
+  const resolutions = candidate.blockerResolutions ?? [];
+  return resolutions.some((resolution) => resolution.kind === kind && resolution.targetId === targetId);
 }
 
 export function hasBlockingConflict(candidate: AdminCandidate): boolean {
