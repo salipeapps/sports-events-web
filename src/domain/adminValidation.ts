@@ -576,6 +576,7 @@ export function hasBlockingRule(candidate: AdminCandidate): boolean {
 export function publicationBlockReasons(candidate: AdminCandidate): string[] {
   const reasons: string[] = [];
 
+  if (candidate.editorialStatus === "blocked") reasons.push("editorial_status_blocked");
   if (hasBlockingConflict(candidate)) reasons.push("open_blocking_conflict");
   if (hasBlockingRule(candidate)) reasons.push("blocking_rule");
   if (candidate.matches.some((match) => match.status === "pending")) {

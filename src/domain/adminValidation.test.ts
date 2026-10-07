@@ -6,12 +6,27 @@ import {
   deserializeAdminCandidate,
   deserializeEngineRun,
   deserializeSourceConfig,
+  canPublishCandidate,
   parseAdminCandidate,
+  publicationBlockReasons,
   serializeContract,
 } from "./adminValidation";
 import { candidateFixtures, runFixtures, sourceFixtures } from "@/data/fixtures/adminFixtures";
 
 describe("admin contracts", () => {
+  it("treats an editorial blocked status as a publication guard", () => {
+    const source = candidateFixtures.find((candidate) => candidate.id === "candidate-valid-E019");
+    if (!source) throw new Error("Expected valid fixture");
+
+    const candidate = parseAdminCandidate({
+      ...structuredClone(source),
+      editorialStatus: "blocked",
+    });
+
+    expect(publicationBlockReasons(candidate)).toContain("editorial_status_blocked");
+    expect(canPublishCandidate(candidate)).toBe(false);
+  });
+
   it("keeps unknown distinct from known zero and false", () => {
     expect(known(0)).toEqual({ state: "known", value: 0 });
     expect(known(false)).toEqual({ state: "known", value: false });
