@@ -255,8 +255,7 @@ function hasOpenCandidateBlocker(candidate: AdminCandidate, input: CandidateBloc
       return (
         candidate.changeProposal.state === "known" &&
         candidate.changeProposal.value.id === input.targetId &&
-        candidate.changeProposal.value.status === "pending" &&
-        candidate.changeProposal.value.essential
+        candidate.changeProposal.value.status === "pending"
       );
   }
 }
@@ -593,14 +592,34 @@ export class FixtureAdminRepository implements AdminRepository {
       candidateForResolution.final = applyChangeFields(candidateForResolution.final, proposal.fields, side);
       proposal.status = input.disposition === "accepted" ? "approved" : "rejected";
 
+      if (proposal.fields.some((field) => field.field === "organizerId")) {
+        const selectedOrganizer = valueOrUndefined(candidateForResolution.final.organizerId);
+        if (!selectedOrganizer || !organizerFixtures.some((organizer) => organizer.id === selectedOrganizer)) {
+          throw new Error(`Change proposal organizer does not exist: ${selectedOrganizer ?? "unknown"}.`);
+        }
+        candidateForResolution.organizerId = clone(candidateForResolution.final.organizerId);
+      }
+
       if (input.disposition === "accepted") {
         const currentOccurrence = this.published.find((occurrence) => occurrence.id === proposal.publishedOccurrenceId);
         if (!currentOccurrence) {
           throw new Error(`Published occurrence does not exist: ${proposal.publishedOccurrenceId}.`);
         }
 
+        if (!currentOccurrence.sourceRecordIds.includes(candidate.sourceRecordId)) {
+          throw new Error("Change proposal target does not match the candidate source record.");
+        }
+        for (const field of proposal.fields) {
+          if (JSON.stringify(currentOccurrence.event[field.field]) !== JSON.stringify(field.before)) {
+            throw new Error(`Stale change proposal: published ${field.field} no longer matches the observed before value.`);
+          }
+        }
+
         const nextOccurrence = clone(currentOccurrence);
         nextOccurrence.event = applyChangeFields(nextOccurrence.event, proposal.fields, "after");
+        if (proposal.fields.some((field) => field.field === "organizerId")) {
+          nextOccurrence.organizerId = valueOrUndefined(nextOccurrence.event.organizerId)!;
+        }
         nextOccurrence.lastCheckedAt = candidateForResolution.lastCheckedAt;
         nextOccurrence.evidenceIds = Array.from(
           new Set([...nextOccurrence.evidenceIds, ...proposal.fields.flatMap((field) => field.evidenceIds)]),
