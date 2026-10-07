@@ -129,14 +129,26 @@ describe("FixtureAdminRepository", () => {
   it("removes terminal candidates from urgent dashboard items", async () => {
     const repository = new FixtureAdminRepository();
 
-    expect((await repository.getDashboardSummary()).urgentItems.some((item) => item.candidateId.state === "known" && item.candidateId.value === "candidate-possible-duplicate-E019-mirror")).toBe(true);
+    expect(
+      (await repository.getDashboardSummary()).urgentItems.some(
+        (item) =>
+          item.candidateId.state === "known" &&
+          item.candidateId.value === "candidate-possible-duplicate-E019-mirror",
+      ),
+    ).toBe(true);
 
     await repository.rejectCandidate("candidate-possible-duplicate-E019-mirror", {
       actor: reviewer,
       reason: "Duplicate candidate resolved editorially",
     });
 
-    expect((await repository.getDashboardSummary()).urgentItems.some((item) => item.candidateId.state === "known" && item.candidateId.value === "candidate-possible-duplicate-E019-mirror")).toBe(false);
+    expect(
+      (await repository.getDashboardSummary()).urgentItems.some(
+        (item) =>
+          item.candidateId.state === "known" &&
+          item.candidateId.value === "candidate-possible-duplicate-E019-mirror",
+      ),
+    ).toBe(false);
   });
 
   it("stores an immutable snapshot of the editorial actor in history", async () => {

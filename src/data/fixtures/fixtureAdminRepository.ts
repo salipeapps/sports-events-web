@@ -285,37 +285,37 @@ export class FixtureAdminRepository implements AdminRepository {
       urgentItems: this.candidates
         .filter((candidate) => ["candidate", "review", "blocked"].includes(candidate.editorialStatus))
         .flatMap((candidate) => {
-        const items: DashboardSummary["urgentItems"] = [];
-        for (const conflict of candidate.conflicts.filter((item) => item.status === "open")) {
-          items.push({
-            id: `urgent-${conflict.id}`,
-            kind: "conflict",
-            title: valueOrUndefined(candidate.final.title) ?? candidate.sourceRecordId,
-            candidateId: { state: "known", value: candidate.id },
-            sourceId: { state: "known", value: candidate.sourceId },
-            reason: conflict.summary,
-          });
-        }
-        if (candidate.matches.some((match) => match.status === "pending")) {
-          items.push({
-            id: `urgent-match-${candidate.id}`,
-            kind: "duplicate",
-            title: valueOrUndefined(candidate.final.title) ?? candidate.sourceRecordId,
-            candidateId: { state: "known", value: candidate.id },
-            sourceId: { state: "known", value: candidate.sourceId },
-            reason: "Candidate has a pending identity/match decision.",
-          });
-        }
-        if (candidate.changeProposal.state === "known" && candidate.changeProposal.value.status === "pending") {
-          items.push({
-            id: `urgent-change-${candidate.id}`,
-            kind: "change",
-            title: valueOrUndefined(candidate.final.title) ?? candidate.sourceRecordId,
-            candidateId: { state: "known", value: candidate.id },
-            sourceId: { state: "known", value: candidate.sourceId },
-            reason: "Essential change requires editorial review.",
-          });
-        }
+          const items: DashboardSummary["urgentItems"] = [];
+          for (const conflict of candidate.conflicts.filter((item) => item.status === "open")) {
+            items.push({
+              id: `urgent-${conflict.id}`,
+              kind: "conflict",
+              title: valueOrUndefined(candidate.final.title) ?? candidate.sourceRecordId,
+              candidateId: { state: "known", value: candidate.id },
+              sourceId: { state: "known", value: candidate.sourceId },
+              reason: conflict.summary,
+            });
+          }
+          if (candidate.matches.some((match) => match.status === "pending")) {
+            items.push({
+              id: `urgent-match-${candidate.id}`,
+              kind: "duplicate",
+              title: valueOrUndefined(candidate.final.title) ?? candidate.sourceRecordId,
+              candidateId: { state: "known", value: candidate.id },
+              sourceId: { state: "known", value: candidate.sourceId },
+              reason: "Candidate has a pending identity/match decision.",
+            });
+          }
+          if (candidate.changeProposal.state === "known" && candidate.changeProposal.value.status === "pending") {
+            items.push({
+              id: `urgent-change-${candidate.id}`,
+              kind: "change",
+              title: valueOrUndefined(candidate.final.title) ?? candidate.sourceRecordId,
+              candidateId: { state: "known", value: candidate.id },
+              sourceId: { state: "known", value: candidate.sourceId },
+              reason: "Essential change requires editorial review.",
+            });
+          }
           return items;
         }),
     };
