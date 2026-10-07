@@ -641,10 +641,9 @@ export function publicationBlockReasons(candidate: AdminCandidate): string[] {
   if (
     candidate.changeProposal.state === "known" &&
     candidate.changeProposal.value.status === "pending" &&
-    candidate.changeProposal.value.essential &&
     !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
   ) {
-    reasons.push("pending_essential_change");
+    reasons.push(candidate.changeProposal.value.essential ? "pending_essential_change" : "pending_change_proposal");
   }
 
   const essentials: Array<[keyof EventDetails, FieldValue<unknown>]> = [
