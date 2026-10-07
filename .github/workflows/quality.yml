@@ -35,3 +35,9 @@ jobs:
 
       - name: Run quality checks
         run: npm run quality
+
+      - name: Show remaining issue 5 Prettier diff
+        if: failure()
+        run: |
+          npx prettier --write src/presentation/admin/candidateReviewForm.test.ts
+          git diff -- src/presentation/admin/candidateReviewForm.test.ts
