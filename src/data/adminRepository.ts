@@ -1,0 +1,45 @@
+import type {
+  ActivityFilters,
+  ActivityListItem,
+  AdminCandidate,
+  CandidateFilters,
+  DashboardSummary,
+  EditorialActor,
+  EngineRun,
+  EventDetails,
+  Organizer,
+  PageResult,
+  SourceConfig,
+} from "@/domain/admin";
+
+export interface CandidateApprovalInput {
+  actor: EditorialActor;
+  reason?: string;
+  corrections?: Partial<EventDetails>;
+}
+
+export interface CandidateDecisionInput {
+  actor: EditorialActor;
+  reason: string;
+}
+
+export interface CandidateActionInput {
+  actor: EditorialActor;
+  reason?: string;
+}
+
+export interface AdminRepository {
+  getDashboardSummary(): Promise<DashboardSummary>;
+  listActivities(filters?: ActivityFilters): Promise<PageResult<ActivityListItem>>;
+  listCandidates(filters?: CandidateFilters): Promise<PageResult<ActivityListItem>>;
+  getCandidate(candidateId: string): Promise<AdminCandidate | null>;
+  listOrganizers(): Promise<Organizer[]>;
+  getOrganizer(organizerId: string): Promise<Organizer | null>;
+  approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate>;
+  rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
+  blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
+  requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate>;
+  requestReprocess(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate>;
+  listSources(): Promise<SourceConfig[]>;
+  listRuns(): Promise<EngineRun[]>;
+}

@@ -1,0 +1,48 @@
+import { known, unknown, type EngineRun } from "@/domain/admin";
+
+export const runFixtures: EngineRun[] = [
+  {
+    id: "fixture-run-8421",
+    kind: "capture",
+    sourceId: known("S001"),
+    query: unknown("not_applicable"),
+    startedAt: "2026-10-05T14:32:00.000Z",
+    finishedAt: known("2026-10-05T14:34:14.000Z"),
+    durationSeconds: known(134),
+    status: "succeeded",
+    counters: { discovered: 4, created: 2, updated: 1, discarded: 0, review: 3 },
+    cost: unknown("not_observed", "The research did not measure automated acquisition cost."),
+    incident: unknown("not_applicable"),
+    retryCount: 0,
+  },
+  {
+    id: "fixture-run-8420",
+    kind: "capture",
+    sourceId: known("S009"),
+    query: unknown("not_applicable"),
+    startedAt: "2026-10-05T12:48:00.000Z",
+    finishedAt: known("2026-10-05T12:50:20.000Z"),
+    durationSeconds: known(140),
+    status: "partial",
+    counters: { discovered: 2, created: 0, updated: 2, discarded: 0, review: 2 },
+    cost: unknown("not_observed"),
+    incident: known("Schedule disagreement between organizer website and Meetup requires review."),
+    retryCount: 0,
+  },
+  {
+    id: "fixture-run-8419",
+    kind: "capture",
+    sourceId: known("S005"),
+    query: unknown("not_applicable"),
+    startedAt: "2026-10-05T11:30:00.000Z",
+    finishedAt: known("2026-10-05T11:31:00.000Z"),
+    durationSeconds: known(60),
+    status: "failed",
+    counters: { discovered: 0, created: 0, updated: 0, discarded: 0, review: 0 },
+    cost: unknown("not_observed"),
+    incident: known(
+      "Fixture-only failed run used to exercise error states; no production run existed in dataset v0.1.",
+    ),
+    retryCount: 1,
+  },
+];
