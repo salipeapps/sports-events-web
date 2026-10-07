@@ -159,6 +159,14 @@ function applyCorrections(candidate: AdminCandidate, corrections?: Partial<Event
   candidate.final = { ...candidate.final, ...clone(corrections) };
 }
 
+function assertNotPublished(candidate: AdminCandidate, action: string): void {
+  if (candidate.editorialStatus === "published") {
+    throw new Error(
+      `Published candidate cannot be ${action}; use the published occurrence lifecycle instead.`,
+    );
+  }
+}
+
 export class FixtureAdminRepository implements AdminRepository {
   private candidates = clone(candidateFixtures);
   private published = clone(publishedOccurrenceFixtures);
@@ -316,6 +324,7 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
+    assertNotPublished(candidate, "approved again");
     const candidateForApproval = clone(candidate);
 
     applyCorrections(candidateForApproval, input.corrections);
@@ -361,6 +370,7 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
+    assertNotPublished(candidate, "rejected");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "rejected";
     candidate.history.push(historyEntry(candidate, "rejected", input.actor, reason));
@@ -369,6 +379,7 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
+    assertNotPublished(candidate, "blocked");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "blocked";
     candidate.history.push(historyEntry(candidate, "blocked", input.actor, reason));

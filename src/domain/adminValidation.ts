@@ -572,6 +572,16 @@ export function publicationBlockReasons(candidate: AdminCandidate): string[] {
 
   if (hasBlockingConflict(candidate)) reasons.push("open_blocking_conflict");
   if (hasBlockingRule(candidate)) reasons.push("blocking_rule");
+  if (candidate.matches.some((match) => match.status === "pending")) {
+    reasons.push("pending_match");
+  }
+  if (
+    candidate.changeProposal.state === "known" &&
+    candidate.changeProposal.value.status === "pending" &&
+    candidate.changeProposal.value.essential
+  ) {
+    reasons.push("pending_essential_change");
+  }
 
   const essentials: Array<[keyof EventDetails, FieldValue<unknown>]> = [
     ["title", candidate.final.title],

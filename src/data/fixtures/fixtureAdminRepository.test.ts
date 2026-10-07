@@ -40,6 +40,17 @@ describe("FixtureAdminRepository", () => {
     ).rejects.toThrow("essential block");
   });
 
+  it("does not approve a candidate while a duplicate match is pending", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await expect(
+      repository.approveCandidate("candidate-possible-duplicate-E019-mirror", {
+        actor: reviewer,
+        reason: "Attempt to publish before resolving duplicate",
+      }),
+    ).rejects.toThrow("pending_match");
+  });
+
   it("filters candidates by originating execution", async () => {
     const repository = new FixtureAdminRepository();
     const result = await repository.listCandidates({ executionId: "fixture-run-8421" });
@@ -94,6 +105,31 @@ describe("FixtureAdminRepository", () => {
     });
     const occurrence = published.items.find((item) => item.id === "published-candidate-valid-E019");
     expect(occurrence?.organizerId).toEqual(known("O033"));
+  });
+
+  it("does not allow a published candidate to be rejected or blocked", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await repository.approveCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      reason: "Publish before testing terminal decision guards",
+    });
+
+    await expect(
+      repository.rejectCandidate("candidate-valid-E019", {
+        actor: reviewer,
+        reason: "Must not revert a published candidate",
+      }),
+    ).rejects.toThrow("Published candidate cannot be rejected");
+
+    await expect(
+      repository.blockCandidate("candidate-valid-E019", {
+        actor: reviewer,
+        reason: "Must not block a published candidate",
+      }),
+    ).rejects.toThrow("Published candidate cannot be blocked");
+
+    expect((await repository.getCandidate("candidate-valid-E019"))?.editorialStatus).toBe("published");
   });
 
   it("requires a reason when rejecting or blocking", async () => {
