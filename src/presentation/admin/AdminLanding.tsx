@@ -19,9 +19,8 @@ export function AdminLanding() {
       <p className="eyebrow">Administración</p>
       <h1>Admin v0</h1>
       <p className="lead">
-        Motor y revisión editorial. Este bootstrap prepara las fronteras de la
-        aplicación; los datos y flujos funcionales se incorporarán en las siguientes
-        issues.
+        Motor y revisión editorial. Este bootstrap prepara las fronteras de la aplicación; los datos y flujos
+        funcionales se incorporarán en las siguientes issues.
       </p>
 
       <section className="status-grid" aria-label="Áreas de administración">
