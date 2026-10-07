@@ -10,7 +10,7 @@ import {
   type PriceDetails,
   type SourceConfig,
 } from "@/domain/admin";
-import { publicationBlockReasons } from "@/domain/adminValidation";
+import { isCandidateBlockerResolved, publicationBlockReasons } from "@/domain/adminValidation";
 import {
   categoryLabels,
   displayField,
@@ -20,11 +20,12 @@ import {
   statusTone,
 } from "./adminPresentation";
 import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
-import { editablePriceKind, formatEditablePrice } from "./candidateReviewForm";
+import { editablePriceKind, formatEditablePrice, formatObservedPrice } from "./candidateReviewForm";
 import {
   approveCandidateAction,
   blockCandidateAction,
   rejectCandidateAction,
+  resolveCandidateBlockerAction,
   unblockCandidateAction,
   reprocessCandidateAction,
   requeryCandidateAction,
@@ -63,6 +64,7 @@ const actionLabels: Record<EditorialAction, string> = {
   rejected: "Rechazada",
   blocked: "Bloqueada",
   unblocked: "Desbloqueada",
+  blocker_resolved: "Bloqueo resuelto",
   requery_requested: "Reconsulta solicitada",
   reprocess_requested: "Reproceso solicitado",
   cancelled: "Cancelada",
@@ -93,18 +95,6 @@ function knownString(field: FieldValue<string>): string {
 function organizerName(field: EventDetails["organizerId"], organizers: Organizer[]): string {
   if (field.state === "unknown") return displayField(field);
   return organizers.find((organizer) => organizer.id === field.value)?.name ?? field.value;
-}
-
-function formatPrice(price: PriceDetails): string {
-  if (price.kind === "free") return "Gratis";
-  if (price.options.length === 0) return price.note ?? "Sin importe observado";
-
-  return price.options
-    .map((option) => {
-      const amount = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 }).format(option.amount);
-      return `${amount} €${option.paymentMethod ? ` ${option.paymentMethod}` : ""}`;
-    })
-    .join(" / ");
 }
 
 function dateRange(details: EventDetails): string {
@@ -148,8 +138,55 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
   const terminal = terminalStatuses.has(candidate.editorialStatus);
   const canApprove = !terminal && blockReasons.length === 0;
   const sourceName = sources.find((source) => source.id === candidate.sourceId)?.name ?? candidate.sourceId;
-  const openConflicts = candidate.conflicts.filter((conflict) => conflict.status === "open");
+  const openConflicts = candidate.conflicts.filter(
+    (conflict) =>
+      conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+  );
   const reviewVersion = candidateReviewVersion(candidate);
+  const unresolvedBlockers = [
+    ...candidate.conflicts
+      .filter(
+        (conflict) =>
+          conflict.status === "open" &&
+          conflict.blocking &&
+          !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+      )
+      .map((conflict) => ({
+        kind: "conflict" as const,
+        id: conflict.id,
+        title: `Conflicto · ${conflict.type}`,
+        description: conflict.summary,
+      })),
+    ...candidate.rules
+      .filter((rule) => rule.outcome === "block" && !isCandidateBlockerResolved(candidate, "rule", rule.id))
+      .map((rule) => ({
+        kind: "rule" as const,
+        id: rule.id,
+        title: `Regla · ${rule.code}`,
+        description: rule.reason,
+      })),
+    ...candidate.matches
+      .filter((match) => match.status === "pending" && !isCandidateBlockerResolved(candidate, "match", match.id))
+      .map((match) => ({
+        kind: "match" as const,
+        id: match.id,
+        title: `Coincidencia pendiente · ${match.relation}`,
+        description: match.signals.join(" · "),
+      })),
+    ...(candidate.changeProposal.state === "known" &&
+    candidate.changeProposal.value.status === "pending" &&
+    candidate.changeProposal.value.essential &&
+    !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
+      ? [
+          {
+            kind: "change_proposal" as const,
+            id: candidate.changeProposal.value.id,
+            title: "Cambio esencial pendiente",
+            description: `${candidate.changeProposal.value.fields.length} campo(s) requieren decisión editorial.`,
+          },
+        ]
+      : []),
+  ];
 
   const extractedRows = [
     ["Título", displayField(candidate.extracted.title)],
@@ -158,7 +195,7 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
     ["Zona horaria", displayField(candidate.extracted.timezone)],
     ["Ubicación", displayField(candidate.extracted.location)],
     ["Organizador", organizerName(candidate.extracted.organizerId, organizers)],
-    ["Precio", displayField(candidate.extracted.price, formatPrice)],
+    ["Precio", displayField(candidate.extracted.price, formatObservedPrice)],
     ["Idioma", languages(candidate.extracted)],
     ["Nivel", displayField(candidate.extracted.level)],
     ["Registro", displayField(candidate.extracted.registrationUrl)],
@@ -488,7 +525,12 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
                     <strong>
                       {conflict.type} {conflict.blocking ? "· bloqueante" : ""}
                     </strong>
-                    <span>{conflict.status === "open" ? "Abierto" : "Resuelto"}</span>
+                    <span>
+                      {conflict.status === "resolved" ||
+                      isCandidateBlockerResolved(candidate, "conflict", conflict.id)
+                        ? "Resuelto"
+                        : "Abierto"}
+                    </span>
                   </div>
                   <p>{conflict.summary}</p>
                   {conflict.evidenceIds.length > 0 ? (
@@ -529,6 +571,26 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
           </div>
 
           <div className="admin-review-decision-grid">
+            {unresolvedBlockers.map((blocker) => (
+              <details key={`${blocker.kind}-${blocker.id}`}>
+                <summary>{blocker.title}</summary>
+                <form action={resolveCandidateBlockerAction}>
+                  <input type="hidden" name="candidateId" value={candidate.id} />
+                  <input type="hidden" name="candidateVersion" value={reviewVersion} />
+                  <input type="hidden" name="blockerKind" value={blocker.kind} />
+                  <input type="hidden" name="blockerId" value={blocker.id} />
+                  <p>{blocker.description}</p>
+                  <label>
+                    <span>Motivo de resolución</span>
+                    <textarea name="blockerReason" required rows={3} />
+                  </label>
+                  <button className="admin-secondary-button" type="submit">
+                    Marcar bloqueo como resuelto
+                  </button>
+                </form>
+              </details>
+            ))}
+
             <details>
               <summary>Rechazar</summary>
               <form action={rejectCandidateAction}>
