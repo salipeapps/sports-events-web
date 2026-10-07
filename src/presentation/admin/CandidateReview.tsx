@@ -77,6 +77,7 @@ const publicationReasonLabels: Record<string, string> = {
   blocking_rule: "Existe una regla determinista bloqueante.",
   pending_match: "Hay una posible coincidencia o duplicado pendiente.",
   pending_essential_change: "Hay un cambio esencial pendiente de resolver.",
+  pending_change_proposal: "Hay una propuesta de cambio pendiente de aceptar o rechazar.",
   missing_title: "Falta un título confirmado.",
   missing_category: "Falta una categoría confirmada.",
   missing_startLocal: "Falta fecha y hora confirmadas.",
@@ -174,13 +175,12 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
       })),
     ...(candidate.changeProposal.state === "known" &&
     candidate.changeProposal.value.status === "pending" &&
-    candidate.changeProposal.value.essential &&
     !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
       ? [
           {
             kind: "change_proposal" as const,
             id: candidate.changeProposal.value.id,
-            title: "Cambio esencial pendiente",
+            title: candidate.changeProposal.value.essential ? "Cambio esencial pendiente" : "Cambio pendiente",
             description: `${candidate.changeProposal.value.fields.length} campo(s) requieren decisión editorial.`,
           },
         ]
