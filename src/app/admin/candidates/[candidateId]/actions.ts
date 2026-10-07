@@ -8,7 +8,10 @@ import type { AdminCapability, AdminSession } from "@/domain/adminAccess";
 import { requireAdminCapability } from "@/domain/adminAccess";
 import type { EditorialActor } from "@/domain/admin";
 import { getAdminAccess } from "@/integrations/auth/adminAuth";
-import { buildCandidateCorrections } from "@/presentation/admin/candidateReviewForm";
+import {
+  assertCandidateReviewVersion,
+  buildCandidateCorrections,
+} from "@/presentation/admin/candidateReviewForm";
 
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
@@ -81,6 +84,7 @@ export async function saveCandidateAction(formData: FormData): Promise<never> {
   return completeAction(candidateId, "Cambios editoriales guardados.", async () => {
     const candidate = await repository.getCandidate(candidateId);
     if (!candidate) throw new Error("La candidatura ya no existe.");
+    assertCandidateReviewVersion(formData, candidate);
 
     const corrections = buildCandidateCorrections(formData, candidate);
     await repository.updateCandidateFinal(candidateId, {
@@ -99,6 +103,7 @@ export async function approveCandidateAction(formData: FormData): Promise<never>
   return completeAction(candidateId, "Candidatura aprobada y publicada.", async () => {
     const candidate = await repository.getCandidate(candidateId);
     if (!candidate) throw new Error("La candidatura ya no existe.");
+    assertCandidateReviewVersion(formData, candidate);
 
     const corrections = buildCandidateCorrections(formData, candidate);
     await repository.approveCandidate(candidateId, {
@@ -115,7 +120,11 @@ export async function rejectCandidateAction(formData: FormData): Promise<never> 
   const reason = formString(formData, "decisionReason");
 
   return completeAction(candidateId, "Candidatura rechazada.", async () => {
-    await getAdminRepository().rejectCandidate(candidateId, { actor, reason });
+    const repository = getAdminRepository();
+    const candidate = await repository.getCandidate(candidateId);
+    if (!candidate) throw new Error("La candidatura ya no existe.");
+    assertCandidateReviewVersion(formData, candidate);
+    await repository.rejectCandidate(candidateId, { actor, reason });
   });
 }
 
@@ -125,7 +134,11 @@ export async function blockCandidateAction(formData: FormData): Promise<never> {
   const reason = formString(formData, "decisionReason");
 
   return completeAction(candidateId, "Candidatura bloqueada.", async () => {
-    await getAdminRepository().blockCandidate(candidateId, { actor, reason });
+    const repository = getAdminRepository();
+    const candidate = await repository.getCandidate(candidateId);
+    if (!candidate) throw new Error("La candidatura ya no existe.");
+    assertCandidateReviewVersion(formData, candidate);
+    await repository.blockCandidate(candidateId, { actor, reason });
   });
 }
 
@@ -135,7 +148,11 @@ export async function requeryCandidateAction(formData: FormData): Promise<never>
   const reason = formString(formData, "maintenanceReason");
 
   return completeAction(candidateId, "Reconsulta solicitada.", async () => {
-    await getAdminRepository().requestRequery(candidateId, { actor, reason: reason || undefined });
+    const repository = getAdminRepository();
+    const candidate = await repository.getCandidate(candidateId);
+    if (!candidate) throw new Error("La candidatura ya no existe.");
+    assertCandidateReviewVersion(formData, candidate);
+    await repository.requestRequery(candidateId, { actor, reason: reason || undefined });
   });
 }
 
@@ -145,6 +162,10 @@ export async function reprocessCandidateAction(formData: FormData): Promise<neve
   const reason = formString(formData, "maintenanceReason");
 
   return completeAction(candidateId, "Reproceso solicitado.", async () => {
-    await getAdminRepository().requestReprocess(candidateId, { actor, reason: reason || undefined });
+    const repository = getAdminRepository();
+    const candidate = await repository.getCandidate(candidateId);
+    if (!candidate) throw new Error("La candidatura ya no existe.");
+    assertCandidateReviewVersion(formData, candidate);
+    await repository.requestReprocess(candidateId, { actor, reason: reason || undefined });
   });
 }

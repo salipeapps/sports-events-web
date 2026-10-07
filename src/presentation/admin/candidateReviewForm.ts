@@ -9,6 +9,18 @@ import {
   type PriceDetails,
 } from "@/domain/admin";
 
+const editablePriceKinds: PriceDetails["kind"][] = [
+  "free",
+  "fixed",
+  "trial",
+  "payment_variant",
+  "transport_included",
+  "membership",
+  "annual_membership",
+  "annual_insurance",
+  "donation",
+];
+
 function stringValue(field: FieldValue<string>): string {
   return field.state === "known" ? field.value : "";
 }
@@ -25,6 +37,14 @@ function organizerValue(field: EventDetails["organizerId"]): string {
   return field.state === "known" ? field.value : "";
 }
 
+function timezoneValue(field: EventDetails["timezone"]): string {
+  return field.state === "known" ? field.value : "";
+}
+
+function booleanValue(field: EventDetails["individualAccess"]): string {
+  return field.state === "known" ? String(field.value) : "";
+}
+
 export function formatEditablePrice(field: EventDetails["price"]): string {
   if (field.state === "unknown") return "";
   if (field.value.kind === "free") return "Gratis";
@@ -38,6 +58,10 @@ export function formatEditablePrice(field: EventDetails["price"]): string {
       return `${amount} €${method}`;
     })
     .join(" / ");
+}
+
+export function editablePriceKind(field: EventDetails["price"]): string {
+  return field.state === "known" ? field.value.kind : "";
 }
 
 function parseTextField(value: string): FieldValue<string> {
@@ -62,41 +86,74 @@ function parseLanguages(value: string): EventDetails["languages"] {
   return languages.length > 0 ? known(languages) : unknown("not_provided");
 }
 
-function parsePrice(value: string): EventDetails["price"] {
-  const trimmed = value.trim();
-  if (!trimmed) return unknown("not_provided");
+function parseTimezone(value: string): EventDetails["timezone"] {
+  if (!value) return unknown("not_provided");
+  if (value !== "Europe/Madrid") throw new Error("La zona horaria seleccionada no es válida.");
+  return known("Europe/Madrid");
+}
 
-  if (/^(gratis|free)$/i.test(trimmed)) {
+function parseIndividualAccess(value: string): EventDetails["individualAccess"] {
+  if (!value) return unknown("not_provided");
+  if (value === "true") return known(true);
+  if (value === "false") return known(false);
+  throw new Error("El valor de acceso individual no es válido.");
+}
+
+function parsePriceKind(value: string): PriceDetails["kind"] | null {
+  if (!value) return null;
+  if (!editablePriceKinds.some((kind) => kind === value)) {
+    throw new Error("El tipo de precio seleccionado no es válido.");
+  }
+  return value as PriceDetails["kind"];
+}
+
+function parsePrice(
+  value: string,
+  kindValue: string,
+  currentField: EventDetails["price"],
+): EventDetails["price"] {
+  const trimmed = value.trim();
+  const kind = parsePriceKind(kindValue);
+
+  if (!kind && !trimmed) return unknown("not_provided");
+  if (!kind) throw new Error("Selecciona el tipo de precio para guardar el importe.");
+
+  if (kind === "free") {
     return known<PriceDetails>({ kind: "free", options: [], perSessionComparable: true });
   }
+
+  if (!trimmed) return unknown("not_provided");
 
   const amounts = Array.from(trimmed.matchAll(/\d+(?:[.,]\d+)?/g)).map((match) =>
     Number.parseFloat(match[0].replace(",", ".")),
   );
 
   if (amounts.length === 0 || amounts.some((amount) => !Number.isFinite(amount) || amount < 0)) {
-    throw new Error('Introduce un precio como "8 €", "8 € / 9 € Bizum" o "Gratis".');
+    throw new Error('Introduce un precio como "8 €", "8 € / 9 € Bizum" o selecciona "Gratis".');
   }
 
+  const current = currentField.state === "known" && currentField.value.kind === kind ? currentField.value : null;
   const lower = trimmed.toLowerCase();
-  const kind: PriceDetails["kind"] =
-    amounts.length > 1
-      ? "payment_variant"
-      : lower.includes("prueba") || lower.includes("trial")
-        ? "trial"
-        : lower.includes("donación") || lower.includes("donation")
-          ? "donation"
-          : "fixed";
 
   return known<PriceDetails>({
     kind,
-    options: amounts.map((amount, index) => ({
-      amount,
-      currency: "EUR",
-      ...(lower.includes("bizum") && index === amounts.length - 1 ? { paymentMethod: "Bizum" } : {}),
-      ...(lower.includes("efectivo") && index === 0 ? { paymentMethod: "Efectivo" } : {}),
-    })),
-    perSessionComparable: true,
+    options: amounts.map((amount, index) => {
+      const existing = current?.options[index];
+      const inferredMethod =
+        lower.includes("bizum") && index === amounts.length - 1
+          ? "Bizum"
+          : lower.includes("efectivo") && index === 0
+            ? "Efectivo"
+            : existing?.paymentMethod;
+
+      return {
+        ...existing,
+        amount,
+        currency: "EUR",
+        ...(inferredMethod ? { paymentMethod: inferredMethod } : {}),
+      };
+    }),
+    perSessionComparable: current?.perSessionComparable ?? !["annual_membership", "annual_insurance"].includes(kind),
     note: trimmed,
   });
 }
@@ -108,6 +165,40 @@ function sameValue(left: unknown, right: unknown): boolean {
 function formString(formData: FormData, key: string): string {
   const value = formData.get(key);
   return typeof value === "string" ? value : "";
+}
+
+function hashSnapshot(value: string): string {
+  let hash = 2166136261;
+
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+
+  return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+export function candidateReviewVersion(candidate: AdminCandidate): string {
+  const snapshot = JSON.stringify({
+    final: candidate.final,
+    editorialStatus: candidate.editorialStatus,
+    conflicts: candidate.conflicts.map(({ id, status, blocking, summary }) => ({ id, status, blocking, summary })),
+    matches: candidate.matches.map(({ id, status, relation }) => ({ id, status, relation })),
+    changeProposal: candidate.changeProposal,
+    history: candidate.history.map(({ id, action, at }) => ({ id, action, at })),
+  });
+
+  return `review-v1-${hashSnapshot(snapshot)}`;
+}
+
+export function assertCandidateReviewVersion(formData: FormData, candidate: AdminCandidate): void {
+  const submitted = formString(formData, "candidateVersion");
+
+  if (!submitted || submitted !== candidateReviewVersion(candidate)) {
+    throw new Error(
+      "La candidatura ha cambiado desde que abriste esta revisión. Recarga la página antes de guardar o decidir.",
+    );
+  }
 }
 
 export function buildCandidateCorrections(formData: FormData, candidate: AdminCandidate): Partial<EventDetails> {
@@ -144,6 +235,12 @@ export function buildCandidateCorrections(formData: FormData, candidate: AdminCa
       parsed: parseTextField(formString(formData, "startLocal")),
     },
     {
+      key: "timezone",
+      submitted: formString(formData, "timezone"),
+      currentDisplay: timezoneValue(candidate.final.timezone),
+      parsed: parseTimezone(formString(formData, "timezone")),
+    },
+    {
       key: "location",
       submitted: formString(formData, "location"),
       currentDisplay: stringValue(candidate.final.location),
@@ -154,12 +251,6 @@ export function buildCandidateCorrections(formData: FormData, candidate: AdminCa
       submitted: formString(formData, "organizerId"),
       currentDisplay: organizerValue(candidate.final.organizerId),
       parsed: parseTextField(formString(formData, "organizerId")),
-    },
-    {
-      key: "price",
-      submitted: formString(formData, "price"),
-      currentDisplay: formatEditablePrice(candidate.final.price),
-      parsed: parsePrice(formString(formData, "price")),
     },
     {
       key: "level",
@@ -173,6 +264,18 @@ export function buildCandidateCorrections(formData: FormData, candidate: AdminCa
       currentDisplay: languagesValue(candidate.final.languages),
       parsed: parseLanguages(formString(formData, "languages")),
     },
+    {
+      key: "registrationUrl",
+      submitted: formString(formData, "registrationUrl"),
+      currentDisplay: stringValue(candidate.final.registrationUrl),
+      parsed: parseTextField(formString(formData, "registrationUrl")),
+    },
+    {
+      key: "individualAccess",
+      submitted: formString(formData, "individualAccess"),
+      currentDisplay: booleanValue(candidate.final.individualAccess),
+      parsed: parseIndividualAccess(formString(formData, "individualAccess")),
+    },
   ];
 
   for (const field of candidates) {
@@ -182,6 +285,16 @@ export function buildCandidateCorrections(formData: FormData, candidate: AdminCa
     if (!sameValue(field.parsed, current)) {
       (corrections as Record<string, FieldValue<unknown>>)[field.key] = field.parsed;
     }
+  }
+
+  const submittedPrice = formString(formData, "price");
+  const submittedPriceKind = formString(formData, "priceKind");
+  if (
+    submittedPrice.trim() !== formatEditablePrice(candidate.final.price).trim() ||
+    submittedPriceKind !== editablePriceKind(candidate.final.price)
+  ) {
+    const parsedPrice = parsePrice(submittedPrice, submittedPriceKind, candidate.final.price);
+    if (!sameValue(parsedPrice, candidate.final.price)) corrections.price = parsedPrice;
   }
 
   return corrections;

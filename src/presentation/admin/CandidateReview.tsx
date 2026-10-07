@@ -19,7 +19,11 @@ import {
   statusLabels,
   statusTone,
 } from "./adminPresentation";
-import { formatEditablePrice } from "./candidateReviewForm";
+import {
+  candidateReviewVersion,
+  editablePriceKind,
+  formatEditablePrice,
+} from "./candidateReviewForm";
 import {
   approveCandidateAction,
   blockCandidateAction,
@@ -38,6 +42,18 @@ interface CandidateReviewProps {
 }
 
 const terminalStatuses = new Set(["published", "rejected", "cancelled", "archived"]);
+
+const priceKindLabels: Record<PriceDetails["kind"], string> = {
+  free: "Gratis",
+  fixed: "Precio fijo",
+  trial: "Prueba",
+  payment_variant: "Variantes de pago",
+  transport_included: "Transporte incluido",
+  membership: "Membresía",
+  annual_membership: "Membresía anual",
+  annual_insurance: "Seguro anual",
+  donation: "Donación",
+};
 
 const actionLabels: Record<EditorialAction, string> = {
   captured: "Candidatura creada",
@@ -134,16 +150,23 @@ export function CandidateReview({ candidate, organizers, source, result, error }
   const canApprove = !terminal && blockReasons.length === 0;
   const sourceName = source?.name ?? candidate.sourceId;
   const openConflicts = candidate.conflicts.filter((conflict) => conflict.status === "open");
+  const reviewVersion = candidateReviewVersion(candidate);
 
   const extractedRows = [
     ["Título", displayField(candidate.extracted.title)],
     ["Descripción", displayField(candidate.extracted.description)],
     ["Fecha", dateRange(candidate.extracted)],
+    ["Zona horaria", displayField(candidate.extracted.timezone)],
     ["Ubicación", displayField(candidate.extracted.location)],
     ["Organizador", organizerName(candidate.extracted.organizerId, organizers)],
     ["Precio", displayField(candidate.extracted.price, formatPrice)],
     ["Idioma", languages(candidate.extracted)],
     ["Nivel", displayField(candidate.extracted.level)],
+    ["Registro", displayField(candidate.extracted.registrationUrl)],
+    [
+      "Acceso individual",
+      displayField(candidate.extracted.individualAccess, (value) => (value ? "Sí" : "No")),
+    ],
     ["Fuente", sourceName],
   ];
 
@@ -220,6 +243,7 @@ export function CandidateReview({ candidate, organizers, source, result, error }
 
           <form id="candidate-final-form" className="admin-review-final-form">
             <input type="hidden" name="candidateId" value={candidate.id} />
+            <input type="hidden" name="candidateVersion" value={reviewVersion} />
 
             <label>
               <span>Título</span>
@@ -271,6 +295,19 @@ export function CandidateReview({ candidate, organizers, source, result, error }
             </label>
 
             <label>
+              <span>Zona horaria</span>
+              <select
+                name="timezone"
+                defaultValue={candidate.final.timezone.state === "known" ? candidate.final.timezone.value : ""}
+                disabled={terminal}
+              >
+                <option value="">Sin dato</option>
+                <option value="Europe/Madrid">Europe/Madrid</option>
+              </select>
+              {unknownHint(candidate.final.timezone) ? <small>{unknownHint(candidate.final.timezone)}</small> : null}
+            </label>
+
+            <label>
               <span>Ubicación</span>
               <input name="location" defaultValue={knownString(candidate.final.location)} disabled={terminal} />
               {unknownHint(candidate.final.location) ? <small>{unknownHint(candidate.final.location)}</small> : null}
@@ -293,6 +330,18 @@ export function CandidateReview({ candidate, organizers, source, result, error }
               {unknownHint(candidate.final.organizerId) ? (
                 <small>{unknownHint(candidate.final.organizerId)}</small>
               ) : null}
+            </label>
+
+            <label>
+              <span>Tipo precio</span>
+              <select name="priceKind" defaultValue={editablePriceKind(candidate.final.price)} disabled={terminal}>
+                <option value="">Sin dato</option>
+                {Object.entries(priceKindLabels).map(([kind, label]) => (
+                  <option key={kind} value={kind}>
+                    {label}
+                  </option>
+                ))}
+              </select>
             </label>
 
             <label>
@@ -323,6 +372,40 @@ export function CandidateReview({ candidate, organizers, source, result, error }
                 disabled={terminal}
               />
               {unknownHint(candidate.final.languages) ? <small>{unknownHint(candidate.final.languages)}</small> : null}
+            </label>
+
+            <label>
+              <span>Registro</span>
+              <input
+                type="url"
+                name="registrationUrl"
+                defaultValue={knownString(candidate.final.registrationUrl)}
+                placeholder="https://…"
+                disabled={terminal}
+              />
+              {unknownHint(candidate.final.registrationUrl) ? (
+                <small>{unknownHint(candidate.final.registrationUrl)}</small>
+              ) : null}
+            </label>
+
+            <label>
+              <span>Acceso individual</span>
+              <select
+                name="individualAccess"
+                defaultValue={
+                  candidate.final.individualAccess.state === "known"
+                    ? String(candidate.final.individualAccess.value)
+                    : ""
+                }
+                disabled={terminal}
+              >
+                <option value="">Sin dato</option>
+                <option value="true">Sí</option>
+                <option value="false">No</option>
+              </select>
+              {unknownHint(candidate.final.individualAccess) ? (
+                <small>{unknownHint(candidate.final.individualAccess)}</small>
+              ) : null}
             </label>
 
             {!terminal ? (
@@ -454,6 +537,7 @@ export function CandidateReview({ candidate, organizers, source, result, error }
               <summary>Rechazar</summary>
               <form action={rejectCandidateAction}>
                 <input type="hidden" name="candidateId" value={candidate.id} />
+                <input type="hidden" name="candidateVersion" value={reviewVersion} />
                 <label>
                   <span>Motivo del rechazo</span>
                   <textarea name="decisionReason" required rows={3} />
@@ -468,6 +552,7 @@ export function CandidateReview({ candidate, organizers, source, result, error }
               <summary>Bloquear</summary>
               <form action={blockCandidateAction}>
                 <input type="hidden" name="candidateId" value={candidate.id} />
+                <input type="hidden" name="candidateVersion" value={reviewVersion} />
                 <label>
                   <span>Motivo del bloqueo</span>
                   <textarea name="decisionReason" required rows={3} />
@@ -481,12 +566,14 @@ export function CandidateReview({ candidate, organizers, source, result, error }
             <div className="admin-engine-actions">
               <form action={requeryCandidateAction}>
                 <input type="hidden" name="candidateId" value={candidate.id} />
+                <input type="hidden" name="candidateVersion" value={reviewVersion} />
                 <button className="admin-secondary-button" type="submit">
                   Solicitar reconsulta
                 </button>
               </form>
               <form action={reprocessCandidateAction}>
                 <input type="hidden" name="candidateId" value={candidate.id} />
+                <input type="hidden" name="candidateVersion" value={reviewVersion} />
                 <button className="admin-secondary-button" type="submit">
                   Solicitar reproceso
                 </button>
