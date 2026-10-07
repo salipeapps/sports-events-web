@@ -3,6 +3,7 @@ import type { ActivityCategory, EditorialStatus } from "@/domain/admin";
 import {
   candidateTabs,
   activityTabs,
+  pageHref,
   resolveActivityQuery,
   tabHref,
   type ActivityCatalogScope,
@@ -54,6 +55,15 @@ export interface ActivityCatalogModel {
   organizerOptions: Array<{ value: string; label: string }>;
   rows: ActivityRowViewModel[];
   total: number;
+  pagination: {
+    page: number;
+    pageSize: number;
+    totalPages: number;
+    from: number;
+    to: number;
+    previousHref: string | null;
+    nextHref: string | null;
+  };
 }
 
 function statusCount(
@@ -84,6 +94,10 @@ export async function loadActivityCatalog(
 
   const basePath = scope === "activities" ? "/admin/activities" : "/admin/candidates";
   const tabs = scope === "activities" ? activityTabs : candidateTabs;
+  const activeTabConfig = activityTabs.find((tab) => tab.id === query.activeTab) ?? activityTabs[0];
+  const totalPages = Math.max(1, Math.ceil(page.total / page.pageSize));
+  const from = page.total === 0 ? 0 : (page.page - 1) * page.pageSize + 1;
+  const to = Math.min(page.page * page.pageSize, page.total);
 
   return {
     scope,
@@ -105,9 +119,9 @@ export async function loadActivityCatalog(
       value: value as ActivityCategory,
       label,
     })),
-    statusOptions: Object.entries(statusLabels).map(([value, label]) => ({
-      value: value as EditorialStatus,
-      label,
+    statusOptions: activeTabConfig.statuses.map((status) => ({
+      value: status,
+      label: statusLabels[status],
     })),
     sourceOptions: sources.map((source) => ({ value: source.id, label: source.name })),
     organizerOptions: organizers.map((organizer) => ({ value: organizer.id, label: organizer.name })),
@@ -125,5 +139,14 @@ export async function loadActivityCatalog(
       reasonCodes: item.reasonCodes,
     })),
     total: page.total,
+    pagination: {
+      page: page.page,
+      pageSize: page.pageSize,
+      totalPages,
+      from,
+      to,
+      previousHref: page.page > 1 ? pageHref(basePath, searchParams, page.page - 1) : null,
+      nextHref: page.page < totalPages ? pageHref(basePath, searchParams, page.page + 1) : null,
+    },
   };
 }

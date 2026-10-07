@@ -47,6 +47,11 @@ function validStatus(value: string): value is EditorialStatus {
   return editorialStatuses.some((status) => status === value);
 }
 
+function resolvePage(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1;
+}
+
 function resolveTab(scope: ActivityCatalogScope, value: string): ActivityTab {
   const allowedTabs = scope === "activities" ? activityTabs : candidateTabs;
   return allowedTabs.some((tab) => tab.id === value)
@@ -61,31 +66,30 @@ export function resolveActivityQuery(searchParams: AdminSearchParams, scope: Act
   const tab = activityTabs.find((item) => item.id === activeTab) ?? activityTabs[0];
   const category = param(searchParams, "category");
   const explicitStatus = param(searchParams, "status");
+  const compatibleStatus =
+    explicitStatus && validStatus(explicitStatus) && tab.statuses.includes(explicitStatus) ? explicitStatus : "";
   const date = param(searchParams, "date");
   const sourceId = param(searchParams, "source");
   const organizerId = param(searchParams, "organizer");
   const search = param(searchParams, "q").trim();
-
-  const statuses =
-    explicitStatus && validStatus(explicitStatus)
-      ? tab.statuses.filter((status) => status === explicitStatus)
-      : tab.statuses;
+  const page = resolvePage(param(searchParams, "page"));
 
   return {
     activeTab,
     filters: {
-      statuses,
+      statuses: compatibleStatus ? [compatibleStatus] : tab.statuses,
       ...(validCategory(category) ? { category } : {}),
       ...(date ? { dateFrom: date, dateTo: date } : {}),
       ...(sourceId ? { sourceId } : {}),
       ...(organizerId ? { organizerId } : {}),
       ...(search ? { search } : {}),
-      pageSize: 50,
+      page,
+      pageSize: 25,
     },
     values: {
       date,
       category: validCategory(category) ? category : "",
-      status: validStatus(explicitStatus) ? explicitStatus : "",
+      status: compatibleStatus,
       sourceId,
       organizerId,
       search,
@@ -97,11 +101,25 @@ export function tabHref(basePath: string, searchParams: AdminSearchParams, tab: 
   const query = new URLSearchParams();
 
   for (const [key, rawValue] of Object.entries(searchParams)) {
-    if (key === "tab" || key === "page") continue;
+    if (key === "tab" || key === "page" || key === "status") continue;
     const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
     if (value) query.set(key, value);
   }
 
   query.set("tab", tab);
   return `${basePath}?${query.toString()}`;
+}
+
+export function pageHref(basePath: string, searchParams: AdminSearchParams, page: number): string {
+  const query = new URLSearchParams();
+
+  for (const [key, rawValue] of Object.entries(searchParams)) {
+    if (key === "page") continue;
+    const value = Array.isArray(rawValue) ? rawValue[0] : rawValue;
+    if (value) query.set(key, value);
+  }
+
+  if (page > 1) query.set("page", String(page));
+  const serialized = query.toString();
+  return serialized ? `${basePath}?${serialized}` : basePath;
 }

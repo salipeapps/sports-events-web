@@ -5,6 +5,8 @@ import { AdminActivityTable } from "./AdminActivityTable";
 import type { ActivityCatalogModel } from "./adminActivityLoader";
 
 export function AdminActivityCatalog({ model }: { model: ActivityCatalogModel }) {
+  const rowSetKey = `${model.activeTab}:${model.rows.map((row) => row.id).join("|")}`;
+
   return (
     <main className="admin-page admin-catalog-page">
       <header className="admin-page-header admin-catalog-header">
@@ -94,10 +96,30 @@ export function AdminActivityCatalog({ model }: { model: ActivityCatalogModel })
       </form>
 
       <p className="admin-results-count">
-        {model.total} resultado{model.total === 1 ? "" : "s"}
+        {model.total === 0
+          ? "0 resultados"
+          : `Mostrando ${model.pagination.from}–${model.pagination.to} de ${model.total}`}
       </p>
 
-      <AdminActivityTable rows={model.rows} />
+      <AdminActivityTable key={rowSetKey} rows={model.rows} />
+
+      {model.pagination.totalPages > 1 ? (
+        <nav className="admin-pagination" aria-label="Paginación del catálogo">
+          {model.pagination.previousHref ? (
+            <Link href={model.pagination.previousHref}>← Anterior</Link>
+          ) : (
+            <span aria-disabled="true">← Anterior</span>
+          )}
+          <strong>
+            Página {model.pagination.page} de {model.pagination.totalPages}
+          </strong>
+          {model.pagination.nextHref ? (
+            <Link href={model.pagination.nextHref}>Siguiente →</Link>
+          ) : (
+            <span aria-disabled="true">Siguiente →</span>
+          )}
+        </nav>
+      ) : null}
     </main>
   );
 }
