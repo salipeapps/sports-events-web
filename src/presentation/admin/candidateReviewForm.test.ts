@@ -94,6 +94,33 @@ describe("candidate review form", () => {
     expect(corrections.price.value.note).toBe(previousNote);
   });
 
+  it("persists arbitrary edited payment methods instead of restoring stale ones", async () => {
+    const candidate = await new FixtureAdminRepository().getCandidate("candidate-payment-variant-E049");
+    if (!candidate) throw new Error("fixture candidate missing");
+
+    const form = formFor(candidate);
+    form.set("price", "8 € cash / 9 € card");
+
+    const corrections = buildCandidateCorrections(form, candidate);
+    if (corrections.price?.state !== "known") throw new Error("expected known price");
+
+    expect(corrections.price.value.options.map((option) => option.paymentMethod)).toEqual(["cash", "card"]);
+  });
+
+  it("removes an edited payment method instead of restoring the previous value", async () => {
+    const candidate = await new FixtureAdminRepository().getCandidate("candidate-payment-variant-E049");
+    if (!candidate) throw new Error("fixture candidate missing");
+
+    const form = formFor(candidate);
+    form.set("price", "8 € / 9 € card");
+
+    const corrections = buildCandidateCorrections(form, candidate);
+    if (corrections.price?.state !== "known") throw new Error("expected known price");
+
+    expect(corrections.price.value.options[0]?.paymentMethod).toBeUndefined();
+    expect(corrections.price.value.options[1]?.paymentMethod).toBe("card");
+  });
+
   it("rejects a malformed edited price instead of silently discarding it", async () => {
     const candidate = await new FixtureAdminRepository().getCandidate("candidate-valid-E019");
     if (!candidate) throw new Error("fixture candidate missing");
