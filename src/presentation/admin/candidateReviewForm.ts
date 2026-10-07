@@ -120,34 +120,41 @@ function parsePrice(value: string, kindValue: string, currentField: EventDetails
 
   if (!trimmed) return unknown("not_provided");
 
-  const amounts = Array.from(trimmed.matchAll(/[+-]?\d+(?:[.,]\d+)?/g)).map((match) =>
-    Number.parseFloat(match[0].replace(",", ".")),
-  );
+  const segments = trimmed.split("/").map((segment) => segment.trim());
+  const parsedOptions = segments.map((segment) => {
+    const match = segment.match(/^([+-]?\d+(?:[.,]\d+)?)\s*€?\s*(.*?)\s*$/);
+    if (!match) {
+      throw new Error('Introduce un precio como "8 €", "8 € / 9 € Bizum" o selecciona "Gratis".');
+    }
 
-  if (amounts.length === 0 || amounts.some((amount) => !Number.isFinite(amount) || amount < 0)) {
+    const amount = Number.parseFloat(match[1].replace(",", "."));
+    if (!Number.isFinite(amount) || amount < 0) {
+      throw new Error('Introduce un precio como "8 €", "8 € / 9 € Bizum" o selecciona "Gratis".');
+    }
+
+    return { amount, paymentMethod: match[2].trim() };
+  });
+
+  if (parsedOptions.length === 0) {
     throw new Error('Introduce un precio como "8 €", "8 € / 9 € Bizum" o selecciona "Gratis".');
   }
 
   const current = currentField.state === "known" && currentField.value.kind === kind ? currentField.value : null;
-  const lower = trimmed.toLowerCase();
 
   return known<PriceDetails>({
     kind,
-    options: amounts.map((amount, index) => {
+    options: parsedOptions.map(({ amount, paymentMethod }, index) => {
       const existing = current?.options[index];
-      const inferredMethod =
-        lower.includes("bizum") && index === amounts.length - 1
-          ? "Bizum"
-          : lower.includes("efectivo") && index === 0
-            ? "Efectivo"
-            : existing?.paymentMethod;
-
-      return {
+      const option: PriceDetails["options"][number] = {
         ...existing,
         amount,
         currency: "EUR",
-        ...(inferredMethod ? { paymentMethod: inferredMethod } : {}),
       };
+
+      if (paymentMethod) option.paymentMethod = paymentMethod;
+      else delete option.paymentMethod;
+
+      return option;
     }),
     perSessionComparable: current?.perSessionComparable ?? !["annual_membership", "annual_insurance"].includes(kind),
     note: current?.note ?? trimmed,
