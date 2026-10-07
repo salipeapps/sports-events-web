@@ -81,6 +81,11 @@ h1 {
   margin: 0;
 }
 
+.page-shell h1 {
+  font-size: clamp(2rem, 5vw, 3.5rem);
+  line-height: 1.05;
+}
+
 .lead {
   max-width: 720px;
   margin: 20px 0 0;
