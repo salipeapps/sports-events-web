@@ -265,7 +265,8 @@ export class FixtureAdminRepository implements AdminRepository {
       (total, candidate) =>
         total +
         candidate.conflicts.filter(
-          (conflict) => conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+          (conflict) =>
+            conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
         ).length,
       0,
     );
