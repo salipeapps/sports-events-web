@@ -99,6 +99,37 @@ function publishedToListItem(occurrence: PublishedOccurrence): ActivityListItem 
   };
 }
 
+const madridDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Madrid",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  hourCycle: "h23",
+});
+
+function toMadridLocalDateTime(value: string, boundary: "from" | "to"): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return boundary === "from" ? `${value}T00:00:00.000` : `${value}T23:59:59.999`;
+  }
+
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) return value;
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+
+  const parts = Object.fromEntries(
+    madridDateTimeFormatter
+      .formatToParts(parsed)
+      .filter((part) => part.type !== "literal")
+      .map((part) => [part.type, part.value]),
+  );
+
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
 function matchesFilters(item: ActivityListItem, filters: ActivityFilters): boolean {
   if (filters.statuses && !filters.statuses.includes(item.editorialStatus)) return false;
   if (filters.sourceId && valueOrUndefined(item.sourceId) !== filters.sourceId) return false;
@@ -106,12 +137,13 @@ function matchesFilters(item: ActivityListItem, filters: ActivityFilters): boole
   if (filters.category && valueOrUndefined(item.category) !== filters.category) return false;
 
   const start = valueOrUndefined(item.startLocal);
-  if (filters.dateFrom && (!start || start < filters.dateFrom)) return false;
+  if (filters.dateFrom) {
+    const normalizedDateFrom = toMadridLocalDateTime(filters.dateFrom, "from");
+    if (!start || start < normalizedDateFrom) return false;
+  }
   if (filters.dateTo) {
-    const inclusiveDateTo = /^\d{4}-\d{2}-\d{2}$/.test(filters.dateTo)
-      ? `${filters.dateTo}T23:59:59.999`
-      : filters.dateTo;
-    if (!start || start > inclusiveDateTo) return false;
+    const normalizedDateTo = toMadridLocalDateTime(filters.dateTo, "to");
+    if (!start || start > normalizedDateTo) return false;
   }
 
   if (filters.search) {
@@ -250,7 +282,9 @@ export class FixtureAdminRepository implements AdminRepository {
         ...counts,
         target: { state: "unknown", reason: "not_observed" },
       })),
-      urgentItems: this.candidates.flatMap((candidate) => {
+      urgentItems: this.candidates
+        .filter((candidate) => ["candidate", "review", "blocked"].includes(candidate.editorialStatus))
+        .flatMap((candidate) => {
         const items: DashboardSummary["urgentItems"] = [];
         for (const conflict of candidate.conflicts.filter((item) => item.status === "open")) {
           items.push({
@@ -282,8 +316,8 @@ export class FixtureAdminRepository implements AdminRepository {
             reason: "Essential change requires editorial review.",
           });
         }
-        return items;
-      }),
+          return items;
+        }),
     };
   }
 

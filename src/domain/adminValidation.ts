@@ -450,7 +450,7 @@ function validateBudget(value: unknown, path: string, errors: string[]): void {
     errors.push(`${path} must be a budget object`);
     return;
   }
-  validateNumber(value.amount, `${path}.amount`, errors);
+  validateNonNegativeNumber(value.amount, `${path}.amount`, errors);
   if (value.currency !== "EUR") {
     errors.push(`${path}.currency must be EUR`);
   }
@@ -494,7 +494,7 @@ function validateCost(value: unknown, path: string, errors: string[]): void {
     errors.push(`${path} must be a cost object`);
     return;
   }
-  validateNumber(value.amount, `${path}.amount`, errors);
+  validateNonNegativeNumber(value.amount, `${path}.amount`, errors);
   if (value.currency !== "EUR") {
     errors.push(`${path}.currency must be EUR`);
   }

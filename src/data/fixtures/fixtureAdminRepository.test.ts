@@ -116,6 +116,29 @@ describe("FixtureAdminRepository", () => {
     expect(result.items.map((item) => item.id)).toContain("candidate-valid-E019");
   });
 
+  it("normalizes zoned timestamp bounds to Europe/Madrid before filtering", async () => {
+    const repository = new FixtureAdminRepository();
+    const result = await repository.listCandidates({
+      dateFrom: "2026-10-24T13:30:00Z",
+      dateTo: "2026-10-24T14:30:00Z",
+    });
+
+    expect(result.items.map((item) => item.id)).toContain("candidate-valid-E019");
+  });
+
+  it("removes terminal candidates from urgent dashboard items", async () => {
+    const repository = new FixtureAdminRepository();
+
+    expect((await repository.getDashboardSummary()).urgentItems.some((item) => item.candidateId.state === "known" && item.candidateId.value === "candidate-possible-duplicate-E019-mirror")).toBe(true);
+
+    await repository.rejectCandidate("candidate-possible-duplicate-E019-mirror", {
+      actor: reviewer,
+      reason: "Duplicate candidate resolved editorially",
+    });
+
+    expect((await repository.getDashboardSummary()).urgentItems.some((item) => item.candidateId.state === "known" && item.candidateId.value === "candidate-possible-duplicate-E019-mirror")).toBe(false);
+  });
+
   it("stores an immutable snapshot of the editorial actor in history", async () => {
     const repository = new FixtureAdminRepository();
     const actor = { id: "reviewer-mutable", role: "reviewer" as const, displayName: "Before mutation" };
