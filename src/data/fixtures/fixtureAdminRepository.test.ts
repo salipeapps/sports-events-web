@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { known } from "@/domain/admin";
+import { publicationBlockReasons } from "@/domain/adminValidation";
 import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
 import { FixtureAdminRepository } from "./fixtureAdminRepository";
 
@@ -380,6 +381,73 @@ describe("FixtureAdminRepository", () => {
     });
     const occurrence = published.items.find((item) => item.id === "published-candidate-valid-E019");
     expect(occurrence?.organizerId).toEqual(known("O033"));
+  });
+
+  it("resolves conflict and rule blockers without mutating source evaluations", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await repository.updateCandidateFinal("candidate-conflict-E023", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-conflict-E023"),
+      corrections: { startLocal: known("2026-10-07T19:00:00") },
+      reason: "Use organizer website schedule",
+    });
+
+    await repository.resolveCandidateBlocker("candidate-conflict-E023", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-conflict-E023"),
+      kind: "conflict",
+      targetId: "conflict-E023-time",
+      reason: "Organizer website confirmed the final start time",
+    });
+    await repository.resolveCandidateBlocker("candidate-conflict-E023", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-conflict-E023"),
+      kind: "rule",
+      targetId: "rule-E023-conflict",
+      reason: "Deterministic conflict reviewed against corrected final data",
+    });
+    await repository.unblockCandidate("candidate-conflict-E023", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-conflict-E023"),
+      reason: "All publication blockers reviewed",
+    });
+
+    const candidate = await repository.getCandidate("candidate-conflict-E023");
+    if (!candidate) throw new Error("Expected candidate fixture");
+
+    expect(candidate.conflicts.find((item) => item.id === "conflict-E023-time")?.status).toBe("open");
+    expect(candidate.rules.find((item) => item.id === "rule-E023-conflict")?.outcome).toBe("block");
+    expect(publicationBlockReasons(candidate)).not.toContain("open_blocking_conflict");
+    expect(publicationBlockReasons(candidate)).not.toContain("blocking_rule");
+    expect(publicationBlockReasons(candidate)).not.toContain("editorial_status_blocked");
+    expect(candidate.history.some((entry) => entry.action === "blocker_resolved")).toBe(true);
+  });
+
+  it("resolves pending match and change-proposal publication guards explicitly", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await repository.resolveCandidateBlocker("candidate-possible-duplicate-E019-mirror", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-possible-duplicate-E019-mirror"),
+      kind: "match",
+      targetId: "match-fixture-E019",
+      reason: "Reviewed as a distinct occurrence",
+    });
+    const matchCandidate = await repository.getCandidate("candidate-possible-duplicate-E019-mirror");
+    if (!matchCandidate) throw new Error("Expected duplicate fixture");
+    expect(publicationBlockReasons(matchCandidate)).not.toContain("pending_match");
+
+    await repository.resolveCandidateBlocker("candidate-change-E023", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-change-E023"),
+      kind: "change_proposal",
+      targetId: "change-E023-time",
+      reason: "Essential schedule change reviewed editorially",
+    });
+    const changeCandidate = await repository.getCandidate("candidate-change-E023");
+    if (!changeCandidate) throw new Error("Expected change fixture");
+    expect(publicationBlockReasons(changeCandidate)).not.toContain("pending_essential_change");
   });
 
   it("allows an explicitly blocked candidate to return to review with audit history", async () => {
