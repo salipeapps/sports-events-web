@@ -143,6 +143,23 @@ export async function blockCandidateAction(formData: FormData): Promise<never> {
   });
 }
 
+export async function unblockCandidateAction(formData: FormData): Promise<never> {
+  const candidateId = candidateIdFromForm(formData);
+  const actor = await requireEditorialActor("catalog.review");
+  const reason = formString(formData, "decisionReason");
+
+  return completeAction(candidateId, "Candidatura desbloqueada y devuelta a revisión.", async () => {
+    const repository = getAdminRepository();
+    const candidate = await repository.getCandidate(candidateId);
+    if (!candidate) throw new Error("La candidatura ya no existe.");
+    await repository.unblockCandidate(candidateId, {
+      actor,
+      expectedVersion: formString(formData, "candidateVersion"),
+      reason,
+    });
+  });
+}
+
 export async function requeryCandidateAction(formData: FormData): Promise<never> {
   const candidateId = candidateIdFromForm(formData);
   const actor = await requireEditorialActor("catalog.review");
