@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { known } from "@/domain/admin";
+import { known, type AdminCandidate, type PublishedOccurrence } from "@/domain/admin";
 import { publicationBlockReasons } from "@/domain/adminValidation";
 import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
 import { FixtureAdminRepository } from "./fixtureAdminRepository";
@@ -499,6 +499,166 @@ describe("FixtureAdminRepository", () => {
     ).rejects.toThrow("Published occurrence does not exist");
 
     expect(await repository.getCandidate("candidate-change-E023")).toEqual(before);
+  });
+
+  it("refuses a stale competing proposal against an already updated occurrence", async () => {
+    const repository = new FixtureAdminRepository();
+    const original = await repository.getCandidate("candidate-change-E023");
+    if (!original || original.changeProposal.state !== "known") throw new Error("Missing change fixture");
+
+    const competing = structuredClone(original);
+    competing.id = "candidate-change-E023-competing";
+    competing.changeProposal.value.id = "change-E023-competing";
+    const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
+    internal.candidates.push(competing);
+
+    await repository.resolveCandidateBlocker(original.id, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, original.id),
+      kind: "change_proposal",
+      targetId: "change-E023-time",
+      disposition: "accepted",
+      reason: "First reviewer confirms new time",
+    });
+
+    const beforeAttempt = await repository.getCandidate(competing.id);
+    await expect(
+      repository.resolveCandidateBlocker(competing.id, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, competing.id),
+        kind: "change_proposal",
+        targetId: competing.changeProposal.value.id,
+        disposition: "accepted",
+        reason: "Stale reviewer attempts to overwrite the current occurrence",
+      }),
+    ).rejects.toThrow("Stale change proposal");
+
+    expect(await repository.getCandidate(competing.id)).toEqual(beforeAttempt);
+    expect(internal.published[0].event.startLocal).toEqual(known("2026-10-07T18:30:00"));
+    expect(internal.published[0].history).toHaveLength(2);
+  });
+
+  it("lets reviewers decide nonessential proposals and blocks silent publication", async () => {
+    const repository = new FixtureAdminRepository();
+    const internal = repository as unknown as { candidates: AdminCandidate[] };
+    const candidate = internal.candidates.find((item) => item.id === "candidate-change-E023");
+    if (!candidate || candidate.changeProposal.state !== "known") throw new Error("Missing change fixture");
+    candidate.changeProposal.value.essential = false;
+
+    expect(publicationBlockReasons(candidate)).toContain("pending_change_proposal");
+    await repository.resolveCandidateBlocker(candidate.id, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidate.id),
+      kind: "change_proposal",
+      targetId: candidate.changeProposal.value.id,
+      disposition: "rejected",
+      reason: "Nonessential observation not corroborated",
+    });
+
+    const resolved = await repository.getCandidate(candidate.id);
+    if (!resolved || resolved.changeProposal.state !== "known") throw new Error("Missing proposal");
+    expect(resolved.changeProposal.value.status).toBe("rejected");
+    expect(publicationBlockReasons(resolved)).not.toContain("pending_change_proposal");
+  });
+
+  it("updates both organizer projections when accepting an organizer change", async () => {
+    const repository = new FixtureAdminRepository();
+    const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
+    const candidate = internal.candidates.find((item) => item.id === "candidate-change-E023");
+    if (!candidate || candidate.changeProposal.state !== "known") throw new Error("Missing change fixture");
+    candidate.changeProposal.value.fields.push({
+      field: "organizerId",
+      before: known("O022"),
+      after: known("O033"),
+      evidenceIds: ["ev-change-E023-meetup"],
+    });
+
+    const updated = await repository.resolveCandidateBlocker(candidate.id, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidate.id),
+      kind: "change_proposal",
+      targetId: candidate.changeProposal.value.id,
+      disposition: "accepted",
+      reason: "New organizer verified",
+    });
+
+    expect(updated.organizerId).toEqual(known("O033"));
+    expect(updated.final.organizerId).toEqual(known("O033"));
+    expect(internal.published[0].organizerId).toBe("O033");
+    expect(internal.published[0].event.organizerId).toEqual(known("O033"));
+    const byOrganizer = await repository.listActivities({ organizerId: "O033", statuses: ["published"] });
+    expect(byOrganizer.items.map((item) => item.id)).toContain("pub-fixture-E023-web-1900");
+  });
+
+  it("rejects invalid proposed organizers without mutating either record", async () => {
+    const repository = new FixtureAdminRepository();
+    const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
+    const candidate = internal.candidates.find((item) => item.id === "candidate-change-E023");
+    if (!candidate || candidate.changeProposal.state !== "known") throw new Error("Missing change fixture");
+    candidate.changeProposal.value.fields.push({
+      field: "organizerId",
+      before: known("O022"),
+      after: known("O999"),
+      evidenceIds: [],
+    });
+    const candidateBefore = structuredClone(candidate);
+    const publishedBefore = structuredClone(internal.published[0]);
+
+    await expect(
+      repository.resolveCandidateBlocker(candidate.id, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidate.id),
+        kind: "change_proposal",
+        targetId: candidate.changeProposal.value.id,
+        disposition: "accepted",
+        reason: "Unknown organizer",
+      }),
+    ).rejects.toThrow("organizer does not exist");
+    expect(candidate).toEqual(candidateBefore);
+    expect(internal.published[0]).toEqual(publishedBefore);
+  });
+
+  it("publishes saved and approval-time editorial corrections to the existing occurrence", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-change-E023";
+    await repository.updateCandidateFinal(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      corrections: { description: known("Verified updated description") },
+      reason: "Description checked with organizer",
+    });
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "change_proposal",
+      targetId: "change-E023-time",
+      disposition: "accepted",
+      reason: "Accepted revised time",
+    });
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "rule",
+      targetId: "rule-change-E023",
+      reason: "Change revalidated",
+    });
+    const before = await repository.listActivities({ statuses: ["published"] });
+
+    const approved = await repository.approveCandidate(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      corrections: { level: known("All levels accepted") },
+      reason: "Publish verified editorial corrections",
+    });
+
+    const internal = repository as unknown as { published: PublishedOccurrence[] };
+    const occurrence = internal.published.find((item) => item.id === "pub-fixture-E023-web-1900");
+    expect(approved.editorialStatus).toBe("published");
+    expect(occurrence?.event.startLocal).toEqual(known("2026-10-07T18:30:00"));
+    expect(occurrence?.event.description).toEqual(known("Verified updated description"));
+    expect(occurrence?.event.level).toEqual(known("All levels accepted"));
+    expect(occurrence?.protectedCorrections).toEqual(expect.arrayContaining(["description", "level"]));
+    expect(internal.published).toHaveLength(before.items.length);
   });
 
   it("allows an explicitly blocked candidate to return to review with audit history", async () => {
