@@ -200,4 +200,38 @@ describe("FixtureAdminRepository", () => {
     expect(dashboard.metrics.coverageNext14Days.state).toBe("unknown");
     expect(dashboard.coverageTrend.state).toBe("unknown");
   });
+
+  it("rejects invalid editorial actors before mutating candidate state", async () => {
+    const repository = new FixtureAdminRepository();
+    const invalidActor = { id: "", role: "reviewer", displayName: "" } as const;
+    const before = await repository.getCandidate("candidate-valid-E019");
+
+    await expect(
+      repository.rejectCandidate("candidate-valid-E019", {
+        actor: invalidActor,
+        reason: "This must not be persisted",
+      }),
+    ).rejects.toThrow("valid editorial actor");
+
+    const after = await repository.getCandidate("candidate-valid-E019");
+    expect(after).toEqual(before);
+  });
+
+  it("does not publish a candidate with a corrected organizer that does not exist", async () => {
+    const repository = new FixtureAdminRepository();
+
+    await expect(
+      repository.approveCandidate("candidate-valid-E019", {
+        actor: reviewer,
+        reason: "Invalid organizer correction",
+        corrections: { organizerId: known("O999") },
+      }),
+    ).rejects.toThrow("organizer does not exist");
+
+    expect((await repository.getCandidate("candidate-valid-E019"))?.editorialStatus).toBe("review");
+
+    const published = await repository.listActivities({ statuses: ["published"], organizerId: "O999" });
+    expect(published.items).toHaveLength(0);
+  });
+
 });
