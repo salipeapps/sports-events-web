@@ -139,8 +139,7 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
   const canApprove = !terminal && blockReasons.length === 0;
   const sourceName = sources.find((source) => source.id === candidate.sourceId)?.name ?? candidate.sourceId;
   const openConflicts = candidate.conflicts.filter(
-    (conflict) =>
-      conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+    (conflict) => conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
   );
   const reviewVersion = candidateReviewVersion(candidate);
   const unresolvedBlockers = [
@@ -526,8 +525,7 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
                       {conflict.type} {conflict.blocking ? "· bloqueante" : ""}
                     </strong>
                     <span>
-                      {conflict.status === "resolved" ||
-                      isCandidateBlockerResolved(candidate, "conflict", conflict.id)
+                      {conflict.status === "resolved" || isCandidateBlockerResolved(candidate, "conflict", conflict.id)
                         ? "Resuelto"
                         : "Abierto"}
                     </span>
