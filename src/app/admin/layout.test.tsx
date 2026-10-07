@@ -4,16 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { getAdminAccess } from "@/integrations/auth/adminAuth";
 import AdminLayout from "./layout";
 
-const redirect = vi.fn((target: string): never => {
-  throw new Error(`REDIRECT:${target}`);
-});
-
 vi.mock("@/integrations/auth/adminAuth", () => ({
   getAdminAccess: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
-  redirect,
+  redirect: vi.fn((target: string): never => {
+    throw new Error(`REDIRECT:${target}`);
+  }),
 }));
 
 describe("AdminLayout", () => {
