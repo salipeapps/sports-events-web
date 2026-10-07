@@ -14,12 +14,17 @@ import type {
   PublishedOccurrence,
   SourceConfig,
 } from "@/domain/admin";
-import { parseAdminCandidate, publicationBlockReasons } from "@/domain/adminValidation";
+import {
+  isCandidateBlockerResolved,
+  parseAdminCandidate,
+  publicationBlockReasons,
+} from "@/domain/adminValidation";
 import { assertExpectedCandidateVersion } from "@/domain/candidateReviewVersion";
 import type {
   AdminRepository,
   CandidateActionInput,
   CandidateApprovalInput,
+  CandidateBlockerResolutionInput,
   CandidateCorrectionInput,
   CandidateDecisionInput,
 } from "../adminRepository";
@@ -237,7 +242,13 @@ export class FixtureAdminRepository implements AdminRepository {
 
   async getDashboardSummary(): Promise<DashboardSummary> {
     const openConflicts = this.candidates.reduce(
-      (total, candidate) => total + candidate.conflicts.filter((conflict) => conflict.status === "open").length,
+      (total, candidate) =>
+        total +
+        candidate.conflicts.filter(
+          (conflict) =>
+            conflict.status === "open" &&
+            !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+        ).length,
       0,
     );
     const pendingCandidates = this.candidates.filter((candidate) =>
@@ -307,7 +318,9 @@ export class FixtureAdminRepository implements AdminRepository {
         .filter((candidate) => ["candidate", "review", "blocked"].includes(candidate.editorialStatus))
         .flatMap((candidate) => {
           const items: DashboardSummary["urgentItems"] = [];
-          for (const conflict of candidate.conflicts.filter((item) => item.status === "open")) {
+          for (const conflict of candidate.conflicts.filter(
+            (item) => item.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", item.id),
+          )) {
             items.push({
               id: `urgent-${conflict.id}`,
               kind: "conflict",
@@ -317,7 +330,11 @@ export class FixtureAdminRepository implements AdminRepository {
               reason: conflict.summary,
             });
           }
-          if (candidate.matches.some((match) => match.status === "pending")) {
+          if (
+            candidate.matches.some(
+              (match) => match.status === "pending" && !isCandidateBlockerResolved(candidate, "match", match.id),
+            )
+          ) {
             items.push({
               id: `urgent-match-${candidate.id}`,
               kind: "duplicate",
@@ -327,7 +344,11 @@ export class FixtureAdminRepository implements AdminRepository {
               reason: "Candidate has a pending identity/match decision.",
             });
           }
-          if (candidate.changeProposal.state === "known" && candidate.changeProposal.value.status === "pending") {
+          if (
+            candidate.changeProposal.state === "known" &&
+            candidate.changeProposal.value.status === "pending" &&
+            !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
+          ) {
             items.push({
               id: `urgent-change-${candidate.id}`,
               kind: "change",
@@ -512,6 +533,54 @@ export class FixtureAdminRepository implements AdminRepository {
 
     candidate.editorialStatus = "review";
     candidate.history.push(historyEntry(candidate, "unblocked", input.actor, reason));
+    return clone(candidate);
+  }
+
+  async resolveCandidateBlocker(
+    candidateId: string,
+    input: CandidateBlockerResolutionInput,
+  ): Promise<AdminCandidate> {
+    const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
+    assertActionableCandidate(candidate, "updated");
+    const reason = requireReason(input.reason);
+
+    if (isCandidateBlockerResolved(candidate, input.kind, input.targetId)) {
+      throw new Error(`Candidate blocker is already resolved: ${input.kind}:${input.targetId}.`);
+    }
+
+    const exists =
+      input.kind === "conflict"
+        ? candidate.conflicts.some(
+            (conflict) => conflict.id === input.targetId && conflict.status === "open" && conflict.blocking,
+          )
+        : input.kind === "rule"
+          ? candidate.rules.some((rule) => rule.id === input.targetId && rule.outcome === "block")
+          : input.kind === "match"
+            ? candidate.matches.some((match) => match.id === input.targetId && match.status === "pending")
+            : candidate.changeProposal.state === "known" &&
+              candidate.changeProposal.value.id === input.targetId &&
+              candidate.changeProposal.value.status === "pending" &&
+              candidate.changeProposal.value.essential;
+
+    if (!exists) {
+      throw new Error(`Unknown or non-blocking candidate blocker: ${input.kind}:${input.targetId}.`);
+    }
+
+    candidate.blockerResolutions ??= [];
+    candidate.blockerResolutions.push({
+      id: `blocker-resolution-${candidate.id}-${candidate.blockerResolutions.length + 1}`,
+      kind: input.kind,
+      targetId: input.targetId,
+      at: new Date().toISOString(),
+      actor: clone(input.actor),
+      reason,
+    });
+    candidate.history.push(
+      historyEntry(candidate, "blocker_resolved", input.actor, `${input.kind}:${input.targetId} · ${reason}`),
+    );
+    parseAdminCandidate(candidate);
     return clone(candidate);
   }
 
