@@ -103,9 +103,7 @@ test("valid candidate publishes, conflict cannot publish, and recorded decisions
     await expect(approvalHistory.getByText("Publicada", { exact: true })).toBeVisible();
 
     await page.goto("/admin/runs/fixture-run-8421");
-    const publishedCandidate = page
-      .locator(".admin-operation-notes li")
-      .filter({ hasText: "candidate-valid-E019" });
+    const publishedCandidate = page.locator(".admin-operation-notes li").filter({ hasText: "candidate-valid-E019" });
     await expect(publishedCandidate).toContainText("Publicada");
 
     await page.goto("/admin/candidates/candidate-conflict-E023");
@@ -129,9 +127,7 @@ test("valid candidate publishes, conflict cannot publish, and recorded decisions
     await expect(rejectionHistory.getByText("Conflicto de horario sin verificar", { exact: true })).toBeVisible();
 
     await page.goto("/admin/runs/fixture-run-8420");
-    const rejectedCandidate = page
-      .locator(".admin-operation-notes li")
-      .filter({ hasText: "candidate-conflict-E023" });
+    const rejectedCandidate = page.locator(".admin-operation-notes li").filter({ hasText: "candidate-conflict-E023" });
     await expect(rejectedCandidate).toContainText("Rechazada");
   }
 });
