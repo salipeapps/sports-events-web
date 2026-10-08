@@ -43,6 +43,15 @@ describe("candidate review form", () => {
     expect(buildCandidateCorrections(formFor(candidate), candidate)).toEqual({});
   });
 
+  it("rejects a later start when the existing end is read-only", async () => {
+    const candidate = await new FixtureAdminRepository().getCandidate("candidate-valid-E019");
+    if (!candidate || candidate.final.endLocal.state !== "known") throw new Error("fixture end missing");
+
+    const form = formFor(candidate);
+    form.set("startLocal", "2026-10-06T21:30");
+    expect(() => buildCandidateCorrections(form, candidate)).toThrow("anteriores al inicio");
+  });
+
   it("builds structured corrections including essential publication fields", async () => {
     const candidate = await new FixtureAdminRepository().getCandidate("candidate-incomplete-E017");
     if (!candidate) throw new Error("fixture candidate missing");
