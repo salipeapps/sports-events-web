@@ -540,8 +540,7 @@ export class FixtureAdminRepository implements AdminRepository {
         proposal.state === "unknown" &&
         candidateForApproval.publishedBaseline?.occurrenceId === existingOccurrence.id &&
         candidateForApproval.conflicts.some(
-          (conflict) =>
-            conflict.blocking && isCandidateBlockerResolved(candidateForApproval, "conflict", conflict.id),
+          (conflict) => conflict.blocking && isCandidateBlockerResolved(candidateForApproval, "conflict", conflict.id),
         );
       if (!reviewedProposal && !reviewedConflict) {
         throw new Error("Existing published occurrence requires a reviewed matching change proposal or conflict.");
