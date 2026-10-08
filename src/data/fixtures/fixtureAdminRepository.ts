@@ -449,6 +449,20 @@ export class FixtureAdminRepository implements AdminRepository {
     return clone(paginate(items, filters));
   }
 
+  async listRunCandidates(
+    runId: string,
+    pagination: { page?: number; pageSize?: number } = {},
+  ): Promise<PageResult<ActivityListItem>> {
+    const rows = this.candidates
+      .filter((candidate) => valueOrUndefined(candidate.runId) === runId)
+      .map(candidateToListItem)
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const pageSize = Math.min(Math.max(pagination.pageSize ?? 25, 1), 100);
+    const totalPages = Math.max(1, Math.ceil(rows.length / pageSize));
+    const page = Math.min(Math.max(pagination.page ?? 1, 1), totalPages);
+    return clone(paginate(rows, { page, pageSize }));
+  }
+
   async getCandidate(candidateId: string): Promise<AdminCandidate | null> {
     const candidate = this.candidates.find((item) => item.id === candidateId);
     return candidate ? clone(candidate) : null;

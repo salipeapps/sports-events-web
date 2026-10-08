@@ -13,8 +13,8 @@ const navigation = [
   { id: "summary", label: "Resumen", href: "/admin" },
   { id: "activities", label: "Actividades", href: "/admin/activities" },
   { id: "candidates", label: "Candidatos", href: "/admin/candidates" },
-  { id: "sources", label: "Fuentes", capability: "sources.manage" as const },
-  { id: "runs", label: "Ejecuciones", capability: "runs.execute" as const },
+  { id: "sources", label: "Fuentes", href: "/admin/sources" },
+  { id: "runs", label: "Ejecuciones", href: "/admin/runs" },
   { id: "organizers", label: "Organizadores" },
   { id: "settings", label: "Configuración", capability: "settings.manage" as const },
 ];
