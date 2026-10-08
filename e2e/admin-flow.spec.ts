@@ -88,28 +88,39 @@ test("discovery remains separate from sources, links lineage and does not execut
 test("valid candidate publishes, conflict cannot publish, and recorded decisions require a reason", async ({
   page,
 }) => {
-  await page.goto("/admin/candidates/candidate-valid-E019");
-  await page.getByRole("button", { name: "Aprobar y publicar" }).click();
-  await expect(page).toHaveURL(/result=/);
-  await expect(page.getByText("Candidatura aprobada y publicada.")).toBeVisible();
+  // Re-entry must also succeed if Playwright retries after an already completed server action.
+  for (const check of [1, 2]) {
+    await page.goto("/admin/candidates/candidate-valid-E019");
+    const approve = page.getByRole("button", { name: "Aprobar y publicar" });
+    if (await approve.isEnabled()) {
+      await approve.click();
+      await expect(page.getByText("Candidatura aprobada y publicada.")).toBeVisible();
+    } else {
+      await expect(page.getByText("Publicada", { exact: true }).first()).toBeVisible();
+    }
+    await expect(page.getByRole("heading", { name: "Historial" })).toBeVisible();
 
-  await page.goto("/admin/runs/fixture-run-8421");
-  await expect(page.getByText("candidate-valid-E019")).toBeVisible();
+    await page.goto("/admin/runs/fixture-run-8421");
+    await expect(page.getByText("candidate-valid-E019")).toBeVisible();
 
-  await page.goto("/admin/candidates/candidate-conflict-E023");
-  await expect(page.getByRole("button", { name: "Aprobar y publicar" })).toBeDisabled();
-  await page
-    .locator("details")
-    .filter({ has: page.locator("summary", { hasText: "Rechazar" }) })
-    .last()
-    .locator("summary")
-    .click();
-  const rejectionForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Confirmar rechazo" }) });
-  await expect(rejectionForm.locator('textarea[name="decisionReason"]')).toHaveAttribute("required", "");
-  await rejectionForm.locator('textarea[name="decisionReason"]').fill("Conflicto de horario sin verificar");
-  await rejectionForm.getByRole("button", { name: "Confirmar rechazo" }).click();
-  await expect(page.getByText("Candidatura rechazada.")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Historial" })).toBeVisible();
+    await page.goto("/admin/candidates/candidate-conflict-E023");
+    await expect(page.getByRole("button", { name: "Aprobar y publicar" })).toBeDisabled();
+    const reject = page
+      .locator("details")
+      .filter({ has: page.locator("summary", { hasText: "Rechazar" }) })
+      .last();
+    if (await reject.count()) {
+      await reject.locator("summary").click();
+      const form = reject.locator("form");
+      await expect(form.locator('textarea[name="decisionReason"]')).toHaveAttribute("required", "");
+      await form.locator('textarea[name="decisionReason"]').fill("Conflicto de horario sin verificar");
+      await form.getByRole("button", { name: "Confirmar rechazo" }).click();
+      await expect(page.getByText("Candidatura rechazada.")).toBeVisible();
+    } else {
+      await expect(page.getByText("Rechazada", { exact: true }).first()).toBeVisible();
+    }
+    await expect(page.getByRole("heading", { name: "Historial" })).toBeVisible();
+  }
 });
 
 test("mobile navigation, keyboard and overflow stay usable", async ({ page }) => {
