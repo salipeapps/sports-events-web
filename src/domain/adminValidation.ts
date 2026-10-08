@@ -465,6 +465,14 @@ function validateCandidateShape(value: unknown): string[] {
   }
 
   validateFieldValue(value.changeProposal, "candidate.changeProposal", errors, validateChangeProposal);
+  if (value.publishedBaseline !== undefined) {
+    if (!isRecord(value.publishedBaseline)) {
+      errors.push("candidate.publishedBaseline must be an occurrence baseline");
+    } else {
+      validateString(value.publishedBaseline.occurrenceId, "candidate.publishedBaseline.occurrenceId", errors);
+      validateEventDetails(value.publishedBaseline.event, "candidate.publishedBaseline.event", errors);
+    }
+  }
 
   if (value.blockerResolutions !== undefined) {
     if (!Array.isArray(value.blockerResolutions)) {
