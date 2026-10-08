@@ -402,8 +402,12 @@ function validateBlockerResolution(value: unknown, path: string, errors: string[
   validateString(value.id, `${path}.id`, errors);
   validateEnum(value.kind, ["conflict", "rule", "match", "change_proposal"], `${path}.kind`, errors);
   validateString(value.targetId, `${path}.targetId`, errors);
-  if (value.disposition !== undefined) {
+  if (value.kind === "match") {
+    validateEnum(value.disposition, ["distinct", "duplicate"], `${path}.disposition`, errors);
+  } else if (value.kind === "change_proposal") {
     validateEnum(value.disposition, ["accepted", "rejected"], `${path}.disposition`, errors);
+  } else if (value.disposition !== undefined) {
+    errors.push(`${path}.disposition is only valid for matches and change proposals`);
   }
   validateString(value.at, `${path}.at`, errors);
   validateString(value.reason, `${path}.reason`, errors);
@@ -629,6 +633,9 @@ export function publicationBlockReasons(candidate: AdminCandidate): string[] {
   const reasons: string[] = [];
 
   if (candidate.editorialStatus === "blocked") reasons.push("editorial_status_blocked");
+  if (candidate.blockerResolutions?.some((item) => item.kind === "match" && item.disposition === "duplicate")) {
+    reasons.push("confirmed_duplicate");
+  }
   if (hasBlockingConflict(candidate)) reasons.push("open_blocking_conflict");
   if (hasBlockingRule(candidate)) reasons.push("blocking_rule");
   if (
