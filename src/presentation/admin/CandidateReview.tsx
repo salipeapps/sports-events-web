@@ -616,7 +616,12 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
                     </div>
                   ) : blocker.kind === "match" ? (
                     <div className="admin-engine-actions">
-                      <button className="admin-secondary-button" type="submit" name="blockerDisposition" value="distinct">
+                      <button
+                        className="admin-secondary-button"
+                        type="submit"
+                        name="blockerDisposition"
+                        value="distinct"
+                      >
                         Confirmar evento distinto
                       </button>
                       <button className="admin-danger-button" type="submit" name="blockerDisposition" value="duplicate">
