@@ -83,8 +83,9 @@ describe("FixtureAdminRepository", () => {
       reason: "Approve candidate produced by run",
     });
 
-    expect((await repository.listCandidates({ executionId: runId })).items.map((item) => item.id))
-      .not.toContain("candidate-valid-E019");
+    expect((await repository.listCandidates({ executionId: runId })).items.map((item) => item.id)).not.toContain(
+      "candidate-valid-E019",
+    );
     const history = await repository.listRunCandidates(runId);
     const approved = history.items.find((item) => item.id === "candidate-valid-E019");
     expect(approved?.editorialStatus).toBe("published");

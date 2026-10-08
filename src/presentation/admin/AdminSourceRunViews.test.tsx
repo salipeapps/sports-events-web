@@ -95,9 +95,7 @@ describe("Admin source and run observability", () => {
       editorialStatus: i === 0 ? "published" : "candidate",
     }));
     const results: PageResult<ActivityListItem> = { items, total: 122, page: 2, pageSize: 25 };
-    const html = renderToStaticMarkup(
-      <AdminRunDetail run={run} sources={sourceItems} candidates={results} />,
-    );
+    const html = renderToStaticMarkup(<AdminRunDetail run={run} sources={sourceItems} candidates={results} />);
     expect(html).toContain("122 candidatos vinculados");
     expect(html).toContain("Publicada");
     expect(html).toContain("?page=1");
@@ -121,11 +119,7 @@ describe("Admin source and run observability", () => {
     const failedRun = runs.find((item) => item.id === "fixture-run-8419");
     if (!failedRun) throw new Error("Missing failure fixture");
     const failedHtml = renderToStaticMarkup(
-      <AdminRunDetail
-        run={failedRun}
-        sources={sources}
-        candidates={{ items: [], total: 0, page: 1, pageSize: 25 }}
-      />,
+      <AdminRunDetail run={failedRun} sources={sources} candidates={{ items: [], total: 0, page: 1, pageSize: 25 }} />,
     );
     expect(failedHtml).toContain("Error");
     expect(failedHtml).toContain("Reintentos");

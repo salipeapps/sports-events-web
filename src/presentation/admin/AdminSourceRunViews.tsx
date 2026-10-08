@@ -475,9 +475,7 @@ export function AdminRunDetail({
             {candidates.total > candidates.pageSize ? (
               <nav className="admin-pagination" aria-label="Paginación de candidatos de la ejecución">
                 {candidates.page > 1 ? (
-                  <Link href={`/admin/runs/${encodeURIComponent(run.id)}?page=${candidates.page - 1}`}>
-                    ← Anterior
-                  </Link>
+                  <Link href={`/admin/runs/${encodeURIComponent(run.id)}?page=${candidates.page - 1}`}>← Anterior</Link>
                 ) : (
                   <span aria-disabled="true">← Anterior</span>
                 )}

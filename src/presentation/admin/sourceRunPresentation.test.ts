@@ -51,29 +51,30 @@ describe("source and run presentation", () => {
       q: "meetup",
       status: "paused",
     });
-    expect(resolveRunQuery({ q: [" capture ", "ignore"], status: ["failed", "partial"], source: ["S001", "S009"] }))
-      .toEqual({ q: "capture", status: "failed", source: "S001" });
+    expect(
+      resolveRunQuery({ q: [" capture ", "ignore"], status: ["failed", "partial"], source: ["S001", "S009"] }),
+    ).toEqual({ q: "capture", status: "failed", source: "S001" });
     expect(resolveSourceQuery({ q: [], status: undefined })).toEqual({ q: "", status: "" });
     expect(resolveRunQuery({ q: undefined, status: [], source: ["S001"] })).toEqual({
       q: "",
       status: "",
       source: "S001",
     });
-    expect(
-      filterSources(sourceFixtures, resolveSourceQuery({ q: ["meetup", "yoga"] })).length,
-    ).toBeGreaterThan(0);
-    expect(filterRuns(runFixtures, sourceFixtures, resolveRunQuery({ source: ["S001", "S009"] })))
-      .toHaveLength(1);
+    expect(filterSources(sourceFixtures, resolveSourceQuery({ q: ["meetup", "yoga"] })).length).toBeGreaterThan(0);
+    expect(filterRuns(runFixtures, sourceFixtures, resolveRunQuery({ source: ["S001", "S009"] }))).toHaveLength(1);
   });
 
-  it.each([
-    [{ page: ["2", "3"] }, 2],
-    [{ page: "0" }, 1],
-    [{ page: ["", "2"] }, 1],
-    [{ page: "1evil" }, 1],
-    [{ page: "999999999999999999999999" }, 1],
-  ] as const)("safely parses run candidate page parameter %j", (params, expected) => {
-    expect(resolveRunCandidatePage(params)).toBe(expected);
+  it("safely parses repeated, invalid and oversized run candidate page parameters", () => {
+    const cases: Array<{ params: Record<string, string | string[] | undefined>; expected: number }> = [
+      { params: { page: ["2", "3"] }, expected: 2 },
+      { params: { page: "0" }, expected: 1 },
+      { params: { page: ["", "2"] }, expected: 1 },
+      { params: { page: "1evil" }, expected: 1 },
+      { params: { page: "999999999999999999999999" }, expected: 1 },
+    ];
+    for (const { params, expected } of cases) {
+      expect(resolveRunCandidatePage(params)).toBe(expected);
+    }
   });
 
   it("never represents unknown spending as zero and keeps known zero distinct", () => {

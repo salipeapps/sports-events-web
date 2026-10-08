@@ -100,7 +100,7 @@ export interface RunQuery {
 
 function firstParam(params: AdminSearchParams, key: string): string {
   const raw = params[key];
-  return (Array.isArray(raw) ? raw[0] ?? "" : raw ?? "").trim();
+  return (Array.isArray(raw) ? (raw[0] ?? "") : (raw ?? "")).trim();
 }
 
 export function resolveSourceQuery(params: AdminSearchParams): SourceQuery {
