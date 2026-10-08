@@ -124,7 +124,8 @@ test("valid candidate publishes, conflict cannot publish, and recorded decisions
     }
     const rejectionHistory = page.locator(".admin-review-history");
     await expect(rejectionHistory.getByText("Rechazada", { exact: true })).toBeVisible();
-    await expect(rejectionHistory.getByText("Conflicto de horario sin verificar", { exact: true })).toBeVisible();
+    const rejectionHistoryEntry = rejectionHistory.locator("li").filter({ hasText: "Rechazada" });
+    await expect(rejectionHistoryEntry).toContainText("Conflicto de horario sin verificar");
 
     await page.goto("/admin/runs/fixture-run-8420");
     const rejectedCandidate = page.locator(".admin-operation-notes li").filter({ hasText: "candidate-conflict-E023" });
