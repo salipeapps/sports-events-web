@@ -49,6 +49,28 @@ describe("admin contracts", () => {
     expect(deserializeEngineRun(serializeContract(run))).toEqual(run);
   });
 
+  it.each(["not-a-date", "2026-02-30T16:00", "2026-10-24T25:00", "2026-10-24T18:60", "2026-10-24T16:00Z", "2026-10-24"])(
+    "rejects malformed known local date-time %s in contract data",
+    (invalidDate) => {
+      const source = candidateFixtures.find((candidate) => candidate.id === "candidate-valid-E019");
+      if (!source) throw new Error("Expected valid fixture");
+      for (const field of ["startLocal", "endLocal"] as const) {
+        const malformed = structuredClone(source);
+        malformed.final[field] = known(invalidDate);
+        expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
+      }
+    },
+  );
+
+  it("accepts valid local date-times including minute precision and leap days", () => {
+    const source = candidateFixtures.find((candidate) => candidate.id === "candidate-valid-E019");
+    if (!source) throw new Error("Expected valid fixture");
+    const valid = structuredClone(source);
+    valid.final.startLocal = known("2028-02-29T16:00");
+    valid.final.endLocal = known("2028-02-29T19:00:00.500");
+    expect(parseAdminCandidate(valid).final.startLocal).toEqual(known("2028-02-29T16:00"));
+  });
+
   it("rejects malformed unknown reasons", () => {
     const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
     const final = malformed.final as Record<string, unknown>;
