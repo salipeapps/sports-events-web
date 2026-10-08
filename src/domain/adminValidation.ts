@@ -103,14 +103,9 @@ function parseLocalEventDateTime(value: unknown): number | null {
   if (!match) return null;
 
   const [, yearText, monthText, dayText, hourText, minuteText, secondText = "00", fraction = ""] = match;
-  const [year, month, day, hour, minute, second] = [
-    yearText,
-    monthText,
-    dayText,
-    hourText,
-    minuteText,
-    secondText,
-  ].map(Number);
+  const [year, month, day, hour, minute, second] = [yearText, monthText, dayText, hourText, minuteText, secondText].map(
+    Number,
+  );
   if (year < 1) return null;
 
   const milliseconds = Number(fraction.padEnd(3, "0"));
