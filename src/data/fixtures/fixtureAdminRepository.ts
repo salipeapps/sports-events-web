@@ -272,6 +272,15 @@ export class FixtureAdminRepository implements AdminRepository {
   private sources = clone(sourceFixtures);
   private runs = clone(runFixtures);
 
+  constructor() {
+    for (const candidate of this.candidates) {
+      const occurrence = this.published.find((item) => item.sourceRecordIds.includes(candidate.sourceRecordId));
+      if (occurrence) {
+        candidate.publishedBaseline = { occurrenceId: occurrence.id, event: clone(occurrence.event) };
+      }
+    }
+  }
+
   async getDashboardSummary(): Promise<DashboardSummary> {
     const openConflicts = this.candidates.reduce(
       (total, candidate) =>
@@ -527,6 +536,17 @@ export class FixtureAdminRepository implements AdminRepository {
         (field) =>
           JSON.stringify(existingOccurrence.event[field]) !== JSON.stringify(candidateForApproval.final[field]),
       );
+      if (changedFields.length > 0) {
+        const baseline = candidateForApproval.publishedBaseline;
+        if (!baseline || baseline.occurrenceId !== existingOccurrence.id) {
+          throw new Error("Missing published occurrence baseline; re-review before applying corrections.");
+        }
+        for (const field of changedFields) {
+          if (JSON.stringify(existingOccurrence.event[field]) !== JSON.stringify(baseline.event[field])) {
+            throw new Error(`Stale published occurrence correction: ${field} changed since this candidate was reviewed.`);
+          }
+        }
+      }
       for (const field of changedFields) {
         editableEvent[field] = clone(candidateForApproval.final[field]);
       }
@@ -687,6 +707,12 @@ export class FixtureAdminRepository implements AdminRepository {
           actor: clone(input.actor),
           reason: { state: "known", value: `Accepted change proposal ${proposal.id}: ${reason}` },
         });
+        if (candidateForResolution.publishedBaseline?.occurrenceId === currentOccurrence.id) {
+          const baselineEvent = candidateForResolution.publishedBaseline.event as unknown as Record<string, FieldValue<unknown>>;
+          for (const field of proposal.fields) {
+            baselineEvent[field.field] = clone(nextOccurrence.event[field.field]);
+          }
+        }
         occurrenceUpdate = { current: currentOccurrence, next: nextOccurrence };
       }
     } else if (input.kind === "match") {
