@@ -494,6 +494,118 @@ describe("FixtureAdminRepository", () => {
     expect(candidate.history.some((entry) => entry.action === "blocker_resolved")).toBe(true);
   });
 
+  it("publishes an audited conflict resolution to the linked occurrence without creating a duplicate", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-conflict-E023";
+    await repository.updateCandidateFinal(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      corrections: { startLocal: known("2026-10-07T18:45:00") },
+      reason: "Organizer confirms corrected schedule",
+    });
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "conflict",
+      targetId: "conflict-E023-time",
+      reason: "Schedule conflict verified with organizer",
+    });
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "rule",
+      targetId: "rule-E023-conflict",
+      reason: "Blocking rule addressed",
+    });
+    await repository.unblockCandidate(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      reason: "All blockers resolved",
+    });
+
+    const review = await repository.getCandidate(candidateId);
+    if (!review) throw new Error("Missing resolved candidate");
+    expect(publicationBlockReasons(review)).toEqual([]);
+    expect(review.changeProposal.state).toBe("unknown");
+    const publishedBefore = await repository.listActivities({ statuses: ["published"] });
+
+    const approved = await repository.approveCandidate(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      reason: "Publish reviewed conflict resolution",
+    });
+    expect(approved.editorialStatus).toBe("published");
+
+    const publishedAfter = await repository.listActivities({ statuses: ["published"] });
+    expect(publishedAfter.items).toHaveLength(publishedBefore.items.length);
+    const occurrence = publishedAfter.items.find((item) => item.id === "pub-fixture-E023-web-1900");
+    expect(occurrence?.startLocal).toEqual(known("2026-10-07T18:45:00"));
+  });
+
+  it("removes only audited blocker resolutions from list reason codes and reason filters", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-conflict-E023";
+    const before = await repository.listCandidates();
+    const itemBefore = before.items.find((item) => item.id === candidateId);
+    expect(itemBefore?.reasonCodes).toContain("schedule");
+    expect(itemBefore?.reasonCodes).toContain("essential_schedule_conflict");
+
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "conflict",
+      targetId: "conflict-E023-time",
+      reason: "Reviewed schedule conflict",
+    });
+    const intermediate = (await repository.listCandidates()).items.find((item) => item.id === candidateId);
+    expect(intermediate?.reasonCodes).not.toContain("schedule");
+    expect(intermediate?.reasonCodes).toContain("essential_schedule_conflict");
+    const scheduleMatches = await repository.listCandidates({ reason: "schedule" });
+    expect(scheduleMatches.items.map((item) => item.id)).not.toContain(candidateId);
+
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "rule",
+      targetId: "rule-E023-conflict",
+      reason: "Blocking rule reviewed",
+    });
+    const finalItem = (await repository.listCandidates()).items.find((item) => item.id === candidateId);
+    expect(finalItem?.reasonCodes).not.toContain("essential_schedule_conflict");
+    const ruleMatches = await repository.listCandidates({ reason: "essential_schedule_conflict" });
+    expect(ruleMatches.items.map((item) => item.id)).not.toContain(candidateId);
+  });
+
+  it.each(["accepted", "rejected"] as const)(
+    "refuses to overwrite an overlapping saved editorial correction when a proposal is %s",
+    async (disposition) => {
+      const repository = new FixtureAdminRepository();
+      const candidateId = "candidate-change-E023";
+      await repository.updateCandidateFinal(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        corrections: { startLocal: known("2026-10-07T18:45:00") },
+        reason: "Reviewer confirmed an alternative time",
+      });
+      const candidateBefore = await repository.getCandidate(candidateId);
+      const publishedBefore = (await repository.listActivities({ statuses: ["published"] })).items;
+
+      await expect(
+        repository.resolveCandidateBlocker(candidateId, {
+          actor: reviewer,
+          expectedVersion: await currentVersion(repository, candidateId),
+          kind: "change_proposal",
+          targetId: "change-E023-time",
+          disposition,
+          reason: "Proposal must not discard the saved time",
+        }),
+      ).rejects.toThrow("Saved editorial correction for startLocal conflicts");
+
+      expect(await repository.getCandidate(candidateId)).toEqual(candidateBefore);
+      expect((await repository.listActivities({ statuses: ["published"] })).items).toEqual(publishedBefore);
+    },
+  );
+
   it("resolves pending match and change-proposal publication guards explicitly", async () => {
     const repository = new FixtureAdminRepository();
 

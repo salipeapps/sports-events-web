@@ -48,10 +48,20 @@ function valueOrUndefined<T>(field: FieldValue<T>): T | undefined {
 
 function reasonCodes(candidate: AdminCandidate): string[] {
   return [
-    ...candidate.rules.filter((rule) => rule.outcome !== "pass").map((rule) => rule.code),
-    ...candidate.conflicts.filter((conflict) => conflict.status === "open").map((conflict) => conflict.type),
-    ...candidate.matches.filter((match) => match.status === "pending").map(() => "possible_match"),
-    ...(candidate.changeProposal.state === "known" && candidate.changeProposal.value.status === "pending"
+    ...candidate.rules
+      .filter((rule) => rule.outcome !== "pass" && !isCandidateBlockerResolved(candidate, "rule", rule.id))
+      .map((rule) => rule.code),
+    ...candidate.conflicts
+      .filter(
+        (conflict) => conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+      )
+      .map((conflict) => conflict.type),
+    ...candidate.matches
+      .filter((match) => match.status === "pending" && !isCandidateBlockerResolved(candidate, "match", match.id))
+      .map(() => "possible_match"),
+    ...(candidate.changeProposal.state === "known" &&
+    candidate.changeProposal.value.status === "pending" &&
+    !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
       ? ["pending_change"]
       : []),
   ];
@@ -522,12 +532,19 @@ export class FixtureAdminRepository implements AdminRepository {
 
     if (existingOccurrence) {
       const proposal = candidateForApproval.changeProposal;
-      if (
-        proposal.state !== "known" ||
-        proposal.value.publishedOccurrenceId !== existingOccurrence.id ||
-        proposal.value.status === "pending"
-      ) {
-        throw new Error("Existing published occurrence requires a reviewed matching change proposal.");
+      const reviewedProposal =
+        proposal.state === "known" &&
+        proposal.value.publishedOccurrenceId === existingOccurrence.id &&
+        proposal.value.status !== "pending";
+      const reviewedConflict =
+        proposal.state === "unknown" &&
+        candidateForApproval.publishedBaseline?.occurrenceId === existingOccurrence.id &&
+        candidateForApproval.conflicts.some(
+          (conflict) =>
+            conflict.blocking && isCandidateBlockerResolved(candidateForApproval, "conflict", conflict.id),
+        );
+      if (!reviewedProposal && !reviewedConflict) {
+        throw new Error("Existing published occurrence requires a reviewed matching change proposal or conflict.");
       }
 
       updatedOccurrence = clone(existingOccurrence);
@@ -660,6 +677,17 @@ export class FixtureAdminRepository implements AdminRepository {
 
       const proposal = candidateForResolution.changeProposal.value;
       const side = input.disposition === "accepted" ? "after" : "before";
+      const savedCorrections = this.protectedCorrectionFields.get(candidateId);
+      for (const field of proposal.fields) {
+        if (
+          savedCorrections?.has(field.field) &&
+          JSON.stringify(candidateForResolution.final[field.field]) !== JSON.stringify(field[side])
+        ) {
+          throw new Error(
+            `Saved editorial correction for ${field.field} conflicts with the ${input.disposition} proposal decision.`,
+          );
+        }
+      }
       candidateForResolution.final = applyChangeFields(candidateForResolution.final, proposal.fields, side);
       proposal.status = input.disposition === "accepted" ? "approved" : "rejected";
       assertValidEventTimeRange(candidateForResolution.final);
