@@ -771,6 +771,172 @@ describe("FixtureAdminRepository", () => {
     expect(internal.published).toHaveLength(before.items.length);
   });
 
+  it.each(["saved", "approval-time"] as const)(
+    "rejects a stale %s title correction after another candidate updates the same occurrence",
+    async (timing) => {
+      const repository = new FixtureAdminRepository();
+      const candidateId = "candidate-change-E023";
+      const original = await repository.getCandidate(candidateId);
+      if (!original || original.changeProposal.state !== "known") throw new Error("Missing change fixture");
+      const competing = structuredClone(original);
+      competing.id = "candidate-change-E023-concurrent-title";
+      if (competing.changeProposal.state !== "known") throw new Error("Missing competing change fixture");
+      competing.changeProposal.value.id = "change-E023-concurrent-title";
+
+      const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
+      const occurrence = internal.published.find((item) => item.id === "pub-fixture-E023-web-1900");
+      if (!occurrence) throw new Error("Missing published occurrence");
+      competing.changeProposal.value.fields = [
+        {
+          field: "title",
+          before: structuredClone(occurrence.event.title),
+          after: known("Updated title from concurrent reviewer"),
+          evidenceIds: [],
+        },
+      ];
+      internal.candidates.push(competing);
+
+      if (timing === "saved") {
+        await repository.updateCandidateFinal(candidateId, {
+          actor: reviewer,
+          expectedVersion: await currentVersion(repository, candidateId),
+          corrections: { title: known("Editorial title from original reviewer") },
+          reason: "Saved before concurrent publication",
+        });
+      }
+
+      await repository.resolveCandidateBlocker(competing.id, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, competing.id),
+        kind: "change_proposal",
+        targetId: "change-E023-concurrent-title",
+        disposition: "accepted",
+        reason: "Concurrent title approved",
+      });
+      await repository.resolveCandidateBlocker(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        kind: "change_proposal",
+        targetId: "change-E023-time",
+        disposition: "rejected",
+        reason: "Retain original time",
+      });
+      await repository.resolveCandidateBlocker(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        kind: "rule",
+        targetId: "rule-change-E023",
+        reason: "Rule reviewed",
+      });
+
+      const beforeApproval = await repository.getCandidate(candidateId);
+      const beforeOccurrence = structuredClone(occurrence);
+      await expect(
+        repository.approveCandidate(candidateId, {
+          actor: reviewer,
+          expectedVersion: await currentVersion(repository, candidateId),
+          ...(timing === "approval-time"
+            ? { corrections: { title: known("Editorial title from original reviewer") } }
+            : {}),
+          reason: "Must not overwrite a newer published title",
+        }),
+      ).rejects.toThrow("Stale published occurrence correction: title");
+
+      expect(await repository.getCandidate(candidateId)).toEqual(beforeApproval);
+      expect(occurrence).toEqual(beforeOccurrence);
+    },
+  );
+
+  it("allows independent editorial corrections after another candidate updates a different field", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-change-E023";
+    const original = await repository.getCandidate(candidateId);
+    if (!original || original.changeProposal.state !== "known") throw new Error("Missing change fixture");
+    const competing = structuredClone(original);
+    competing.id = "candidate-change-E023-independent";
+    if (competing.changeProposal.state !== "known") throw new Error("Missing competing proposal");
+    competing.changeProposal.value.id = "change-E023-independent";
+
+    const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
+    const occurrence = internal.published.find((item) => item.id === "pub-fixture-E023-web-1900");
+    if (!occurrence) throw new Error("Missing published occurrence");
+    competing.changeProposal.value.fields = [
+      { field: "title", before: structuredClone(occurrence.event.title), after: known("Concurrent title"), evidenceIds: [] },
+    ];
+    internal.candidates.push(competing);
+
+    await repository.updateCandidateFinal(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      corrections: { description: known("Verified independent description") },
+    });
+    await repository.resolveCandidateBlocker(competing.id, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, competing.id),
+      kind: "change_proposal",
+      targetId: "change-E023-independent",
+      disposition: "accepted",
+      reason: "Concurrent title accepted",
+    });
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "change_proposal",
+      targetId: "change-E023-time",
+      disposition: "rejected",
+      reason: "No time adjustment",
+    });
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "rule",
+      targetId: "rule-change-E023",
+      reason: "Rule reviewed",
+    });
+
+    const approved = await repository.approveCandidate(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      reason: "Independent description correction",
+    });
+    expect(approved.editorialStatus).toBe("published");
+    expect(occurrence.event.title).toEqual(known("Concurrent title"));
+    expect(occurrence.event.description).toEqual(known("Verified independent description"));
+  });
+
+  it("refreshes the reviewed baseline for a proposal accepted by the same candidate", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-change-E023";
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "change_proposal",
+      targetId: "change-E023-time",
+      disposition: "accepted",
+      reason: "Accept proposal",
+    });
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "rule",
+      targetId: "rule-change-E023",
+      reason: "Rule reviewed",
+    });
+
+    const approved = await repository.approveCandidate(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      corrections: { startLocal: known("2026-10-07T18:45:00") },
+      reason: "Edit approved occurrence time again",
+    });
+    expect(approved.editorialStatus).toBe("published");
+    expect(
+      (await repository.listActivities({ statuses: ["published"] })).items.find(
+        (item) => item.id === "pub-fixture-E023-web-1900",
+      )?.startLocal,
+    ).toEqual(known("2026-10-07T18:45:00"));
+  });
+
   it("allows an explicitly blocked candidate to return to review with audit history", async () => {
     const repository = new FixtureAdminRepository();
 
