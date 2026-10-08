@@ -605,6 +605,16 @@ export function deserializeEngineRun(serialized: string): EngineRun {
   return parseEngineRun(JSON.parse(serialized) as unknown);
 }
 
+export function assertValidEventTimeRange(event: EventDetails): void {
+  if (event.startLocal.state !== "known" || event.endLocal.state !== "known") return;
+
+  const start = Date.parse(`${event.startLocal.value}Z`);
+  const end = Date.parse(`${event.endLocal.value}Z`);
+  if (Number.isFinite(start) && Number.isFinite(end) && end < start) {
+    throw new Error("La fecha y hora de fin no pueden ser anteriores al inicio.");
+  }
+}
+
 export function isCandidateBlockerResolved(
   candidate: AdminCandidate,
   kind: "conflict" | "rule" | "match" | "change_proposal",
