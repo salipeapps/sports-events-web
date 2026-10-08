@@ -34,7 +34,4 @@ jobs:
         run: npm ci
 
       - name: Run quality checks
-        run: |
-          npx prettier --write src/data/fixtures/fixtureAdminRepository.ts src/data/fixtures/fixtureAdminRepository.test.ts
-          git diff -- src/data/fixtures/fixtureAdminRepository.ts src/data/fixtures/fixtureAdminRepository.test.ts
-          exit 1
+        run: npm run quality
