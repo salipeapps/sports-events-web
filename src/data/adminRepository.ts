@@ -42,7 +42,7 @@ export interface CandidateActionInput {
 export interface CandidateBlockerResolutionInput extends CandidateDecisionInput {
   kind: CandidateBlockerKind;
   targetId: string;
-  disposition?: "accepted" | "rejected";
+  disposition?: "accepted" | "rejected" | "distinct" | "duplicate";
 }
 
 export interface AdminRepository {
