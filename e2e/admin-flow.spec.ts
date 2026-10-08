@@ -98,10 +98,15 @@ test("valid candidate publishes, conflict cannot publish, and recorded decisions
     } else {
       await expect(page.getByText("Publicada", { exact: true }).first()).toBeVisible();
     }
-    await expect(page.getByRole("heading", { name: "Historial" })).toBeVisible();
+    const approvalHistory = page.locator(".admin-review-history");
+    await expect(approvalHistory.getByText("Aprobada", { exact: true })).toBeVisible();
+    await expect(approvalHistory.getByText("Publicada", { exact: true })).toBeVisible();
 
     await page.goto("/admin/runs/fixture-run-8421");
-    await expect(page.getByText("candidate-valid-E019")).toBeVisible();
+    const publishedCandidate = page
+      .locator(".admin-operation-notes li")
+      .filter({ hasText: "candidate-valid-E019" });
+    await expect(publishedCandidate).toContainText("Publicada");
 
     await page.goto("/admin/candidates/candidate-conflict-E023");
     await expect(page.getByRole("button", { name: "Aprobar y publicar" })).toBeDisabled();
@@ -119,7 +124,15 @@ test("valid candidate publishes, conflict cannot publish, and recorded decisions
     } else {
       await expect(page.getByText("Rechazada", { exact: true }).first()).toBeVisible();
     }
-    await expect(page.getByRole("heading", { name: "Historial" })).toBeVisible();
+    const rejectionHistory = page.locator(".admin-review-history");
+    await expect(rejectionHistory.getByText("Rechazada", { exact: true })).toBeVisible();
+    await expect(rejectionHistory.getByText("Conflicto de horario sin verificar", { exact: true })).toBeVisible();
+
+    await page.goto("/admin/runs/fixture-run-8420");
+    const rejectedCandidate = page
+      .locator(".admin-operation-notes li")
+      .filter({ hasText: "candidate-conflict-E023" });
+    await expect(rejectedCandidate).toContainText("Rechazada");
   }
 });
 
