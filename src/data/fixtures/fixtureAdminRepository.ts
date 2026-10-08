@@ -673,8 +673,20 @@ export class FixtureAdminRepository implements AdminRepository {
         });
         occurrenceUpdate = { current: currentOccurrence, next: nextOccurrence };
       }
+    } else if (input.kind === "match") {
+      if (input.disposition !== "distinct" && input.disposition !== "duplicate") {
+        throw new Error("Match resolution requires a distinct or duplicate disposition.");
+      }
+      if (input.disposition === "duplicate") {
+        const match = candidateForResolution.matches.find((item) => item.id === input.targetId);
+        if (!match) throw new Error("Match is no longer available.");
+        candidateForResolution.editorialStatus = "rejected";
+        candidateForResolution.history.push(
+          historyEntry(candidateForResolution, "rejected", input.actor, `Duplicate of ${match.targetId}: ${reason}`),
+        );
+      }
     } else if (input.disposition !== undefined) {
-      throw new Error("A disposition is only valid for change proposals.");
+      throw new Error("A disposition is only valid for matches and change proposals.");
     }
 
     candidateForResolution.blockerResolutions ??= [];
