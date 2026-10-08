@@ -119,6 +119,44 @@ describe("FixtureAdminRepository", () => {
     expect(await repository.getCandidate(candidateId)).toEqual(before);
   });
 
+  it.each(["not-a-date", "2026-02-30T16:00", "2026-10-24T25:00"])(
+    "rejects malformed saved start %s and preserves the candidate",
+    async (invalidDate) => {
+      const repository = new FixtureAdminRepository();
+      const candidateId = "candidate-valid-E019";
+      const before = await repository.getCandidate(candidateId);
+      await expect(
+        repository.updateCandidateFinal(candidateId, {
+          actor: reviewer,
+          expectedVersion: await currentVersion(repository, candidateId),
+          corrections: { startLocal: known(invalidDate) },
+        }),
+      ).rejects.toThrow();
+      expect(await repository.getCandidate(candidateId)).toEqual(before);
+    },
+  );
+
+  it("rejects a malformed end and start on approval without publishing", async () => {
+    const repository = new FixtureAdminRepository();
+    const id = "candidate-valid-E019";
+    const before = await repository.getCandidate(id);
+    for (const corrections of [
+      { startLocal: known("not-a-date") },
+      { endLocal: known("2026-02-30T18:30") },
+    ]) {
+      await expect(
+        repository.approveCandidate(id, {
+          actor: reviewer,
+          expectedVersion: await currentVersion(repository, id),
+          corrections,
+          reason: "Invalid timestamp must not be published",
+        }),
+      ).rejects.toThrow();
+    }
+    expect(await repository.getCandidate(id)).toEqual(before);
+    expect((await repository.listActivities({ statuses: ["published"] })).items).toHaveLength(1);
+  });
+
   it("rejects an inverted interval on approval even when the form validation is bypassed", async () => {
     const repository = new FixtureAdminRepository();
     const before = await repository.getCandidate("candidate-valid-E019");
