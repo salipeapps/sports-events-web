@@ -1907,3 +1907,34 @@ h1 {
     justify-self: stretch;
   }
 }
+
+/* Editorial proposal comparisons keep the observed and proposed values visible before a decision. */
+.admin-proposal-comparison {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0;
+}
+
+.admin-proposal-comparison > div {
+  display: grid;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+}
+
+.admin-proposal-comparison dt {
+  font-weight: 700;
+}
+
+.admin-proposal-comparison dd {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.admin-proposal-comparison dd span {
+  color: var(--text-muted);
+  font-size: var(--type-small-size);
+}
