@@ -2058,3 +2058,62 @@ h1 {
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Discovery extends the Admin Foundations system rather than introducing new tokens. */
+.admin-discovery-note {
+  margin: 16px 0;
+  padding: 12px 16px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--surface-base);
+  color: var(--text-muted);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}
+
+.admin-discovery-page .admin-tabs {
+  margin-bottom: 22px;
+}
+
+.admin-discovery-page .admin-table-title small {
+  max-width: 460px;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.admin-discovery-table {
+  min-width: 1160px;
+}
+
+.admin-discovery-page a {
+  text-underline-offset: 3px;
+}
+
+.admin-discovery-page .admin-definition-list dd,
+.admin-discovery-url {
+  overflow-wrap: anywhere;
+}
+
+.admin-discovery-page .admin-primary-button:disabled,
+.admin-discovery-page .admin-secondary-button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.admin-operation-section-heading {
+  margin: 22px 0 12px;
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-line);
+}
+
+@media (max-width: 680px) {
+  .admin-discovery-page .admin-tabs {
+    gap: 24px;
+  }
+
+  .admin-discovery-page .admin-definition-list > div {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+}

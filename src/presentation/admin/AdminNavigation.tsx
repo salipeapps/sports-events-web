@@ -13,6 +13,7 @@ const navigation = [
   { id: "summary", label: "Resumen", href: "/admin" },
   { id: "activities", label: "Actividades", href: "/admin/activities" },
   { id: "candidates", label: "Candidatos", href: "/admin/candidates" },
+  { id: "discovery", label: "Descubrimiento", href: "/admin/discovery" },
   { id: "sources", label: "Fuentes", href: "/admin/sources" },
   { id: "runs", label: "Ejecuciones", href: "/admin/runs" },
   { id: "organizers", label: "Organizadores" },
