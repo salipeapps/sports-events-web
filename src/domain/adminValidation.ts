@@ -96,6 +96,42 @@ function validateFieldValue(value: unknown, path: string, errors: string[], vali
   errors.push(`${path}.state must be known or unknown`);
 }
 
+/** Parse a timezone-free local event timestamp; never normalize impossible calendar dates. */
+function parseLocalEventDateTime(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
+  if (!match) return null;
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText = "00", fraction = ""] = match;
+  const [year, month, day, hour, minute, second] = [
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+  ].map(Number);
+  if (year < 1) return null;
+
+  const milliseconds = Number(fraction.padEnd(3, "0"));
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, milliseconds);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second
+  ) {
+    return null;
+  }
+
+  return date.getTime();
+}
+
 const eventFieldNames: (keyof EventDetails)[] = [
   "title",
   "description",
@@ -159,6 +195,14 @@ function validatePriceDetails(value: unknown, path: string, errors: string[]): v
 
 function validateEventFieldValue(field: keyof EventDetails, value: unknown, path: string, errors: string[]): void {
   switch (field) {
+    case "startLocal":
+    case "endLocal":
+      validateFieldValue(value, path, errors, (knownValue, knownPath, knownErrors) => {
+        if (parseLocalEventDateTime(knownValue) === null) {
+          knownErrors.push(`${knownPath} must be a valid local date-time (YYYY-MM-DDTHH:mm[:ss[.SSS]])`);
+        }
+      });
+      break;
     case "category":
       validateFieldValue(value, path, errors, (knownValue, knownPath, knownErrors) =>
         validateEnum(knownValue, activityCategories, knownPath, knownErrors),
@@ -614,11 +658,16 @@ export function deserializeEngineRun(serialized: string): EngineRun {
 }
 
 export function assertValidEventTimeRange(event: EventDetails): void {
-  if (event.startLocal.state !== "known" || event.endLocal.state !== "known") return;
+  const start = event.startLocal.state === "known" ? parseLocalEventDateTime(event.startLocal.value) : null;
+  const end = event.endLocal.state === "known" ? parseLocalEventDateTime(event.endLocal.value) : null;
 
-  const start = Date.parse(`${event.startLocal.value}Z`);
-  const end = Date.parse(`${event.endLocal.value}Z`);
-  if (Number.isFinite(start) && Number.isFinite(end) && end < start) {
+  if (event.startLocal.state === "known" && start === null) {
+    throw new Error("La fecha y hora de inicio deben tener un formato local válido.");
+  }
+  if (event.endLocal.state === "known" && end === null) {
+    throw new Error("La fecha y hora de fin deben tener un formato local válido.");
+  }
+  if (start !== null && end !== null && end < start) {
     throw new Error("La fecha y hora de fin no pueden ser anteriores al inicio.");
   }
 }
