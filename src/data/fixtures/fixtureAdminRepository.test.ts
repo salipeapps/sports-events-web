@@ -861,7 +861,12 @@ describe("FixtureAdminRepository", () => {
     const occurrence = internal.published.find((item) => item.id === "pub-fixture-E023-web-1900");
     if (!occurrence) throw new Error("Missing published occurrence");
     competing.changeProposal.value.fields = [
-      { field: "title", before: structuredClone(occurrence.event.title), after: known("Concurrent title"), evidenceIds: [] },
+      {
+        field: "title",
+        before: structuredClone(occurrence.event.title),
+        after: known("Concurrent title"),
+        evidenceIds: [],
+      },
     ];
     internal.candidates.push(competing);
 
