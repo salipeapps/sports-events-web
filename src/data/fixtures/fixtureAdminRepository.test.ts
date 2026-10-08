@@ -101,6 +101,41 @@ describe("FixtureAdminRepository", () => {
     expect(corrected.history.at(-1)?.action).toBe("corrected");
   });
 
+  it("rejects a saved start later than the retained end without mutating the candidate", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-valid-E019";
+    const before = await repository.getCandidate(candidateId);
+    if (!before || before.final.endLocal.state !== "known") throw new Error("Expected an end date");
+
+    await expect(
+      repository.updateCandidateFinal(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        corrections: { startLocal: known("2026-10-06T21:30:00") },
+        reason: "Check start and end consistency",
+      }),
+    ).rejects.toThrow("anteriores al inicio");
+
+    expect(await repository.getCandidate(candidateId)).toEqual(before);
+  });
+
+  it("rejects an inverted interval on approval even when the form validation is bypassed", async () => {
+    const repository = new FixtureAdminRepository();
+    const before = await repository.getCandidate("candidate-valid-E019");
+
+    await expect(
+      repository.approveCandidate("candidate-valid-E019", {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
+        corrections: { startLocal: known("2026-10-06T21:30:00") },
+        reason: "Invalid start time during approval",
+      }),
+    ).rejects.toThrow("anteriores al inicio");
+
+    expect(await repository.getCandidate("candidate-valid-E019")).toEqual(before);
+    expect((await repository.listActivities({ statuses: ["published"] })).items).toHaveLength(1);
+  });
+
   it("rejects a correction that points to an unknown organizer", async () => {
     const repository = new FixtureAdminRepository();
     const before = await repository.getCandidate("candidate-valid-E019");
@@ -498,6 +533,40 @@ describe("FixtureAdminRepository", () => {
     ).rejects.toThrow("terminal state rejected");
     expect((await repository.listActivities({ statuses: ["published"] })).items).toHaveLength(1);
   });
+
+  it.each(["accepted", "rejected"] as const)(
+    "does not audit a second correction when approving a %s proposal with no other changes",
+    async (disposition) => {
+      const repository = new FixtureAdminRepository();
+      const candidateId = "candidate-change-E023";
+      await repository.resolveCandidateBlocker(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        kind: "change_proposal",
+        targetId: "change-E023-time",
+        disposition,
+        reason: "Proposal decision",
+      });
+      await repository.resolveCandidateBlocker(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        kind: "rule",
+        targetId: "rule-change-E023",
+        reason: "Rule reviewed",
+      });
+      const internal = repository as unknown as { published: PublishedOccurrence[] };
+      const before = structuredClone(internal.published[0]);
+
+      const approved = await repository.approveCandidate(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        reason: "Approval without additional corrections",
+      });
+      expect(approved.editorialStatus).toBe("published");
+      expect(internal.published[0].history).toEqual(before.history);
+      expect(internal.published[0].event).toEqual(before.event);
+    },
+  );
 
   it("rejects a change proposal without modifying the published occurrence", async () => {
     const repository = new FixtureAdminRepository();
