@@ -29,8 +29,12 @@ export function AdminAccessState({ reason }: { reason: AdminAccessFailureReason 
         <h1 id="admin-access-title">{message.title}</h1>
         <p>{message.description}</p>
         <AdminLoginForm />
-        <Link href="/admin-access/recover">Recuperar contraseña</Link>
-        <Link href="/">Volver al sitio público</Link>
+        <Link className="admin-access-recovery-link" href="/admin-access/recover">
+          ¿Has olvidado tu contraseña?
+        </Link>
+        <Link className="admin-access-public-link" href="/">
+          Volver al sitio público <span aria-hidden="true">→</span>
+        </Link>
       </section>
     </main>
   );

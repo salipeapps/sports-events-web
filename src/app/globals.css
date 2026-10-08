@@ -315,28 +315,44 @@ h1 {
 }
 
 .admin-access-page {
+  position: relative;
   min-height: 100dvh;
   display: grid;
   place-items: center;
-  padding: 24px;
-  background: var(--surface-soft);
+  padding: 40px 24px;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 50% 0%, color-mix(in srgb, var(--accent-teal) 10%, transparent), transparent 42%),
+    var(--surface-soft);
 }
 
 .admin-access-card {
-  width: min(520px, 100%);
-  padding: 36px;
-  border: 1px solid var(--border-default);
-  border-radius: 16px;
+  width: min(480px, 100%);
+  padding: 40px;
+  border: 1px solid color-mix(in srgb, var(--border-default) 80%, white);
+  border-radius: 20px;
   background: var(--surface-base);
+  box-shadow:
+    0 24px 72px rgb(7 26 59 / 9%),
+    0 2px 8px rgb(7 26 59 / 4%);
 }
 
 .admin-access-mark {
-  display: block;
-  width: 24px;
-  height: 24px;
-  margin-bottom: 18px;
-  border-radius: 50%;
-  background: var(--accent-teal);
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  margin-bottom: 24px;
+  border: 1px solid color-mix(in srgb, var(--accent-teal) 20%, transparent);
+  border-radius: 14px;
+  color: #087f7a;
+  background: color-mix(in srgb, var(--accent-teal) 12%, white);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.admin-access-mark::before {
+  content: "S";
 }
 
 .admin-access-eyebrow {
@@ -348,31 +364,58 @@ h1 {
 }
 
 .admin-access-card h1 {
+  max-width: 20ch;
+  margin: 0;
   color: var(--text-primary);
-  font-size: var(--type-h1-size);
-  line-height: var(--type-h1-line);
+  font-size: clamp(28px, 5vw, 34px);
+  line-height: 1.12;
+  letter-spacing: -0.035em;
   font-weight: 700;
 }
 
 .admin-access-card > p:not(.admin-access-eyebrow) {
-  margin: 14px 0 24px;
+  margin: 12px 0 0;
   color: var(--text-muted);
   font-size: var(--type-body-size);
   line-height: var(--type-body-line);
 }
 
-.admin-access-card a {
-  display: inline-flex;
+.admin-access-recovery-link {
+  display: flex;
+  width: fit-content;
   min-height: 40px;
   align-items: center;
-  padding: 10px 16px;
-  border-radius: 10px;
-  color: var(--surface-base);
-  background: var(--brand-500);
-  font-size: var(--type-label-size);
-  line-height: var(--type-label-line);
+  margin: -12px 0 4px auto;
+  color: var(--brand-700);
+  font-size: var(--type-small-size);
   font-weight: 600;
   text-decoration: none;
+}
+
+.admin-access-recovery-link:hover,
+.admin-access-public-link:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.admin-access-public-link {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-default);
+  color: var(--text-muted);
+  font-size: var(--type-small-size);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-access-card a:focus-visible {
+  border-radius: 4px;
+  outline: 2px solid var(--brand-500);
+  outline-offset: 3px;
 }
 
 @media (max-width: 900px) {
@@ -2120,8 +2163,8 @@ h1 {
 
 .admin-auth-form {
   display: grid;
-  gap: 16px;
-  margin: 24px 0;
+  gap: 18px;
+  margin: 28px 0 0;
 }
 .admin-auth-form label {
   display: grid;
@@ -2134,7 +2177,7 @@ h1 {
   min-height: 44px;
   padding: 10px 12px;
   border: 1px solid var(--border-default);
-  border-radius: 8px;
+  border-radius: 10px;
   background: var(--surface-base);
   color: var(--text-primary);
 }
@@ -2145,7 +2188,43 @@ h1 {
 .admin-auth-form [role="status"] {
   margin: 0;
 }
-.admin-access-card > a {
-  display: block;
-  margin-top: 16px;
+.admin-auth-form .admin-primary-button {
+  width: 100%;
+  min-height: 48px;
+  border-radius: 12px;
+  box-shadow: 0 5px 12px color-mix(in srgb, var(--brand-500) 20%, transparent);
+  transition:
+    background-color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+.admin-auth-form .admin-primary-button:hover:not(:disabled) {
+  background: var(--brand-700);
+  box-shadow: 0 7px 16px color-mix(in srgb, var(--brand-500) 26%, transparent);
+  transform: translateY(-1px);
+}
+.admin-auth-form .admin-primary-button:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 3px;
+}
+
+@media (max-width: 520px) {
+  .admin-access-page {
+    padding: 20px 16px;
+  }
+
+  .admin-access-card {
+    padding: 28px 24px;
+    border-radius: 18px;
+  }
+
+  .admin-access-mark {
+    margin-bottom: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-auth-form .admin-primary-button {
+    transition: none;
+  }
 }
