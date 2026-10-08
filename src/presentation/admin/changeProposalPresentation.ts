@@ -20,11 +20,7 @@ export const changeFieldLabels: Record<keyof EventDetails, string> = {
   individualAccess: "Acceso individual",
 };
 
-export function formatChangeFieldValue(
-  change: ChangeField,
-  side: "before" | "after",
-  organizers: Organizer[],
-): string {
+export function formatChangeFieldValue(change: ChangeField, side: "before" | "after", organizers: Organizer[]): string {
   const field: FieldValue<unknown> = change[side];
   return displayField(field, (value) => {
     if (change.field === "price") return formatObservedPrice(value as PriceDetails);
