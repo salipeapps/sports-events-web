@@ -15,7 +15,12 @@ import type {
   PublishedOccurrence,
   SourceConfig,
 } from "@/domain/admin";
-import { isCandidateBlockerResolved, parseAdminCandidate, publicationBlockReasons } from "@/domain/adminValidation";
+import {
+  assertValidEventTimeRange,
+  isCandidateBlockerResolved,
+  parseAdminCandidate,
+  publicationBlockReasons,
+} from "@/domain/adminValidation";
 import { assertExpectedCandidateVersion } from "@/domain/candidateReviewVersion";
 import type {
   AdminRepository,
@@ -448,6 +453,7 @@ export class FixtureAdminRepository implements AdminRepository {
     }
 
     parseAdminCandidate(correctedCandidate);
+    assertValidEventTimeRange(correctedCandidate.final);
 
     const organizerId = valueOrUndefined(correctedCandidate.final.organizerId);
     if (organizerId && !organizerFixtures.some((organizer) => organizer.id === organizerId)) {
@@ -474,6 +480,7 @@ export class FixtureAdminRepository implements AdminRepository {
     applyCorrections(candidateForApproval, input.corrections);
     candidateForApproval.organizerId = clone(candidateForApproval.final.organizerId);
     parseAdminCandidate(candidateForApproval);
+    assertValidEventTimeRange(candidateForApproval.final);
 
     const publicationBlocks = publicationBlockReasons(candidateForApproval);
     if (publicationBlocks.length > 0) {
@@ -516,10 +523,14 @@ export class FixtureAdminRepository implements AdminRepository {
 
       updatedOccurrence = clone(existingOccurrence);
       const editableEvent = updatedOccurrence.event as unknown as Record<string, FieldValue<unknown>>;
-      for (const field of correctedFields) {
+      const changedFields = [...correctedFields].filter(
+        (field) => JSON.stringify(updatedOccurrence?.event[field]) !== JSON.stringify(candidateForApproval.final[field]),
+      );
+      for (const field of changedFields) {
         editableEvent[field] = clone(candidateForApproval.final[field]);
       }
-      if (correctedFields.has("organizerId")) updatedOccurrence.organizerId = organizerId;
+      assertValidEventTimeRange(updatedOccurrence.event);
+      if (changedFields.includes("organizerId")) updatedOccurrence.organizerId = organizerId;
       updatedOccurrence.lastCheckedAt = candidateForApproval.lastCheckedAt;
       updatedOccurrence.protectedCorrections = Array.from(
         new Set([...updatedOccurrence.protectedCorrections, ...correctedFields]),
@@ -527,13 +538,15 @@ export class FixtureAdminRepository implements AdminRepository {
       updatedOccurrence.evidenceIds = Array.from(
         new Set([...updatedOccurrence.evidenceIds, ...candidateForApproval.evidence.map((evidence) => evidence.id)]),
       );
-      updatedOccurrence.history.push({
-        id: `history-${updatedOccurrence.id}-${updatedOccurrence.history.length + 1}`,
-        action: "corrected",
-        at: new Date().toISOString(),
-        actor: clone(input.actor),
-        reason: { state: "known", value: input.reason ?? "Published occurrence reviewed and corrected" },
-      });
+      if (changedFields.length > 0) {
+        updatedOccurrence.history.push({
+          id: `history-${updatedOccurrence.id}-${updatedOccurrence.history.length + 1}`,
+          action: "corrected",
+          at: new Date().toISOString(),
+          actor: clone(input.actor),
+          reason: { state: "known", value: input.reason ?? "Published occurrence reviewed and corrected" },
+        });
+      }
     }
 
     const publishedOccurrence: PublishedOccurrence | null = existingOccurrence
@@ -626,6 +639,7 @@ export class FixtureAdminRepository implements AdminRepository {
       const side = input.disposition === "accepted" ? "after" : "before";
       candidateForResolution.final = applyChangeFields(candidateForResolution.final, proposal.fields, side);
       proposal.status = input.disposition === "accepted" ? "approved" : "rejected";
+      assertValidEventTimeRange(candidateForResolution.final);
 
       if (proposal.fields.some((field) => field.field === "organizerId")) {
         const selectedOrganizer = valueOrUndefined(candidateForResolution.final.organizerId);
@@ -654,6 +668,7 @@ export class FixtureAdminRepository implements AdminRepository {
 
         const nextOccurrence = clone(currentOccurrence);
         nextOccurrence.event = applyChangeFields(nextOccurrence.event, proposal.fields, "after");
+        assertValidEventTimeRange(nextOccurrence.event);
         if (proposal.fields.some((field) => field.field === "organizerId")) {
           nextOccurrence.organizerId = valueOrUndefined(nextOccurrence.event.organizerId)!;
         }
