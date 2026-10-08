@@ -89,7 +89,7 @@ test("valid candidate publishes, conflict cannot publish, and recorded decisions
   page,
 }) => {
   // Re-entry must also succeed if Playwright retries after an already completed server action.
-  for (const check of [1, 2]) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
     await page.goto("/admin/candidates/candidate-valid-E019");
     const approve = page.getByRole("button", { name: "Aprobar y publicar" });
     if (await approve.isEnabled()) {
