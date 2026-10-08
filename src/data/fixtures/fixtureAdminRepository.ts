@@ -524,7 +524,7 @@ export class FixtureAdminRepository implements AdminRepository {
       updatedOccurrence = clone(existingOccurrence);
       const editableEvent = updatedOccurrence.event as unknown as Record<string, FieldValue<unknown>>;
       const changedFields = [...correctedFields].filter(
-        (field) => JSON.stringify(updatedOccurrence?.event[field]) !== JSON.stringify(candidateForApproval.final[field]),
+        (field) => JSON.stringify(existingOccurrence.event[field]) !== JSON.stringify(candidateForApproval.final[field]),
       );
       for (const field of changedFields) {
         editableEvent[field] = clone(candidateForApproval.final[field]);
