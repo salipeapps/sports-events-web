@@ -21,7 +21,10 @@ import {
   parseAdminCandidate,
   publicationBlockReasons,
 } from "@/domain/adminValidation";
-import { assertExpectedCandidateVersion } from "@/domain/candidateReviewVersion";
+import {
+  assertExpectedCandidateVersion,
+  publishedOccurrenceReviewVersion,
+} from "@/domain/candidateReviewVersion";
 import type {
   AdminRepository,
   CandidateActionInput,
@@ -29,6 +32,7 @@ import type {
   CandidateBlockerResolutionInput,
   CandidateCorrectionInput,
   CandidateDecisionInput,
+  CandidatePublishedBaselineRefreshInput,
 } from "../adminRepository";
 import {
   candidateFixtures,
@@ -447,6 +451,12 @@ export class FixtureAdminRepository implements AdminRepository {
     return candidate ? clone(candidate) : null;
   }
 
+  async getLinkedPublishedOccurrence(candidateId: string): Promise<PublishedOccurrence | null> {
+    const candidate = this.requireCandidate(candidateId);
+    const occurrence = this.published.find((item) => item.sourceRecordIds.includes(candidate.sourceRecordId));
+    return occurrence ? clone(occurrence) : null;
+  }
+
   async listOrganizers(): Promise<Organizer[]> {
     return clone(organizerFixtures);
   }
@@ -487,6 +497,38 @@ export class FixtureAdminRepository implements AdminRepository {
     Object.assign(candidate, correctedCandidate);
     this.protectedCorrectionFields.set(candidateId, protectedFields);
     return clone(candidate);
+  }
+
+  async refreshCandidatePublishedBaseline(
+    candidateId: string,
+    input: CandidatePublishedBaselineRefreshInput,
+  ): Promise<AdminCandidate> {
+    const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
+    assertActionableCandidate(candidate, "rebased");
+    const reason = requireReason(input.reason);
+
+    const baseline = candidate.publishedBaseline;
+    if (!baseline) throw new Error("Candidate has no published occurrence baseline.");
+
+    const occurrence = this.published.find((item) => item.id === baseline.occurrenceId);
+    if (!occurrence || !occurrence.sourceRecordIds.includes(candidate.sourceRecordId)) {
+      throw new Error("Published occurrence does not match this candidate.");
+    }
+    if (input.expectedOccurrenceVersion !== publishedOccurrenceReviewVersion(occurrence)) {
+      throw new Error("Published occurrence changed during re-review; reload and verify the current values.");
+    }
+    if (JSON.stringify(baseline.event) === JSON.stringify(occurrence.event)) {
+      throw new Error("Published occurrence has no new changes to review.");
+    }
+
+    const refreshed = clone(candidate);
+    refreshed.publishedBaseline = { occurrenceId: occurrence.id, event: clone(occurrence.event) };
+    refreshed.history.push(historyEntry(refreshed, "baseline_refreshed", input.actor, reason));
+    parseAdminCandidate(refreshed);
+    Object.assign(candidate, refreshed);
+    return clone(refreshed);
   }
 
   async approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate> {

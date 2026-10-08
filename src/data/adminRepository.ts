@@ -10,6 +10,7 @@ import type {
   EventDetails,
   Organizer,
   PageResult,
+  PublishedOccurrence,
   SourceConfig,
 } from "@/domain/admin";
 
@@ -39,6 +40,10 @@ export interface CandidateActionInput {
   reason?: string;
 }
 
+export interface CandidatePublishedBaselineRefreshInput extends CandidateDecisionInput {
+  expectedOccurrenceVersion: string;
+}
+
 export interface CandidateBlockerResolutionInput extends CandidateDecisionInput {
   kind: CandidateBlockerKind;
   targetId: string;
@@ -50,9 +55,14 @@ export interface AdminRepository {
   listActivities(filters?: ActivityFilters): Promise<PageResult<ActivityListItem>>;
   listCandidates(filters?: CandidateFilters): Promise<PageResult<ActivityListItem>>;
   getCandidate(candidateId: string): Promise<AdminCandidate | null>;
+  getLinkedPublishedOccurrence(candidateId: string): Promise<PublishedOccurrence | null>;
   listOrganizers(): Promise<Organizer[]>;
   getOrganizer(organizerId: string): Promise<Organizer | null>;
   updateCandidateFinal(candidateId: string, input: CandidateCorrectionInput): Promise<AdminCandidate>;
+  refreshCandidatePublishedBaseline(
+    candidateId: string,
+    input: CandidatePublishedBaselineRefreshInput,
+  ): Promise<AdminCandidate>;
   approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate>;
   rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;
   blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate>;

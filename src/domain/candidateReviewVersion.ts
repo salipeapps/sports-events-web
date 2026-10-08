@@ -1,4 +1,4 @@
-import type { AdminCandidate } from "./admin";
+import type { AdminCandidate, PublishedOccurrence } from "./admin";
 
 function hashSnapshot(value: string): string {
   let hash = 2166136261;
@@ -24,6 +24,16 @@ export function candidateReviewVersion(candidate: AdminCandidate): string {
   });
 
   return `review-v1-${hashSnapshot(snapshot)}`;
+}
+
+export function publishedOccurrenceReviewVersion(occurrence: PublishedOccurrence): string {
+  const snapshot = JSON.stringify({
+    id: occurrence.id,
+    sourceRecordIds: occurrence.sourceRecordIds,
+    event: occurrence.event,
+    history: occurrence.history.map(({ id, action, at }) => ({ id, action, at })),
+  });
+  return `occurrence-v1-${hashSnapshot(snapshot)}`;
 }
 
 export function assertExpectedCandidateVersion(candidate: AdminCandidate, expectedVersion: string): void {

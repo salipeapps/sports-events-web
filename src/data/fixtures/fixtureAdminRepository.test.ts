@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { known, type AdminCandidate, type PublishedOccurrence } from "@/domain/admin";
 import { publicationBlockReasons } from "@/domain/adminValidation";
-import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
+import { candidateReviewVersion, publishedOccurrenceReviewVersion } from "@/domain/candidateReviewVersion";
 import { FixtureAdminRepository } from "./fixtureAdminRepository";
 
 const reviewer = { id: "reviewer-1", role: "reviewer", displayName: "Fixture reviewer" } as const;
@@ -993,6 +993,151 @@ describe("FixtureAdminRepository", () => {
       expect(occurrence).toEqual(beforeOccurrence);
     },
   );
+
+  it.each(["saved", "approval-time"] as const)(
+    "permits an explicitly reviewed rebase before approving a %s correction",
+    async (timing) => {
+      const repository = new FixtureAdminRepository();
+      const candidateId = "candidate-change-E023";
+      const original = await repository.getCandidate(candidateId);
+      if (!original || original.changeProposal.state !== "known") throw new Error("Missing change fixture");
+      const competing = structuredClone(original);
+      competing.id = "candidate-change-E023-rebase-peer";
+      if (competing.changeProposal.state !== "known") throw new Error("Missing competing proposal");
+      competing.changeProposal.value.id = "change-E023-rebase-peer";
+
+      const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
+      const occurrence = internal.published.find((item) => item.id === "pub-fixture-E023-web-1900");
+      if (!occurrence) throw new Error("Missing published occurrence");
+      competing.changeProposal.value.fields = [
+        {
+          field: "title",
+          before: structuredClone(occurrence.event.title),
+          after: known("Title from newer publication"),
+          evidenceIds: [],
+        },
+      ];
+      internal.candidates.push(competing);
+
+      if (timing === "saved") {
+        await repository.updateCandidateFinal(candidateId, {
+          actor: reviewer,
+          expectedVersion: await currentVersion(repository, candidateId),
+          corrections: { title: known("Editorially verified title") },
+        });
+      }
+      await repository.resolveCandidateBlocker(competing.id, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, competing.id),
+        kind: "change_proposal",
+        targetId: competing.changeProposal.value.id,
+        disposition: "accepted",
+        reason: "Other reviewer updated the title",
+      });
+      await repository.resolveCandidateBlocker(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        kind: "change_proposal",
+        targetId: "change-E023-time",
+        disposition: "rejected",
+        reason: "Keep original schedule",
+      });
+      await repository.resolveCandidateBlocker(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        kind: "rule",
+        targetId: "rule-change-E023",
+        reason: "Rule checked",
+      });
+
+      const correction = { title: known("Editorially verified title") };
+      const submittedCorrections = timing === "approval-time" ? { corrections: correction } : {};
+      const before = await repository.getCandidate(candidateId);
+      const current = await repository.getLinkedPublishedOccurrence(candidateId);
+      if (!before || !current) throw new Error("Missing linked occurrence");
+
+      await expect(
+        repository.approveCandidate(candidateId, {
+          actor: reviewer,
+          expectedVersion: await currentVersion(repository, candidateId),
+          ...submittedCorrections,
+          reason: "Must first review published changes",
+        }),
+      ).rejects.toThrow("Stale published occurrence correction: title");
+
+      const refreshed = await repository.refreshCandidatePublishedBaseline(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        expectedOccurrenceVersion: publishedOccurrenceReviewVersion(current),
+        reason: "Checked the latest title against original editorial evidence",
+      });
+      expect(refreshed.publishedBaseline?.event.title).toEqual(known("Title from newer publication"));
+      expect(refreshed.final.title).toEqual(before.final.title);
+      expect(refreshed.history.at(-1)?.action).toBe("baseline_refreshed");
+      expect(occurrence.event.title).toEqual(known("Title from newer publication"));
+
+      const approved = await repository.approveCandidate(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        ...submittedCorrections,
+        reason: "Publish title after explicit renewed review",
+      });
+      expect(approved.editorialStatus).toBe("published");
+      expect(occurrence.event.title).toEqual(known("Editorially verified title"));
+      expect(internal.published).toHaveLength(1);
+    },
+  );
+
+  it("refuses a baseline refresh when the published occurrence changed after it was viewed", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-change-E023";
+    const current = await repository.getLinkedPublishedOccurrence(candidateId);
+    if (!current) throw new Error("Missing published occurrence");
+
+    const internal = repository as unknown as { published: PublishedOccurrence[] };
+    const occurrence = internal.published.find((item) => item.id === current.id);
+    if (!occurrence) throw new Error("Missing published occurrence");
+    occurrence.event.title = known("Newer concurrent title");
+
+    const before = await repository.getCandidate(candidateId);
+    await expect(
+      repository.refreshCandidatePublishedBaseline(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        expectedOccurrenceVersion: publishedOccurrenceReviewVersion(current),
+        reason: "Outdated review must not authorize a new baseline",
+      }),
+    ).rejects.toThrow("Published occurrence changed during re-review");
+    expect(await repository.getCandidate(candidateId)).toEqual(before);
+    expect(occurrence.event.title).toEqual(known("Newer concurrent title"));
+  });
+
+  it("requires an explicit reason and disallows a no-op baseline refresh", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-change-E023";
+    const current = await repository.getLinkedPublishedOccurrence(candidateId);
+    if (!current) throw new Error("Missing published occurrence");
+
+    await expect(
+      repository.refreshCandidatePublishedBaseline(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        expectedOccurrenceVersion: publishedOccurrenceReviewVersion(current),
+        reason: "No changes",
+      }),
+    ).rejects.toThrow("no new changes to review");
+
+    const internal = repository as unknown as { published: PublishedOccurrence[] };
+    internal.published[0].event.title = known("New title");
+    await expect(
+      repository.refreshCandidatePublishedBaseline(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        expectedOccurrenceVersion: publishedOccurrenceReviewVersion(internal.published[0]),
+        reason: "",
+      }),
+    ).rejects.toThrow("non-empty reason");
+  });
 
   it("allows independent editorial corrections after another candidate updates a different field", async () => {
     const repository = new FixtureAdminRepository();

@@ -195,6 +195,22 @@ export async function resolveCandidateBlockerAction(formData: FormData): Promise
   });
 }
 
+export async function refreshCandidatePublishedBaselineAction(formData: FormData): Promise<never> {
+  const candidateId = candidateIdFromForm(formData);
+  const actor = await requireEditorialActor("catalog.review");
+  const reason = formString(formData, "baselineReason");
+
+  return completeAction(candidateId, "Referencia publicada revisada y actualizada.", async () => {
+    const repository = getAdminRepository();
+    await repository.refreshCandidatePublishedBaseline(candidateId, {
+      actor,
+      expectedVersion: formString(formData, "candidateVersion"),
+      expectedOccurrenceVersion: formString(formData, "occurrenceVersion"),
+      reason,
+    });
+  });
+}
+
 export async function requeryCandidateAction(formData: FormData): Promise<never> {
   const candidateId = candidateIdFromForm(formData);
   const actor = await requireEditorialActor("catalog.review");

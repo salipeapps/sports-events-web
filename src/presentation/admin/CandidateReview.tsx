@@ -8,6 +8,7 @@ import {
   type FieldValue,
   type Organizer,
   type PriceDetails,
+  type PublishedOccurrence,
   type SourceConfig,
 } from "@/domain/admin";
 import { isCandidateBlockerResolved, publicationBlockReasons } from "@/domain/adminValidation";
@@ -19,13 +20,14 @@ import {
   statusLabels,
   statusTone,
 } from "./adminPresentation";
-import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
+import { candidateReviewVersion, publishedOccurrenceReviewVersion } from "@/domain/candidateReviewVersion";
 import { editablePriceKind, formatEditablePrice, formatObservedPrice } from "./candidateReviewForm";
 import { changeFieldLabels, formatChangeFieldValue } from "./changeProposalPresentation";
 import {
   approveCandidateAction,
   blockCandidateAction,
   rejectCandidateAction,
+  refreshCandidatePublishedBaselineAction,
   resolveCandidateBlockerAction,
   unblockCandidateAction,
   reprocessCandidateAction,
@@ -37,6 +39,7 @@ interface CandidateReviewProps {
   candidate: AdminCandidate;
   organizers: Organizer[];
   sources: SourceConfig[];
+  publishedOccurrence: PublishedOccurrence | null;
   result?: string;
   error?: string;
 }
@@ -66,6 +69,7 @@ const actionLabels: Record<EditorialAction, string> = {
   blocked: "Bloqueada",
   unblocked: "Desbloqueada",
   blocker_resolved: "Bloqueo resuelto",
+  baseline_refreshed: "Referencia publicada revisada",
   requery_requested: "Reconsulta solicitada",
   reprocess_requested: "Reproceso solicitado",
   cancelled: "Cancelada",
@@ -136,15 +140,37 @@ function unknownHint(field: FieldValue<unknown>): string | null {
   return field.state === "unknown" ? displayField(field) : null;
 }
 
-export function CandidateReview({ candidate, organizers, sources, result, error }: CandidateReviewProps) {
+export function CandidateReview({
+  candidate,
+  organizers,
+  sources,
+  publishedOccurrence,
+  result,
+  error,
+}: CandidateReviewProps) {
   const blockReasons = publicationBlockReasons(candidate);
   const terminal = terminalStatuses.has(candidate.editorialStatus);
-  const canApprove = !terminal && blockReasons.length === 0;
   const sourceName = sources.find((source) => source.id === candidate.sourceId)?.name ?? candidate.sourceId;
   const openConflicts = candidate.conflicts.filter(
     (conflict) => conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
   );
   const reviewVersion = candidateReviewVersion(candidate);
+  const previousPublication = candidate.publishedBaseline;
+  const publishedChanges =
+    previousPublication && publishedOccurrence?.id === previousPublication.occurrenceId
+      ? (Object.keys(previousPublication.event) as (keyof EventDetails)[])
+          .filter(
+            (field) =>
+              JSON.stringify(previousPublication.event[field]) !== JSON.stringify(publishedOccurrence.event[field]),
+          )
+          .map((field) => ({
+            field,
+            before: previousPublication.event[field],
+            after: publishedOccurrence.event[field],
+            evidenceIds: [],
+          }))
+      : [];
+  const canApprove = !terminal && blockReasons.length === 0 && publishedChanges.length === 0;
   const unresolvedBlockers = [
     ...candidate.conflicts
       .filter(
@@ -233,7 +259,7 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
           form="candidate-final-form"
           formAction={approveCandidateAction}
           disabled={!canApprove}
-          title={canApprove ? "Aprobar y publicar" : "Resuelve los bloqueos antes de publicar"}
+          title={canApprove ? "Aprobar y publicar" : "Resuelve bloqueos y revisa cambios publicados"}
         >
           Aprobar y publicar
         </button>
@@ -577,6 +603,56 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
           </div>
 
           <div className="admin-review-decision-grid">
+            {publishedChanges.length > 0 && publishedOccurrence ? (
+              <details>
+                <summary>Revisar cambios recientes del evento publicado ({publishedChanges.length})</summary>
+                <form action={refreshCandidatePublishedBaselineAction}>
+                  <input type="hidden" name="candidateId" value={candidate.id} />
+                  <input type="hidden" name="candidateVersion" value={reviewVersion} />
+                  <input
+                    type="hidden"
+                    name="occurrenceVersion"
+                    value={publishedOccurrenceReviewVersion(publishedOccurrence)}
+                  />
+                  <p>
+                    El evento publicado ha cambiado desde esta revisión. Comprueba los valores actuales antes de
+                    continuar. Esto no modificará tus datos editoriales ni el evento publicado.
+                  </p>
+                  <dl className="admin-proposal-comparison">
+                    {publishedChanges.map((change) => (
+                      <div key={change.field}>
+                        <dt>{changeFieldLabels[change.field]}</dt>
+                        <dd>
+                          <span>Referencia anterior</span>
+                          <strong>{formatChangeFieldValue(change, "before", organizers)}</strong>
+                        </dd>
+                        <dd>
+                          <span>Publicado actualmente</span>
+                          <strong>{formatChangeFieldValue(change, "after", organizers)}</strong>
+                        </dd>
+                        <dd>
+                          <span>Valor editorial que se desea conservar</span>
+                          <strong>
+                            {formatChangeFieldValue(
+                              { ...change, after: candidate.final[change.field] },
+                              "after",
+                              organizers,
+                            )}
+                          </strong>
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  <label>
+                    <span>Motivo de revisión de los valores actuales</span>
+                    <textarea name="baselineReason" required rows={3} />
+                  </label>
+                  <button className="admin-secondary-button" type="submit">
+                    Confirmar revisión y actualizar referencia
+                  </button>
+                </form>
+              </details>
+            ) : null}
             {unresolvedBlockers.map((blocker) => (
               <details key={`${blocker.kind}-${blocker.id}`}>
                 <summary>{blocker.title}</summary>

@@ -21,12 +21,14 @@ export default async function CandidateReviewPage({
   ]);
 
   if (!candidate) notFound();
+  const publishedOccurrence = await repository.getLinkedPublishedOccurrence(candidateId);
 
   return (
     <CandidateReview
       candidate={candidate}
       organizers={organizers}
       sources={sources}
+      publishedOccurrence={publishedOccurrence}
       result={query.result}
       error={query.error}
     />
