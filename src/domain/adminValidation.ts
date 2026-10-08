@@ -96,6 +96,37 @@ function validateFieldValue(value: unknown, path: string, errors: string[], vali
   errors.push(`${path}.state must be known or unknown`);
 }
 
+/** Parse a timezone-free local event timestamp; never normalize impossible calendar dates. */
+function parseLocalEventDateTime(value: unknown): number | null {
+  if (typeof value !== "string") return null;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?$/);
+  if (!match) return null;
+
+  const [, yearText, monthText, dayText, hourText, minuteText, secondText = "00", fraction = ""] = match;
+  const [year, month, day, hour, minute, second] = [yearText, monthText, dayText, hourText, minuteText, secondText].map(
+    Number,
+  );
+  if (year < 1) return null;
+
+  const milliseconds = Number(fraction.padEnd(3, "0"));
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  date.setUTCHours(hour, minute, second, milliseconds);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day ||
+    date.getUTCHours() !== hour ||
+    date.getUTCMinutes() !== minute ||
+    date.getUTCSeconds() !== second
+  ) {
+    return null;
+  }
+
+  return date.getTime();
+}
+
 const eventFieldNames: (keyof EventDetails)[] = [
   "title",
   "description",
@@ -159,6 +190,14 @@ function validatePriceDetails(value: unknown, path: string, errors: string[]): v
 
 function validateEventFieldValue(field: keyof EventDetails, value: unknown, path: string, errors: string[]): void {
   switch (field) {
+    case "startLocal":
+    case "endLocal":
+      validateFieldValue(value, path, errors, (knownValue, knownPath, knownErrors) => {
+        if (parseLocalEventDateTime(knownValue) === null) {
+          knownErrors.push(`${knownPath} must be a valid local date-time (YYYY-MM-DDTHH:mm[:ss[.SSS]])`);
+        }
+      });
+      break;
     case "category":
       validateFieldValue(value, path, errors, (knownValue, knownPath, knownErrors) =>
         validateEnum(knownValue, activityCategories, knownPath, knownErrors),
@@ -371,6 +410,9 @@ function validateHistory(value: unknown, path: string, errors: string[]): void {
       "corrected",
       "rejected",
       "blocked",
+      "unblocked",
+      "blocker_resolved",
+      "baseline_refreshed",
       "requery_requested",
       "reprocess_requested",
       "cancelled",
@@ -381,6 +423,34 @@ function validateHistory(value: unknown, path: string, errors: string[]): void {
   );
   validateString(value.at, `${path}.at`, errors);
   validateFieldValue(value.reason, `${path}.reason`, errors, validateString);
+
+  if (!isRecord(value.actor)) {
+    errors.push(`${path}.actor must be an object`);
+  } else {
+    validateString(value.actor.id, `${path}.actor.id`, errors);
+    validateEnum(value.actor.role, ["admin", "reviewer", "system"], `${path}.actor.role`, errors);
+    validateString(value.actor.displayName, `${path}.actor.displayName`, errors);
+  }
+}
+
+function validateBlockerResolution(value: unknown, path: string, errors: string[]): void {
+  if (!isRecord(value)) {
+    errors.push(`${path} must be a blocker resolution object`);
+    return;
+  }
+
+  validateString(value.id, `${path}.id`, errors);
+  validateEnum(value.kind, ["conflict", "rule", "match", "change_proposal"], `${path}.kind`, errors);
+  validateString(value.targetId, `${path}.targetId`, errors);
+  if (value.kind === "match") {
+    validateEnum(value.disposition, ["distinct", "duplicate"], `${path}.disposition`, errors);
+  } else if (value.kind === "change_proposal") {
+    validateEnum(value.disposition, ["accepted", "rejected"], `${path}.disposition`, errors);
+  } else if (value.disposition !== undefined) {
+    errors.push(`${path}.disposition is only valid for matches and change proposals`);
+  }
+  validateString(value.at, `${path}.at`, errors);
+  validateString(value.reason, `${path}.reason`, errors);
 
   if (!isRecord(value.actor)) {
     errors.push(`${path}.actor must be an object`);
@@ -435,6 +505,24 @@ function validateCandidateShape(value: unknown): string[] {
   }
 
   validateFieldValue(value.changeProposal, "candidate.changeProposal", errors, validateChangeProposal);
+  if (value.publishedBaseline !== undefined) {
+    if (!isRecord(value.publishedBaseline)) {
+      errors.push("candidate.publishedBaseline must be an occurrence baseline");
+    } else {
+      validateString(value.publishedBaseline.occurrenceId, "candidate.publishedBaseline.occurrenceId", errors);
+      validateEventDetails(value.publishedBaseline.event, "candidate.publishedBaseline.event", errors);
+    }
+  }
+
+  if (value.blockerResolutions !== undefined) {
+    if (!Array.isArray(value.blockerResolutions)) {
+      errors.push("candidate.blockerResolutions must be an array when provided");
+    } else {
+      value.blockerResolutions.forEach((entry, index) =>
+        validateBlockerResolution(entry, `candidate.blockerResolutions[${index}]`, errors),
+      );
+    }
+  }
 
   if (!Array.isArray(value.history)) {
     errors.push("candidate.history must be an array");
@@ -565,28 +653,67 @@ export function deserializeEngineRun(serialized: string): EngineRun {
   return parseEngineRun(JSON.parse(serialized) as unknown);
 }
 
+export function assertValidEventTimeRange(event: EventDetails): void {
+  const start = event.startLocal.state === "known" ? parseLocalEventDateTime(event.startLocal.value) : null;
+  const end = event.endLocal.state === "known" ? parseLocalEventDateTime(event.endLocal.value) : null;
+
+  if (event.startLocal.state === "known" && start === null) {
+    throw new Error("La fecha y hora de inicio deben tener un formato local válido.");
+  }
+  if (event.endLocal.state === "known" && end === null) {
+    throw new Error("La fecha y hora de fin deben tener un formato local válido.");
+  }
+  if (start !== null && end !== null && end < start) {
+    throw new Error("La fecha y hora de fin no pueden ser anteriores al inicio.");
+  }
+}
+
+export function isCandidateBlockerResolved(
+  candidate: AdminCandidate,
+  kind: "conflict" | "rule" | "match" | "change_proposal",
+  targetId: string,
+): boolean {
+  const resolutions = candidate.blockerResolutions ?? [];
+  return resolutions.some((resolution) => resolution.kind === kind && resolution.targetId === targetId);
+}
+
 export function hasBlockingConflict(candidate: AdminCandidate): boolean {
-  return candidate.conflicts.some((conflict) => conflict.status === "open" && conflict.blocking);
+  return candidate.conflicts.some(
+    (conflict) =>
+      conflict.status === "open" &&
+      conflict.blocking &&
+      !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+  );
 }
 
 export function hasBlockingRule(candidate: AdminCandidate): boolean {
-  return candidate.rules.some((rule) => rule.outcome === "block");
+  return candidate.rules.some(
+    (rule) => rule.outcome === "block" && !isCandidateBlockerResolved(candidate, "rule", rule.id),
+  );
 }
 
 export function publicationBlockReasons(candidate: AdminCandidate): string[] {
   const reasons: string[] = [];
 
+  if (candidate.editorialStatus === "blocked") reasons.push("editorial_status_blocked");
+  if (candidate.blockerResolutions?.some((item) => item.kind === "match" && item.disposition === "duplicate")) {
+    reasons.push("confirmed_duplicate");
+  }
   if (hasBlockingConflict(candidate)) reasons.push("open_blocking_conflict");
   if (hasBlockingRule(candidate)) reasons.push("blocking_rule");
-  if (candidate.matches.some((match) => match.status === "pending")) {
+  if (
+    candidate.matches.some(
+      (match) => match.status === "pending" && !isCandidateBlockerResolved(candidate, "match", match.id),
+    )
+  ) {
     reasons.push("pending_match");
   }
   if (
     candidate.changeProposal.state === "known" &&
     candidate.changeProposal.value.status === "pending" &&
-    candidate.changeProposal.value.essential
+    !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
   ) {
-    reasons.push("pending_essential_change");
+    reasons.push(candidate.changeProposal.value.essential ? "pending_essential_change" : "pending_change_proposal");
   }
 
   const essentials: Array<[keyof EventDetails, FieldValue<unknown>]> = [

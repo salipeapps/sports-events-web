@@ -6,12 +6,27 @@ import {
   deserializeAdminCandidate,
   deserializeEngineRun,
   deserializeSourceConfig,
+  canPublishCandidate,
   parseAdminCandidate,
+  publicationBlockReasons,
   serializeContract,
 } from "./adminValidation";
 import { candidateFixtures, runFixtures, sourceFixtures } from "@/data/fixtures/adminFixtures";
 
 describe("admin contracts", () => {
+  it("treats an editorial blocked status as a publication guard", () => {
+    const source = candidateFixtures.find((candidate) => candidate.id === "candidate-valid-E019");
+    if (!source) throw new Error("Expected valid fixture");
+
+    const candidate = parseAdminCandidate({
+      ...structuredClone(source),
+      editorialStatus: "blocked",
+    });
+
+    expect(publicationBlockReasons(candidate)).toContain("editorial_status_blocked");
+    expect(canPublishCandidate(candidate)).toBe(false);
+  });
+
   it("keeps unknown distinct from known zero and false", () => {
     expect(known(0)).toEqual({ state: "known", value: 0 });
     expect(known(false)).toEqual({ state: "known", value: false });
@@ -32,6 +47,32 @@ describe("admin contracts", () => {
     const run = runFixtures[0];
     expect(deserializeSourceConfig(serializeContract(source))).toEqual(source);
     expect(deserializeEngineRun(serializeContract(run))).toEqual(run);
+  });
+
+  it.each([
+    "not-a-date",
+    "2026-02-30T16:00",
+    "2026-10-24T25:00",
+    "2026-10-24T18:60",
+    "2026-10-24T16:00Z",
+    "2026-10-24",
+  ])("rejects malformed known local date-time %s in contract data", (invalidDate) => {
+    const source = candidateFixtures.find((candidate) => candidate.id === "candidate-valid-E019");
+    if (!source) throw new Error("Expected valid fixture");
+    for (const field of ["startLocal", "endLocal"] as const) {
+      const malformed = structuredClone(source);
+      malformed.final[field] = known(invalidDate);
+      expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
+    }
+  });
+
+  it("accepts valid local date-times including minute precision and leap days", () => {
+    const source = candidateFixtures.find((candidate) => candidate.id === "candidate-valid-E019");
+    if (!source) throw new Error("Expected valid fixture");
+    const valid = structuredClone(source);
+    valid.final.startLocal = known("2028-02-29T16:00");
+    valid.final.endLocal = known("2028-02-29T19:00:00.500");
+    expect(parseAdminCandidate(valid).final.startLocal).toEqual(known("2028-02-29T16:00"));
   });
 
   it("rejects malformed unknown reasons", () => {
@@ -99,10 +140,33 @@ describe("admin contracts", () => {
     expect(() => deserializeEngineRun(JSON.stringify(malformedRun))).toThrow(ContractValidationError);
   });
 
-  it.each(["rules", "evidence", "conflicts", "matches", "history"])("rejects malformed elements inside %s", (field) => {
-    const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
-    malformed[field] = [null];
+  it("rejects an invalid change-proposal disposition", () => {
+    const source = candidateFixtures.find((candidate) => candidate.id === "candidate-change-E023");
+    if (!source) throw new Error("Expected change fixture");
+
+    const malformed = structuredClone(source) as unknown as Record<string, unknown>;
+    malformed.blockerResolutions = [
+      {
+        id: "resolution-invalid",
+        kind: "change_proposal",
+        targetId: "change-E023-time",
+        disposition: "maybe",
+        at: "2026-10-07T12:00:00.000Z",
+        actor: { id: "reviewer-1", role: "reviewer", displayName: "Reviewer" },
+        reason: "Invalid disposition fixture",
+      },
+    ];
 
     expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
   });
+
+  it.each(["rules", "evidence", "conflicts", "matches", "blockerResolutions", "history"])(
+    "rejects malformed elements inside %s",
+    (field) => {
+      const malformed = structuredClone(candidateFixtures[0]) as unknown as Record<string, unknown>;
+      malformed[field] = [null];
+
+      expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
+    },
+  );
 });

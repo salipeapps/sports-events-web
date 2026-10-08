@@ -3,6 +3,7 @@ import type {
   ActivityListItem,
   AdminCandidate,
   CandidateFilters,
+  ChangeField,
   DashboardSummary,
   EditorialAction,
   EditorialHistoryEntry,
@@ -14,12 +15,21 @@ import type {
   PublishedOccurrence,
   SourceConfig,
 } from "@/domain/admin";
-import { parseAdminCandidate, publicationBlockReasons } from "@/domain/adminValidation";
+import {
+  assertValidEventTimeRange,
+  isCandidateBlockerResolved,
+  parseAdminCandidate,
+  publicationBlockReasons,
+} from "@/domain/adminValidation";
+import { assertExpectedCandidateVersion, publishedOccurrenceReviewVersion } from "@/domain/candidateReviewVersion";
 import type {
   AdminRepository,
   CandidateActionInput,
   CandidateApprovalInput,
+  CandidateBlockerResolutionInput,
+  CandidateCorrectionInput,
   CandidateDecisionInput,
+  CandidatePublishedBaselineRefreshInput,
 } from "../adminRepository";
 import {
   candidateFixtures,
@@ -37,12 +47,28 @@ function valueOrUndefined<T>(field: FieldValue<T>): T | undefined {
   return field.state === "known" ? field.value : undefined;
 }
 
+function latestCheckedAt(current: string, incoming: string): string {
+  const previous = Date.parse(current);
+  const candidate = Date.parse(incoming);
+  return Number.isFinite(candidate) && (!Number.isFinite(previous) || candidate > previous) ? incoming : current;
+}
+
 function reasonCodes(candidate: AdminCandidate): string[] {
   return [
-    ...candidate.rules.filter((rule) => rule.outcome !== "pass").map((rule) => rule.code),
-    ...candidate.conflicts.filter((conflict) => conflict.status === "open").map((conflict) => conflict.type),
-    ...candidate.matches.filter((match) => match.status === "pending").map(() => "possible_match"),
-    ...(candidate.changeProposal.state === "known" && candidate.changeProposal.value.status === "pending"
+    ...candidate.rules
+      .filter((rule) => rule.outcome !== "pass" && !isCandidateBlockerResolved(candidate, "rule", rule.id))
+      .map((rule) => rule.code),
+    ...candidate.conflicts
+      .filter(
+        (conflict) => conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+      )
+      .map((conflict) => conflict.type),
+    ...candidate.matches
+      .filter((match) => match.status === "pending" && !isCandidateBlockerResolved(candidate, "match", match.id))
+      .map(() => "possible_match"),
+    ...(candidate.changeProposal.state === "known" &&
+    candidate.changeProposal.value.status === "pending" &&
+    !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
       ? ["pending_change"]
       : []),
   ];
@@ -226,15 +252,59 @@ function assertActionableCandidate(candidate: AdminCandidate, action: string): v
   }
 }
 
+function applyChangeFields(event: EventDetails, fields: ChangeField[], side: "before" | "after"): EventDetails {
+  const updated = clone(event);
+  const mutable = updated as unknown as Record<string, FieldValue<unknown>>;
+
+  for (const change of fields) {
+    mutable[change.field] = clone(change[side]);
+  }
+
+  return updated;
+}
+
+function hasOpenCandidateBlocker(candidate: AdminCandidate, input: CandidateBlockerResolutionInput): boolean {
+  switch (input.kind) {
+    case "conflict":
+      return candidate.conflicts.some(
+        (conflict) => conflict.id === input.targetId && conflict.status === "open" && conflict.blocking,
+      );
+    case "rule":
+      return candidate.rules.some((rule) => rule.id === input.targetId && rule.outcome === "block");
+    case "match":
+      return candidate.matches.some((match) => match.id === input.targetId && match.status === "pending");
+    case "change_proposal":
+      return (
+        candidate.changeProposal.state === "known" &&
+        candidate.changeProposal.value.id === input.targetId &&
+        candidate.changeProposal.value.status === "pending"
+      );
+  }
+}
+
 export class FixtureAdminRepository implements AdminRepository {
   private candidates = clone(candidateFixtures);
   private published = clone(publishedOccurrenceFixtures);
+  private protectedCorrectionFields = new Map<string, Set<keyof EventDetails>>();
   private sources = clone(sourceFixtures);
   private runs = clone(runFixtures);
 
+  constructor() {
+    for (const candidate of this.candidates) {
+      const occurrence = this.published.find((item) => item.sourceRecordIds.includes(candidate.sourceRecordId));
+      if (occurrence) {
+        candidate.publishedBaseline = { occurrenceId: occurrence.id, event: clone(occurrence.event) };
+      }
+    }
+  }
+
   async getDashboardSummary(): Promise<DashboardSummary> {
     const openConflicts = this.candidates.reduce(
-      (total, candidate) => total + candidate.conflicts.filter((conflict) => conflict.status === "open").length,
+      (total, candidate) =>
+        total +
+        candidate.conflicts.filter(
+          (conflict) => conflict.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", conflict.id),
+        ).length,
       0,
     );
     const pendingCandidates = this.candidates.filter((candidate) =>
@@ -304,7 +374,9 @@ export class FixtureAdminRepository implements AdminRepository {
         .filter((candidate) => ["candidate", "review", "blocked"].includes(candidate.editorialStatus))
         .flatMap((candidate) => {
           const items: DashboardSummary["urgentItems"] = [];
-          for (const conflict of candidate.conflicts.filter((item) => item.status === "open")) {
+          for (const conflict of candidate.conflicts.filter(
+            (item) => item.status === "open" && !isCandidateBlockerResolved(candidate, "conflict", item.id),
+          )) {
             items.push({
               id: `urgent-${conflict.id}`,
               kind: "conflict",
@@ -314,7 +386,11 @@ export class FixtureAdminRepository implements AdminRepository {
               reason: conflict.summary,
             });
           }
-          if (candidate.matches.some((match) => match.status === "pending")) {
+          if (
+            candidate.matches.some(
+              (match) => match.status === "pending" && !isCandidateBlockerResolved(candidate, "match", match.id),
+            )
+          ) {
             items.push({
               id: `urgent-match-${candidate.id}`,
               kind: "duplicate",
@@ -324,7 +400,11 @@ export class FixtureAdminRepository implements AdminRepository {
               reason: "Candidate has a pending identity/match decision.",
             });
           }
-          if (candidate.changeProposal.state === "known" && candidate.changeProposal.value.status === "pending") {
+          if (
+            candidate.changeProposal.state === "known" &&
+            candidate.changeProposal.value.status === "pending" &&
+            !isCandidateBlockerResolved(candidate, "change_proposal", candidate.changeProposal.value.id)
+          ) {
             items.push({
               id: `urgent-change-${candidate.id}`,
               kind: "change",
@@ -374,6 +454,12 @@ export class FixtureAdminRepository implements AdminRepository {
     return candidate ? clone(candidate) : null;
   }
 
+  async getLinkedPublishedOccurrence(candidateId: string): Promise<PublishedOccurrence | null> {
+    const candidate = this.requireCandidate(candidateId);
+    const occurrence = this.published.find((item) => item.sourceRecordIds.includes(candidate.sourceRecordId));
+    return occurrence ? clone(occurrence) : null;
+  }
+
   async listOrganizers(): Promise<Organizer[]> {
     return clone(organizerFixtures);
   }
@@ -383,15 +469,82 @@ export class FixtureAdminRepository implements AdminRepository {
     return organizer ? clone(organizer) : null;
   }
 
+  async updateCandidateFinal(candidateId: string, input: CandidateCorrectionInput): Promise<AdminCandidate> {
+    const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
+    assertActionableCandidate(candidate, "corrected");
+
+    if (Object.keys(input.corrections).length === 0) return clone(candidate);
+
+    const correctedCandidate = clone(candidate);
+    applyCorrections(correctedCandidate, input.corrections);
+
+    if (input.corrections.organizerId) {
+      correctedCandidate.organizerId = clone(correctedCandidate.final.organizerId);
+    }
+
+    parseAdminCandidate(correctedCandidate);
+    assertValidEventTimeRange(correctedCandidate.final);
+
+    const organizerId = valueOrUndefined(correctedCandidate.final.organizerId);
+    if (organizerId && !organizerFixtures.some((organizer) => organizer.id === organizerId)) {
+      throw new Error(`Candidate organizer does not exist: ${organizerId}.`);
+    }
+
+    correctedCandidate.history.push(historyEntry(correctedCandidate, "corrected", input.actor, input.reason));
+
+    const protectedFields = this.protectedCorrectionFields.get(candidateId) ?? new Set<keyof EventDetails>();
+    for (const field of Object.keys(input.corrections) as (keyof EventDetails)[]) protectedFields.add(field);
+
+    Object.assign(candidate, correctedCandidate);
+    this.protectedCorrectionFields.set(candidateId, protectedFields);
+    return clone(candidate);
+  }
+
+  async refreshCandidatePublishedBaseline(
+    candidateId: string,
+    input: CandidatePublishedBaselineRefreshInput,
+  ): Promise<AdminCandidate> {
+    const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
+    assertActionableCandidate(candidate, "rebased");
+    const reason = requireReason(input.reason);
+
+    const baseline = candidate.publishedBaseline;
+    if (!baseline) throw new Error("Candidate has no published occurrence baseline.");
+
+    const occurrence = this.published.find((item) => item.id === baseline.occurrenceId);
+    if (!occurrence || !occurrence.sourceRecordIds.includes(candidate.sourceRecordId)) {
+      throw new Error("Published occurrence does not match this candidate.");
+    }
+    if (input.expectedOccurrenceVersion !== publishedOccurrenceReviewVersion(occurrence)) {
+      throw new Error("Published occurrence changed during re-review; reload and verify the current values.");
+    }
+    if (JSON.stringify(baseline.event) === JSON.stringify(occurrence.event)) {
+      throw new Error("Published occurrence has no new changes to review.");
+    }
+
+    const refreshed = clone(candidate);
+    refreshed.publishedBaseline = { occurrenceId: occurrence.id, event: clone(occurrence.event) };
+    refreshed.history.push(historyEntry(refreshed, "baseline_refreshed", input.actor, reason));
+    parseAdminCandidate(refreshed);
+    Object.assign(candidate, refreshed);
+    return clone(refreshed);
+  }
+
   async approveCandidate(candidateId: string, input: CandidateApprovalInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "approved again");
     const candidateForApproval = clone(candidate);
 
     applyCorrections(candidateForApproval, input.corrections);
     candidateForApproval.organizerId = clone(candidateForApproval.final.organizerId);
     parseAdminCandidate(candidateForApproval);
+    assertValidEventTimeRange(candidateForApproval.final);
 
     const publicationBlocks = publicationBlockReasons(candidateForApproval);
     if (publicationBlocks.length > 0) {
@@ -413,25 +566,94 @@ export class FixtureAdminRepository implements AdminRepository {
     candidateForApproval.history.push(historyEntry(candidateForApproval, "approved", input.actor, input.reason));
     candidateForApproval.history.push(historyEntry(candidateForApproval, "published", input.actor, input.reason));
 
-    const publishedOccurrence = this.published.some((occurrence) =>
+    const correctedFields = new Set<keyof EventDetails>([
+      ...(this.protectedCorrectionFields.get(candidateId) ?? []),
+      ...((input.corrections ? Object.keys(input.corrections) : []) as (keyof EventDetails)[]),
+    ]);
+    const existingOccurrence = this.published.find((occurrence) =>
       occurrence.sourceRecordIds.includes(candidateForApproval.sourceRecordId),
-    )
+    );
+    let updatedOccurrence: PublishedOccurrence | null = null;
+
+    if (existingOccurrence) {
+      const proposal = candidateForApproval.changeProposal;
+      const reviewedProposal =
+        proposal.state === "known" &&
+        proposal.value.publishedOccurrenceId === existingOccurrence.id &&
+        proposal.value.status !== "pending";
+      const reviewedConflict =
+        proposal.state === "unknown" &&
+        candidateForApproval.publishedBaseline?.occurrenceId === existingOccurrence.id &&
+        candidateForApproval.conflicts.some(
+          (conflict) => conflict.blocking && isCandidateBlockerResolved(candidateForApproval, "conflict", conflict.id),
+        );
+      if (!reviewedProposal && !reviewedConflict) {
+        throw new Error("Existing published occurrence requires a reviewed matching change proposal or conflict.");
+      }
+
+      updatedOccurrence = clone(existingOccurrence);
+      const editableEvent = updatedOccurrence.event as unknown as Record<string, FieldValue<unknown>>;
+      const changedFields = [...correctedFields].filter(
+        (field) =>
+          JSON.stringify(existingOccurrence.event[field]) !== JSON.stringify(candidateForApproval.final[field]),
+      );
+      if (changedFields.length > 0) {
+        const baseline = candidateForApproval.publishedBaseline;
+        if (!baseline || baseline.occurrenceId !== existingOccurrence.id) {
+          throw new Error("Missing published occurrence baseline; re-review before applying corrections.");
+        }
+        for (const field of changedFields) {
+          if (JSON.stringify(existingOccurrence.event[field]) !== JSON.stringify(baseline.event[field])) {
+            throw new Error(
+              `Stale published occurrence correction: ${field} changed since this candidate was reviewed.`,
+            );
+          }
+        }
+      }
+      for (const field of changedFields) {
+        editableEvent[field] = clone(candidateForApproval.final[field]);
+      }
+      assertValidEventTimeRange(updatedOccurrence.event);
+      if (changedFields.includes("organizerId")) updatedOccurrence.organizerId = organizerId;
+      updatedOccurrence.lastCheckedAt = latestCheckedAt(
+        updatedOccurrence.lastCheckedAt,
+        candidateForApproval.lastCheckedAt,
+      );
+      updatedOccurrence.protectedCorrections = Array.from(
+        new Set([...updatedOccurrence.protectedCorrections, ...correctedFields]),
+      );
+      updatedOccurrence.evidenceIds = Array.from(
+        new Set([...updatedOccurrence.evidenceIds, ...candidateForApproval.evidence.map((evidence) => evidence.id)]),
+      );
+      if (changedFields.length > 0) {
+        updatedOccurrence.history.push({
+          id: `history-${updatedOccurrence.id}-${updatedOccurrence.history.length + 1}`,
+          action: "corrected",
+          at: new Date().toISOString(),
+          actor: clone(input.actor),
+          reason: { state: "known", value: input.reason ?? "Published occurrence reviewed and corrected" },
+        });
+      }
+    }
+
+    const publishedOccurrence: PublishedOccurrence | null = existingOccurrence
       ? null
       : {
           id: `published-${candidateForApproval.id}`,
           sourceRecordIds: [candidateForApproval.sourceRecordId],
           organizerId,
-          editorialStatus: "published" as const,
+          editorialStatus: "published",
           temporalStatus: candidateForApproval.temporalStatus,
           publishedAt: new Date().toISOString(),
           lastCheckedAt: candidateForApproval.lastCheckedAt,
           event: clone(candidateForApproval.final),
           evidenceIds: candidateForApproval.evidence.map((evidence) => evidence.id),
-          protectedCorrections: input.corrections ? (Object.keys(input.corrections) as (keyof EventDetails)[]) : [],
+          protectedCorrections: Array.from(correctedFields),
           history: clone(candidateForApproval.history),
         };
 
     Object.assign(candidate, candidateForApproval);
+    if (existingOccurrence && updatedOccurrence) Object.assign(existingOccurrence, updatedOccurrence);
     if (publishedOccurrence) this.published.push(publishedOccurrence);
 
     return clone(candidateForApproval);
@@ -440,6 +662,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async rejectCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "rejected");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "rejected";
@@ -450,6 +673,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async blockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "blocked");
     const reason = requireReason(input.reason);
     candidate.editorialStatus = "blocked";
@@ -457,9 +681,169 @@ export class FixtureAdminRepository implements AdminRepository {
     return clone(candidate);
   }
 
+  async unblockCandidate(candidateId: string, input: CandidateDecisionInput): Promise<AdminCandidate> {
+    const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
+    const reason = requireReason(input.reason);
+
+    if (candidate.editorialStatus !== "blocked") {
+      throw new Error(`Only a blocked candidate can be unblocked; current state is ${candidate.editorialStatus}.`);
+    }
+
+    candidate.editorialStatus = "review";
+    candidate.history.push(historyEntry(candidate, "unblocked", input.actor, reason));
+    return clone(candidate);
+  }
+
+  async resolveCandidateBlocker(candidateId: string, input: CandidateBlockerResolutionInput): Promise<AdminCandidate> {
+    const candidate = this.requireCandidate(candidateId);
+    assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
+    assertActionableCandidate(candidate, "updated");
+    const reason = requireReason(input.reason);
+
+    if (isCandidateBlockerResolved(candidate, input.kind, input.targetId)) {
+      throw new Error(`Candidate blocker is already resolved: ${input.kind}:${input.targetId}.`);
+    }
+
+    if (!hasOpenCandidateBlocker(candidate, input)) {
+      throw new Error(`Unknown or non-blocking candidate blocker: ${input.kind}:${input.targetId}.`);
+    }
+
+    const candidateForResolution = clone(candidate);
+    let occurrenceUpdate: { current: PublishedOccurrence; next: PublishedOccurrence } | null = null;
+
+    if (input.kind === "change_proposal") {
+      if (input.disposition !== "accepted" && input.disposition !== "rejected") {
+        throw new Error("Change proposal resolution requires an accepted or rejected disposition.");
+      }
+      if (candidateForResolution.changeProposal.state !== "known") {
+        throw new Error("Change proposal is no longer available.");
+      }
+
+      const proposal = candidateForResolution.changeProposal.value;
+      const side = input.disposition === "accepted" ? "after" : "before";
+      const savedCorrections = this.protectedCorrectionFields.get(candidateId);
+      for (const field of proposal.fields) {
+        if (
+          savedCorrections?.has(field.field) &&
+          JSON.stringify(candidateForResolution.final[field.field]) !== JSON.stringify(field[side])
+        ) {
+          throw new Error(
+            `Saved editorial correction for ${field.field} conflicts with the ${input.disposition} proposal decision.`,
+          );
+        }
+      }
+      candidateForResolution.final = applyChangeFields(candidateForResolution.final, proposal.fields, side);
+      proposal.status = input.disposition === "accepted" ? "approved" : "rejected";
+      assertValidEventTimeRange(candidateForResolution.final);
+
+      if (proposal.fields.some((field) => field.field === "organizerId")) {
+        const selectedOrganizer = valueOrUndefined(candidateForResolution.final.organizerId);
+        if (!selectedOrganizer || !organizerFixtures.some((organizer) => organizer.id === selectedOrganizer)) {
+          throw new Error(`Change proposal organizer does not exist: ${selectedOrganizer ?? "unknown"}.`);
+        }
+        candidateForResolution.organizerId = clone(candidateForResolution.final.organizerId);
+      }
+
+      if (input.disposition === "accepted") {
+        const currentOccurrence = this.published.find((occurrence) => occurrence.id === proposal.publishedOccurrenceId);
+        if (!currentOccurrence) {
+          throw new Error(`Published occurrence does not exist: ${proposal.publishedOccurrenceId}.`);
+        }
+
+        if (!currentOccurrence.sourceRecordIds.includes(candidate.sourceRecordId)) {
+          throw new Error("Change proposal target does not match the candidate source record.");
+        }
+        for (const field of proposal.fields) {
+          if (JSON.stringify(currentOccurrence.event[field.field]) !== JSON.stringify(field.before)) {
+            throw new Error(
+              `Stale change proposal: published ${field.field} no longer matches the observed before value.`,
+            );
+          }
+        }
+
+        const nextOccurrence = clone(currentOccurrence);
+        nextOccurrence.event = applyChangeFields(nextOccurrence.event, proposal.fields, "after");
+        assertValidEventTimeRange(nextOccurrence.event);
+        if (proposal.fields.some((field) => field.field === "organizerId")) {
+          nextOccurrence.organizerId = valueOrUndefined(nextOccurrence.event.organizerId)!;
+        }
+        nextOccurrence.lastCheckedAt = latestCheckedAt(
+          nextOccurrence.lastCheckedAt,
+          candidateForResolution.lastCheckedAt,
+        );
+        nextOccurrence.evidenceIds = Array.from(
+          new Set([...nextOccurrence.evidenceIds, ...proposal.fields.flatMap((field) => field.evidenceIds)]),
+        );
+        nextOccurrence.protectedCorrections = Array.from(
+          new Set([...nextOccurrence.protectedCorrections, ...proposal.fields.map((field) => field.field)]),
+        );
+        nextOccurrence.history.push({
+          id: `history-${nextOccurrence.id}-${nextOccurrence.history.length + 1}`,
+          action: "corrected",
+          at: new Date().toISOString(),
+          actor: clone(input.actor),
+          reason: { state: "known", value: `Accepted change proposal ${proposal.id}: ${reason}` },
+        });
+        if (candidateForResolution.publishedBaseline?.occurrenceId === currentOccurrence.id) {
+          const baselineEvent = candidateForResolution.publishedBaseline.event as unknown as Record<
+            string,
+            FieldValue<unknown>
+          >;
+          for (const field of proposal.fields) {
+            baselineEvent[field.field] = clone(nextOccurrence.event[field.field]);
+          }
+        }
+        occurrenceUpdate = { current: currentOccurrence, next: nextOccurrence };
+      }
+    } else if (input.kind === "match") {
+      if (input.disposition !== "distinct" && input.disposition !== "duplicate") {
+        throw new Error("Match resolution requires a distinct or duplicate disposition.");
+      }
+      if (input.disposition === "duplicate") {
+        const match = candidateForResolution.matches.find((item) => item.id === input.targetId);
+        if (!match) throw new Error("Match is no longer available.");
+        candidateForResolution.editorialStatus = "rejected";
+        candidateForResolution.history.push(
+          historyEntry(candidateForResolution, "rejected", input.actor, `Duplicate of ${match.targetId}: ${reason}`),
+        );
+      }
+    } else if (input.disposition !== undefined) {
+      throw new Error("A disposition is only valid for matches and change proposals.");
+    }
+
+    candidateForResolution.blockerResolutions ??= [];
+    candidateForResolution.blockerResolutions.push({
+      id: `blocker-resolution-${candidateForResolution.id}-${candidateForResolution.blockerResolutions.length + 1}`,
+      kind: input.kind,
+      targetId: input.targetId,
+      disposition: input.disposition,
+      at: new Date().toISOString(),
+      actor: clone(input.actor),
+      reason,
+    });
+    candidateForResolution.history.push(
+      historyEntry(
+        candidateForResolution,
+        "blocker_resolved",
+        input.actor,
+        `${input.kind}:${input.targetId}${input.disposition ? ` · ${input.disposition}` : ""} · ${reason}`,
+      ),
+    );
+    parseAdminCandidate(candidateForResolution);
+
+    Object.assign(candidate, candidateForResolution);
+    if (occurrenceUpdate) Object.assign(occurrenceUpdate.current, occurrenceUpdate.next);
+
+    return clone(candidateForResolution);
+  }
+
   async requestRequery(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "requeried");
     candidate.history.push(historyEntry(candidate, "requery_requested", input.actor, input.reason));
     return clone(candidate);
@@ -468,6 +852,7 @@ export class FixtureAdminRepository implements AdminRepository {
   async requestReprocess(candidateId: string, input: CandidateActionInput): Promise<AdminCandidate> {
     const candidate = this.requireCandidate(candidateId);
     assertValidActor(input.actor);
+    assertExpectedCandidateVersion(candidate, input.expectedVersion);
     assertActionableCandidate(candidate, "reprocessed");
     candidate.history.push(historyEntry(candidate, "reprocess_requested", input.actor, input.reason));
     return clone(candidate);

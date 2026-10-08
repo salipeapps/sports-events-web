@@ -63,3 +63,13 @@ other geographic scopes are catalog data and future filter/workspace dimensions;
 hardcoded into Admin navigation, authentication states, global headers or product identity.
 
 Pilot fixtures may contain Valencia-specific data without making Valencia part of the Admin shell.
+
+## Editorial candidate review
+
+The review UI keeps four layers explicit: source evidence, extracted values, final editorial values and
+decision history. Saving a correction mutates only `candidate.final`; source evidence and extracted
+values remain immutable in the Admin workflow.
+
+The fixture repository used by Admin pages is a shared in-process development adapter so editorial
+actions remain visible across local requests. This is not production persistence and will be
+replaced by the persistent adapter in the engine/backend milestones.
