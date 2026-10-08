@@ -1,4 +1,5 @@
 import type { EngineRun, FieldValue, SourceConfig, SourceStatus } from "@/domain/admin";
+import type { AdminSearchParams } from "./adminActivityQuery";
 import { displayField, formatCheckedAt, type StatusTone } from "./adminPresentation";
 
 export type SourceOperationalStatus = SourceStatus | "budget_exhausted";
@@ -95,6 +96,30 @@ export interface RunQuery {
   q?: string;
   status?: string;
   source?: string;
+}
+
+function firstParam(params: AdminSearchParams, key: string): string {
+  const raw = params[key];
+  return (Array.isArray(raw) ? (raw[0] ?? "") : (raw ?? "")).trim();
+}
+
+export function resolveSourceQuery(params: AdminSearchParams): SourceQuery {
+  return { q: firstParam(params, "q"), status: firstParam(params, "status") };
+}
+
+export function resolveRunQuery(params: AdminSearchParams): RunQuery {
+  return {
+    q: firstParam(params, "q"),
+    status: firstParam(params, "status"),
+    source: firstParam(params, "source"),
+  };
+}
+
+export function resolveRunCandidatePage(params: AdminSearchParams): number {
+  const value = firstParam(params, "page");
+  if (!/^[1-9]\d*$/.test(value)) return 1;
+  const page = Number(value);
+  return Number.isSafeInteger(page) ? page : 1;
 }
 
 export function filterSources(sources: SourceConfig[], query: SourceQuery): SourceConfig[] {

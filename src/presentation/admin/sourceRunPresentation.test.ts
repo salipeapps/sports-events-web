@@ -8,6 +8,9 @@ import {
   filterSources,
   formatDuration,
   formatMoney,
+  resolveRunCandidatePage,
+  resolveRunQuery,
+  resolveSourceQuery,
   sourceBudgetLabel,
 } from "./sourceRunPresentation";
 
@@ -41,6 +44,37 @@ describe("source and run presentation", () => {
     ]);
     const discovered = { ...runFixtures[0], id: "discovery-example", kind: "discovery" as const };
     expect(filterRuns([...runFixtures, discovered], sourceFixtures, {})).toHaveLength(3);
+  });
+
+  it("normalizes duplicate and missing search parameters at the page boundary", () => {
+    expect(resolveSourceQuery({ q: [" meetup ", "yoga"], status: ["paused", "active"] })).toEqual({
+      q: "meetup",
+      status: "paused",
+    });
+    expect(
+      resolveRunQuery({ q: [" capture ", "ignore"], status: ["failed", "partial"], source: ["S001", "S009"] }),
+    ).toEqual({ q: "capture", status: "failed", source: "S001" });
+    expect(resolveSourceQuery({ q: [], status: undefined })).toEqual({ q: "", status: "" });
+    expect(resolveRunQuery({ q: undefined, status: [], source: ["S001"] })).toEqual({
+      q: "",
+      status: "",
+      source: "S001",
+    });
+    expect(filterSources(sourceFixtures, resolveSourceQuery({ q: ["meetup", "yoga"] })).length).toBeGreaterThan(0);
+    expect(filterRuns(runFixtures, sourceFixtures, resolveRunQuery({ source: ["S001", "S009"] }))).toHaveLength(1);
+  });
+
+  it("safely parses repeated, invalid and oversized run candidate page parameters", () => {
+    const cases: Array<{ params: Record<string, string | string[] | undefined>; expected: number }> = [
+      { params: { page: ["2", "3"] }, expected: 2 },
+      { params: { page: "0" }, expected: 1 },
+      { params: { page: ["", "2"] }, expected: 1 },
+      { params: { page: "1evil" }, expected: 1 },
+      { params: { page: "999999999999999999999999" }, expected: 1 },
+    ];
+    for (const { params, expected } of cases) {
+      expect(resolveRunCandidatePage(params)).toBe(expected);
+    }
   });
 
   it("never represents unknown spending as zero and keeps known zero distinct", () => {

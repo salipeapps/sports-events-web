@@ -54,6 +54,10 @@ export interface AdminRepository {
   getDashboardSummary(): Promise<DashboardSummary>;
   listActivities(filters?: ActivityFilters): Promise<PageResult<ActivityListItem>>;
   listCandidates(filters?: CandidateFilters): Promise<PageResult<ActivityListItem>>;
+  listRunCandidates(
+    runId: string,
+    pagination?: { page?: number; pageSize?: number },
+  ): Promise<PageResult<ActivityListItem>>;
   getCandidate(candidateId: string): Promise<AdminCandidate | null>;
   getLinkedPublishedOccurrence(candidateId: string): Promise<PublishedOccurrence | null>;
   listOrganizers(): Promise<Organizer[]>;
