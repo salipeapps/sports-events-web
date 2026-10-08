@@ -140,10 +140,7 @@ describe("FixtureAdminRepository", () => {
     const repository = new FixtureAdminRepository();
     const id = "candidate-valid-E019";
     const before = await repository.getCandidate(id);
-    for (const corrections of [
-      { startLocal: known("not-a-date") },
-      { endLocal: known("2026-02-30T18:30") },
-    ]) {
+    for (const corrections of [{ startLocal: known("not-a-date") }, { endLocal: known("2026-02-30T18:30") }]) {
       await expect(
         repository.approveCandidate(id, {
           actor: reviewer,
