@@ -167,7 +167,13 @@ export async function resolveCandidateBlockerAction(formData: FormData): Promise
   const blockerId = formString(formData, "blockerId");
   const reason = formString(formData, "blockerReason");
   const dispositionValue = formString(formData, "blockerDisposition");
-  const disposition = dispositionValue === "accepted" || dispositionValue === "rejected" ? dispositionValue : undefined;
+  const disposition =
+    dispositionValue === "accepted" ||
+    dispositionValue === "rejected" ||
+    dispositionValue === "distinct" ||
+    dispositionValue === "duplicate"
+      ? dispositionValue
+      : undefined;
 
   if (!candidateBlockerKinds.includes(blockerKind)) {
     throw new Error("El tipo de bloqueo no es válido.");
