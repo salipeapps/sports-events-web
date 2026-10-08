@@ -289,6 +289,13 @@ export type PublicationPolicy = "capture_only" | "capture_and_evaluate" | "human
 
 export type SourceStatus = "active" | "paused" | "blocked" | "proposed";
 
+export interface SourceDiscoveryOrigin {
+  candidateId: string;
+  queryId?: string;
+  executionId?: string;
+  reviewUrl?: string;
+}
+
 export interface SourceConfig {
   id: string;
   name: string;
@@ -304,6 +311,8 @@ export interface SourceConfig {
   autoPublishMode: "disabled" | "simulation" | "enabled";
   lastRunAt: FieldValue<string>;
   budget: FieldValue<{ amount: number; currency: "EUR"; period: string }>;
+  budgetStatus?: "available" | "exhausted" | "unknown";
+  discoveryOrigin?: SourceDiscoveryOrigin;
   capabilities: string[];
   limitations: string[];
   notes: string[];
