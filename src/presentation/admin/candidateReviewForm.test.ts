@@ -48,7 +48,7 @@ describe("candidate review form", () => {
     if (!candidate || candidate.final.endLocal.state !== "known") throw new Error("fixture end missing");
 
     const form = formFor(candidate);
-    form.set("startLocal", "2026-10-06T21:30");
+    form.set("startLocal", "2026-10-24T20:30");
     expect(() => buildCandidateCorrections(form, candidate)).toThrow("anteriores al inicio");
   });
 
