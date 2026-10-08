@@ -47,6 +47,12 @@ function valueOrUndefined<T>(field: FieldValue<T>): T | undefined {
   return field.state === "known" ? field.value : undefined;
 }
 
+function latestCheckedAt(current: string, incoming: string): string {
+  const previous = Date.parse(current);
+  const candidate = Date.parse(incoming);
+  return Number.isFinite(candidate) && (!Number.isFinite(previous) || candidate > previous) ? incoming : current;
+}
+
 function reasonCodes(candidate: AdminCandidate): string[] {
   return [
     ...candidate.rules
@@ -609,7 +615,10 @@ export class FixtureAdminRepository implements AdminRepository {
       }
       assertValidEventTimeRange(updatedOccurrence.event);
       if (changedFields.includes("organizerId")) updatedOccurrence.organizerId = organizerId;
-      updatedOccurrence.lastCheckedAt = candidateForApproval.lastCheckedAt;
+      updatedOccurrence.lastCheckedAt = latestCheckedAt(
+        updatedOccurrence.lastCheckedAt,
+        candidateForApproval.lastCheckedAt,
+      );
       updatedOccurrence.protectedCorrections = Array.from(
         new Set([...updatedOccurrence.protectedCorrections, ...correctedFields]),
       );
@@ -761,7 +770,10 @@ export class FixtureAdminRepository implements AdminRepository {
         if (proposal.fields.some((field) => field.field === "organizerId")) {
           nextOccurrence.organizerId = valueOrUndefined(nextOccurrence.event.organizerId)!;
         }
-        nextOccurrence.lastCheckedAt = candidateForResolution.lastCheckedAt;
+        nextOccurrence.lastCheckedAt = latestCheckedAt(
+          nextOccurrence.lastCheckedAt,
+          candidateForResolution.lastCheckedAt,
+        );
         nextOccurrence.evidenceIds = Array.from(
           new Set([...nextOccurrence.evidenceIds, ...proposal.fields.flatMap((field) => field.evidenceIds)]),
         );

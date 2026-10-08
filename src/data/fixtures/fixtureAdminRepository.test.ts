@@ -1005,6 +1005,7 @@ describe("FixtureAdminRepository", () => {
       competing.id = "candidate-change-E023-rebase-peer";
       if (competing.changeProposal.state !== "known") throw new Error("Missing competing proposal");
       competing.changeProposal.value.id = "change-E023-rebase-peer";
+      competing.lastCheckedAt = "2026-10-08T10:00:00.000Z";
 
       const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
       const occurrence = internal.published.find((item) => item.id === "pub-fixture-E023-web-1900");
@@ -1075,6 +1076,7 @@ describe("FixtureAdminRepository", () => {
       expect(refreshed.final.title).toEqual(before.final.title);
       expect(refreshed.history.at(-1)?.action).toBe("baseline_refreshed");
       expect(occurrence.event.title).toEqual(known("Title from newer publication"));
+      expect(occurrence.lastCheckedAt).toBe("2026-10-08T10:00:00.000Z");
 
       const approved = await repository.approveCandidate(candidateId, {
         actor: reviewer,
@@ -1084,9 +1086,61 @@ describe("FixtureAdminRepository", () => {
       });
       expect(approved.editorialStatus).toBe("published");
       expect(occurrence.event.title).toEqual(known("Editorially verified title"));
+      expect(occurrence.lastCheckedAt).toBe("2026-10-08T10:00:00.000Z");
       expect(internal.published).toHaveLength(1);
     },
   );
+
+  it("does not regress the latest check timestamp when accepting an older change proposal", async () => {
+    const repository = new FixtureAdminRepository();
+    const internal = repository as unknown as { published: PublishedOccurrence[] };
+    internal.published[0].lastCheckedAt = "2026-10-09T12:00:00.000Z";
+
+    await repository.resolveCandidateBlocker("candidate-change-E023", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-change-E023"),
+      kind: "change_proposal",
+      targetId: "change-E023-time",
+      disposition: "accepted",
+      reason: "Accept verified schedule with older discovery timestamp",
+    });
+
+    expect(internal.published[0].lastCheckedAt).toBe("2026-10-09T12:00:00.000Z");
+    expect(internal.published[0].event.startLocal).toEqual(known("2026-10-07T18:30:00"));
+  });
+
+  it("advances an occurrence check timestamp when a newer candidate is approved", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-change-E023";
+
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "change_proposal",
+      targetId: "change-E023-time",
+      disposition: "rejected",
+      reason: "Reject suggested schedule",
+    });
+    await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "rule",
+      targetId: "rule-change-E023",
+      reason: "Rule review complete",
+    });
+
+    const internal = repository as unknown as { candidates: AdminCandidate[]; published: PublishedOccurrence[] };
+    const candidate = internal.candidates.find((item) => item.id === candidateId);
+    if (!candidate) throw new Error("Missing candidate fixture");
+    candidate.lastCheckedAt = "2026-10-09T14:00:00.000Z";
+
+    await repository.approveCandidate(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      reason: "Later recheck verified",
+    });
+    expect(internal.published[0].lastCheckedAt).toBe("2026-10-09T14:00:00.000Z");
+  });
 
   it("refuses a baseline refresh when the published occurrence changed after it was viewed", async () => {
     const repository = new FixtureAdminRepository();
