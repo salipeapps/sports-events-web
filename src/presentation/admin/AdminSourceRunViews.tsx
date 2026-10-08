@@ -1,7 +1,7 @@
 import Link from "next/link";
 
-import type { ActivityListItem, EngineRun, SourceConfig } from "@/domain/admin";
-import { displayField, formatCheckedAt } from "./adminPresentation";
+import type { ActivityListItem, EngineRun, PageResult, SourceConfig } from "@/domain/admin";
+import { displayField, formatCheckedAt, statusLabels } from "./adminPresentation";
 import {
   effectiveSourceState,
   filterRuns,
@@ -401,7 +401,7 @@ export function AdminRunDetail({
 }: {
   run: EngineRun;
   sources: SourceConfig[];
-  candidates: ActivityListItem[];
+  candidates: PageResult<ActivityListItem>;
 }) {
   const sourceId = run.sourceId.state === "known" ? run.sourceId.value : null;
   const source = sourceId ? sources.find((item) => item.id === sourceId) : null;
@@ -452,20 +452,48 @@ export function AdminRunDetail({
       ) : null}
       <section className="admin-review-card admin-operation-related">
         <h2>Candidatos originados por esta ejecución</h2>
-        {candidates.length === 0 ? (
-          <p className="admin-muted-copy">Sin candidatos pendientes vinculados a esta ejecución.</p>
+        <p className="admin-muted-copy">
+          {candidates.total} candidatos vinculados · mostrando {candidates.items.length} en esta página
+        </p>
+        {candidates.total === 0 ? (
+          <p className="admin-muted-copy">No constan candidatos vinculados a esta ejecución.</p>
         ) : (
-          <ul className="admin-operation-notes">
-            {candidates.map((candidate) => (
-              <li key={candidate.id}>
-                <Link href={`/admin/candidates/${encodeURIComponent(candidate.id)}`}>
-                  {displayField(candidate.title)}
-                </Link>
-                {" · "}
-                {candidate.id}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul className="admin-operation-notes">
+              {candidates.items.map((candidate) => (
+                <li key={candidate.id}>
+                  <Link href={`/admin/candidates/${encodeURIComponent(candidate.id)}`}>
+                    {displayField(candidate.title)}
+                  </Link>
+                  {" · "}
+                  {candidate.id}
+                  {" · "}
+                  {statusLabels[candidate.editorialStatus]}
+                </li>
+              ))}
+            </ul>
+            {candidates.total > candidates.pageSize ? (
+              <nav className="admin-pagination" aria-label="Paginación de candidatos de la ejecución">
+                {candidates.page > 1 ? (
+                  <Link href={`/admin/runs/${encodeURIComponent(run.id)}?page=${candidates.page - 1}`}>
+                    ← Anterior
+                  </Link>
+                ) : (
+                  <span aria-disabled="true">← Anterior</span>
+                )}
+                <strong>
+                  Página {candidates.page} de {Math.ceil(candidates.total / candidates.pageSize)}
+                </strong>
+                {candidates.page * candidates.pageSize < candidates.total ? (
+                  <Link href={`/admin/runs/${encodeURIComponent(run.id)}?page=${candidates.page + 1}`}>
+                    Siguiente →
+                  </Link>
+                ) : (
+                  <span aria-disabled="true">Siguiente →</span>
+                )}
+              </nav>
+            ) : null}
+          </>
         )}
       </section>
     </main>

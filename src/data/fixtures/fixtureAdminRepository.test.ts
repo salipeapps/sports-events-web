@@ -71,6 +71,65 @@ describe("FixtureAdminRepository", () => {
     expect(result.items.map((item) => item.id)).not.toContain("candidate-price-conflict-E064");
   });
 
+  it("retains published candidates in execution history without changing pending-candidate filters", async () => {
+    const repository = new FixtureAdminRepository();
+    const runId = "fixture-run-8421";
+    const before = await repository.listRunCandidates(runId);
+    expect(before.items.map((item) => item.id)).toContain("candidate-valid-E019");
+
+    await repository.approveCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
+      reason: "Approve candidate produced by run",
+    });
+
+    expect((await repository.listCandidates({ executionId: runId })).items.map((item) => item.id))
+      .not.toContain("candidate-valid-E019");
+    const history = await repository.listRunCandidates(runId);
+    const approved = history.items.find((item) => item.id === "candidate-valid-E019");
+    expect(approved?.editorialStatus).toBe("published");
+    expect(approved?.kind).toBe("candidate");
+    expect(history.total).toBe(before.total);
+    expect((await repository.getCandidate("candidate-valid-E019"))?.editorialStatus).toBe("published");
+  });
+
+  it("paginates all execution candidates beyond 100 without dropping published results", async () => {
+    const repository = new FixtureAdminRepository();
+    const runId = "fixture-run-8421";
+    const seed = await repository.getCandidate("candidate-valid-E019");
+    if (!seed) throw new Error("Missing run fixture");
+    const internal = repository as unknown as { candidates: AdminCandidate[] };
+    for (let number = 0; number < 135; number += 1) {
+      internal.candidates.push({
+        ...structuredClone(seed),
+        id: `candidate-bulk-${String(number).padStart(3, "0")}`,
+        sourceRecordId: `bulk-${number}`,
+      });
+    }
+    await repository.approveCandidate("candidate-valid-E019", {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
+      reason: "Published candidate must still appear in run history",
+    });
+
+    const first = await repository.listRunCandidates(runId, { page: 1, pageSize: 25 });
+    const totalPages = Math.ceil(first.total / first.pageSize);
+    const pages = await Promise.all(
+      Array.from({ length: totalPages }, (_, index) =>
+        repository.listRunCandidates(runId, { page: index + 1, pageSize: 25 }),
+      ),
+    );
+    const ids = pages.flatMap((page) => page.items.map((item) => item.id));
+    expect(first.total).toBeGreaterThan(135);
+    expect(pages.every((page) => page.total === first.total)).toBe(true);
+    expect(ids).toHaveLength(first.total);
+    expect(new Set(ids).size).toBe(first.total);
+    expect(ids).toContain("candidate-bulk-134");
+    expect(ids).toContain("candidate-valid-E019");
+    expect(pages.at(-1)?.items.length).toBeGreaterThan(0);
+    expect((await repository.listRunCandidates(runId, { page: 999 })).page).toBe(totalPages);
+  });
+
   it("approves a reviewable candidate and preserves an editorial history", async () => {
     const repository = new FixtureAdminRepository();
     const candidate = await repository.approveCandidate("candidate-valid-E019", {

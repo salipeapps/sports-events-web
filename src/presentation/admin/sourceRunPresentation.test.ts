@@ -8,6 +8,9 @@ import {
   filterSources,
   formatDuration,
   formatMoney,
+  resolveRunCandidatePage,
+  resolveRunQuery,
+  resolveSourceQuery,
   sourceBudgetLabel,
 } from "./sourceRunPresentation";
 
@@ -41,6 +44,36 @@ describe("source and run presentation", () => {
     ]);
     const discovered = { ...runFixtures[0], id: "discovery-example", kind: "discovery" as const };
     expect(filterRuns([...runFixtures, discovered], sourceFixtures, {})).toHaveLength(3);
+  });
+
+  it("normalizes duplicate and missing search parameters at the page boundary", () => {
+    expect(resolveSourceQuery({ q: [" meetup ", "yoga"], status: ["paused", "active"] })).toEqual({
+      q: "meetup",
+      status: "paused",
+    });
+    expect(resolveRunQuery({ q: [" capture ", "ignore"], status: ["failed", "partial"], source: ["S001", "S009"] }))
+      .toEqual({ q: "capture", status: "failed", source: "S001" });
+    expect(resolveSourceQuery({ q: [], status: undefined })).toEqual({ q: "", status: "" });
+    expect(resolveRunQuery({ q: undefined, status: [], source: ["S001"] })).toEqual({
+      q: "",
+      status: "",
+      source: "S001",
+    });
+    expect(
+      filterSources(sourceFixtures, resolveSourceQuery({ q: ["meetup", "yoga"] })).length,
+    ).toBeGreaterThan(0);
+    expect(filterRuns(runFixtures, sourceFixtures, resolveRunQuery({ source: ["S001", "S009"] })))
+      .toHaveLength(1);
+  });
+
+  it.each([
+    [{ page: ["2", "3"] }, 2],
+    [{ page: "0" }, 1],
+    [{ page: ["", "2"] }, 1],
+    [{ page: "1evil" }, 1],
+    [{ page: "999999999999999999999999" }, 1],
+  ] as const)("safely parses run candidate page parameter %j", (params, expected) => {
+    expect(resolveRunCandidatePage(params)).toBe(expected);
   });
 
   it("never represents unknown spending as zero and keeps known zero distinct", () => {
