@@ -12,6 +12,8 @@ describe("admin session provider", () => {
   it("allows the explicit local development provider", async () => {
     const access = await createAdminSessionProvider({
       APP_ENV: "development",
+      NODE_ENV: "development",
+      APP_ORIGIN: "http://localhost:3000",
       ADMIN_DEV_AUTH_MODE: "enabled",
       ADMIN_DEV_AUTH_ROLE: "reviewer",
       ADMIN_DEV_AUTH_NAME: "Local Reviewer",

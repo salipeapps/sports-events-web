@@ -18,7 +18,7 @@ export default async function AdminAccessPage({ searchParams }: { searchParams: 
   const safeReason: AdminAccessFailureReason =
     reason && knownReasons.has(reason as AdminAccessFailureReason)
       ? (reason as AdminAccessFailureReason)
-      : "unauthorized";
+      : "missing_session";
 
   return <AdminAccessState reason={safeReason} />;
 }

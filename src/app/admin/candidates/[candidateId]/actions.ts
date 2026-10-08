@@ -213,7 +213,7 @@ export async function refreshCandidatePublishedBaselineAction(formData: FormData
 
 export async function requeryCandidateAction(formData: FormData): Promise<never> {
   const candidateId = candidateIdFromForm(formData);
-  const actor = await requireEditorialActor("catalog.review");
+  const actor = await requireEditorialActor("runs.execute");
   const reason = formString(formData, "maintenanceReason");
 
   return completeAction(candidateId, "Reconsulta solicitada.", async () => {
@@ -230,7 +230,7 @@ export async function requeryCandidateAction(formData: FormData): Promise<never>
 
 export async function reprocessCandidateAction(formData: FormData): Promise<never> {
   const candidateId = candidateIdFromForm(formData);
-  const actor = await requireEditorialActor("catalog.review");
+  const actor = await requireEditorialActor("runs.execute");
   const reason = formString(formData, "maintenanceReason");
 
   return completeAction(candidateId, "Reproceso solicitado.", async () => {

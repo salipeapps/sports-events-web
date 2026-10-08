@@ -3,6 +3,8 @@ import type { ReactNode } from "react";
 
 import type { AdminSession } from "@/domain/adminAccess";
 import { AdminNavigation } from "./AdminNavigation";
+import { logoutAction } from "@/app/admin-access/actions";
+import { AdminSessionRefresh } from "./AdminSessionRefresh";
 
 interface AdminShellProps {
   session: AdminSession;
@@ -12,6 +14,7 @@ interface AdminShellProps {
 export function AdminShell({ session, children }: AdminShellProps) {
   return (
     <div className="admin-shell">
+      <AdminSessionRefresh />
       <aside className="admin-sidebar">
         <div className="admin-brand" aria-label="Sports Events Admin">
           <span className="admin-brand-mark" aria-hidden="true" />
@@ -39,6 +42,11 @@ export function AdminShell({ session, children }: AdminShellProps) {
             <span className="admin-identity" title={session.displayName}>
               <span aria-hidden="true">◉</span> {session.role === "admin" ? "Admin" : "Reviewer"}
             </span>
+            <form action={logoutAction}>
+              <button className="admin-secondary-button" type="submit">
+                Cerrar sesión
+              </button>
+            </form>
           </div>
         </header>
 

@@ -1,7 +1,10 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { createAuthClient } from "./supabaseServer";
+import { SupabaseAdminSessionProvider } from "./supabaseAccess";
 
 import { getServerConfig, type ServerEnvironment } from "@/config/env";
-import type { AdminAccessResult } from "@/domain/adminAccess";
+import { canAdmin, requireAdminCapability, type AdminCapability, type AdminAccessResult } from "@/domain/adminAccess";
 
 export interface AdminSessionProvider {
   getAccess(): Promise<AdminAccessResult>;
@@ -42,7 +45,28 @@ export function createAdminSessionProvider(environment?: ServerEnvironment): Adm
 }
 
 export async function getAdminAccess(): Promise<AdminAccessResult> {
-  // Keep the route request-bound and leave the cookie boundary ready for the future real auth provider.
   await cookies();
-  return createAdminSessionProvider().getAccess();
+  try {
+    const config = getServerConfig();
+    if (config.adminDevAuthMode === "enabled") {
+      const host = (await headers()).get("host")?.split(":")[0];
+      if (!["localhost", "127.0.0.1"].includes(host ?? ""))
+        return { status: "unauthenticated", reason: "unauthorized" };
+      return createAdminSessionProvider().getAccess();
+    }
+    const client = await createAuthClient();
+    return client
+      ? new SupabaseAdminSessionProvider(client).getAccess()
+      : { status: "unauthenticated", reason: "missing_session" };
+  } catch {
+    return { status: "unauthenticated", reason: "unauthorized" };
+  }
+}
+
+export async function requireAdminAccess(capability: AdminCapability) {
+  const access = await getAdminAccess();
+  if (access.status !== "authenticated") redirect(`/admin-access?reason=${access.reason}`);
+  if (!canAdmin(access.session.role, capability)) redirect("/admin-access?reason=unauthorized");
+  requireAdminCapability(access.session, capability);
+  return access.session;
 }

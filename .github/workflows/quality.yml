@@ -63,6 +63,9 @@ jobs:
       - name: Admin fails closed without a session
         run: ADMIN_DEV_AUTH_MODE=disabled npm run test:e2e -- e2e/admin-auth.spec.ts
 
+      - name: Supabase SSR Auth HTTP fixtures
+        run: npm run test:e2e -- --config playwright.auth.config.ts
+
       - name: Upload browser traces and screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4

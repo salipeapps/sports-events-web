@@ -36,6 +36,7 @@ import {
 } from "@/app/admin/candidates/[candidateId]/actions";
 
 interface CandidateReviewProps {
+  canExecute?: boolean;
   candidate: AdminCandidate;
   organizers: Organizer[];
   sources: SourceConfig[];
@@ -141,6 +142,7 @@ function unknownHint(field: FieldValue<unknown>): string | null {
 }
 
 export function CandidateReview({
+  canExecute = false,
   candidate,
   organizers,
   sources,
@@ -773,22 +775,24 @@ export function CandidateReview({
               </details>
             )}
 
-            <div className="admin-engine-actions">
-              <form action={requeryCandidateAction}>
-                <input type="hidden" name="candidateId" value={candidate.id} />
-                <input type="hidden" name="candidateVersion" value={reviewVersion} />
-                <button className="admin-secondary-button" type="submit">
-                  Solicitar reconsulta
-                </button>
-              </form>
-              <form action={reprocessCandidateAction}>
-                <input type="hidden" name="candidateId" value={candidate.id} />
-                <input type="hidden" name="candidateVersion" value={reviewVersion} />
-                <button className="admin-secondary-button" type="submit">
-                  Solicitar reproceso
-                </button>
-              </form>
-            </div>
+            {canExecute && (
+              <div className="admin-engine-actions">
+                <form action={requeryCandidateAction}>
+                  <input type="hidden" name="candidateId" value={candidate.id} />
+                  <input type="hidden" name="candidateVersion" value={reviewVersion} />
+                  <button className="admin-secondary-button" type="submit">
+                    Solicitar reconsulta
+                  </button>
+                </form>
+                <form action={reprocessCandidateAction}>
+                  <input type="hidden" name="candidateId" value={candidate.id} />
+                  <input type="hidden" name="candidateVersion" value={reviewVersion} />
+                  <button className="admin-secondary-button" type="submit">
+                    Solicitar reproceso
+                  </button>
+                </form>
+              </div>
+            )}
           </div>
         </section>
       ) : null}
