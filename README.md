@@ -9,7 +9,7 @@ administrative workflow that will inspect and curate events produced by the inge
 - React 19.3
 - TypeScript
 - ESLint + Prettier
-- Vitest
+- Vitest + Playwright
 - GitHub Actions
 
 ## Requirements
@@ -30,8 +30,9 @@ Open:
 - `/` — public shell
 - `/admin` — Admin v0 bootstrap
 
-> `/admin` is **not authenticated yet**. Authentication and server-side authorization are part of
-> issue #3. Do not expose this bootstrap as a production admin panel until that issue is complete.
+> The Admin is **private by default**: an unauthenticated request redirects to `/admin-access`.
+> Only the explicit local development bypass described in `docs/admin-auth.md` enables its fixture UI.
+> There is no production identity provider or persistent backend yet; do not deploy it as an operating admin.
 
 ## Quality commands
 
@@ -42,6 +43,7 @@ npm run typecheck
 npm test
 npm run build
 npm run quality
+npm run test:e2e
 ```
 
 `npm run quality` runs formatting, linting, type checking, tests and a production build. The same
@@ -86,3 +88,13 @@ with `NEXT_PUBLIC_`.
 - #7 E2E vertical-slice validation
 
 See `docs/architecture.md` for the baseline architecture.
+
+## Admin v0 E2E acceptance
+
+See [Admin v0 visual/E2E validation](docs/admin-v0-e2e.md) and the
+[adapter migration checklist](docs/admin-mock-migration.md).
+
+The Playwright job exercises the request-protected Next.js app with fixtures; a second run
+verifies that all Admin routes fail closed without an authenticated session. Screenshots
+for Figma's four Admin frames are attached to Playwright test reports. Discovery is an
+explicitly read-only demo until the engine exposes real execution/promotion operations.

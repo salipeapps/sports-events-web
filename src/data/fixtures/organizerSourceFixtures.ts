@@ -100,7 +100,13 @@ export const sourceFixtures: SourceConfig[] = [
       "RSVP is not observed attendance",
       "recurring calendars need occurrence-level dedupe",
     ],
-    notes: ["Operational status/frequency are Admin v0 simulation values."],
+    notes: ["Operational status/frequency are Admin v0 simulation values; discovery lineage is a demo scenario."],
+    discoveryOrigin: {
+      candidateId: "discovery-result-promoted",
+      queryId: "discovery-query-default",
+      executionId: "discovery-execution-01",
+      reviewUrl: "/admin/discovery/results/discovery-result-promoted",
+    },
   },
   {
     id: "S006",

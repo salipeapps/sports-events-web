@@ -35,3 +35,40 @@ jobs:
 
       - name: Run quality checks
         run: npm run quality
+
+  e2e:
+    needs: quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Admin vertical slice
+        run: npm run test:e2e
+
+      - name: Admin fails closed without a session
+        run: ADMIN_DEV_AUTH_MODE=disabled npm run test:e2e -- e2e/admin-auth.spec.ts
+
+      - name: Upload browser traces and screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: admin-e2e-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

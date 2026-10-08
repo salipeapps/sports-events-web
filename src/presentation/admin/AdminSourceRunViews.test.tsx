@@ -65,8 +65,13 @@ describe("Admin source and run observability", () => {
     if (!source) throw new Error("Missing source fixture");
     const html = renderToStaticMarkup(<AdminSourceDetail source={source} runs={await repository.listRuns()} />);
     expect(html).toContain("/admin/runs/fixture-run-8421");
-    expect(html).toContain("No consta una relación de descubrimiento");
+    expect(html).toContain("/admin/discovery/results/discovery-result-promoted");
     expect(html).toContain("Configuración y política");
+
+    const withoutOrigin = sources.find((item) => item.id === "S009");
+    if (!withoutOrigin) throw new Error("Missing no-origin fixture");
+    const missingHtml = renderToStaticMarkup(<AdminSourceDetail source={withoutOrigin} runs={[]} />);
+    expect(missingHtml).toContain("No consta una relación de descubrimiento");
 
     const withOrigin = {
       ...source,
