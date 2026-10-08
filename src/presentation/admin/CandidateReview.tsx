@@ -329,6 +329,12 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
             </label>
 
             <label>
+              <span>Fecha de fin (solo lectura)</span>
+              <output>{displayField(candidate.final.endLocal, formatLocalDateTime)}</output>
+              <small>Si modificas el inicio, debe ser anterior o igual a esta fecha de fin.</small>
+            </label>
+
+            <label>
               <span>Zona horaria</span>
               <select
                 name="timezone"
