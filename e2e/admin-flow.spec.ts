@@ -38,7 +38,10 @@ test("dashboard, activity filtering and candidate review show documented evidenc
 
   await page.getByRole("navigation", { name: "Administración" }).getByRole("link", { name: "Actividades" }).click();
   await expect(page.getByRole("heading", { name: "Actividades" })).toBeVisible();
-  await page.getByRole("link", { name: /Revisión/ }).first().click();
+  await page
+    .getByRole("link", { name: /Revisión/ })
+    .first()
+    .click();
   await page.locator('select[name="source"]').selectOption("S009");
   await page.locator('select[name="status"]').selectOption("blocked");
   await page.getByRole("button", { name: "Filtrar" }).click();
@@ -60,12 +63,16 @@ test("discovery remains separate from sources, links lineage and does not execut
   await expect(page.getByText("Override explícito")).toBeVisible();
   await expect(page.getByRole("button", { name: "Probar consulta" })).toBeDisabled();
 
-  await page.getByRole("navigation", { name: "Apartados de Descubrimiento" })
-    .getByRole("link", { name: "Proveedores" }).click();
+  await page
+    .getByRole("navigation", { name: "Apartados de Descubrimiento" })
+    .getByRole("link", { name: "Proveedores" })
+    .click();
   await expect(page.getByRole("table")).toContainText("Predeterminado");
   await expect(page.getByRole("table")).toContainText("Credenciales");
-  await page.getByRole("navigation", { name: "Apartados de Descubrimiento" })
-    .getByRole("link", { name: "Resultados" }).click();
+  await page
+    .getByRole("navigation", { name: "Apartados de Descubrimiento" })
+    .getByRole("link", { name: "Resultados" })
+    .click();
   await page.getByRole("link", { name: "Comunidad Meetup de Valencia" }).click();
   await expect(page.getByText("Un resultado de búsqueda no representa una actividad validada")).toBeVisible();
   await page.getByRole("link", { name: /discovery-execution-01/ }).click();
@@ -78,7 +85,9 @@ test("discovery remains separate from sources, links lineage and does not execut
   await expect(page.getByRole("heading", { name: "Candidatos originados por esta ejecución" })).toBeVisible();
 });
 
-test("valid candidate publishes, conflict cannot publish, and recorded decisions require a reason", async ({ page }) => {
+test("valid candidate publishes, conflict cannot publish, and recorded decisions require a reason", async ({
+  page,
+}) => {
   await page.goto("/admin/candidates/candidate-valid-E019");
   await page.getByRole("button", { name: "Aprobar y publicar" }).click();
   await expect(page).toHaveURL(/result=/);
@@ -89,7 +98,12 @@ test("valid candidate publishes, conflict cannot publish, and recorded decisions
 
   await page.goto("/admin/candidates/candidate-conflict-E023");
   await expect(page.getByRole("button", { name: "Aprobar y publicar" })).toBeDisabled();
-  await page.locator("details").filter({ has: page.locator("summary", { hasText: "Rechazar" }) }).last().locator("summary").click();
+  await page
+    .locator("details")
+    .filter({ has: page.locator("summary", { hasText: "Rechazar" }) })
+    .last()
+    .locator("summary")
+    .click();
   const rejectionForm = page.locator("form").filter({ has: page.getByRole("button", { name: "Confirmar rechazo" }) });
   await expect(rejectionForm.locator('textarea[name="decisionReason"]')).toHaveAttribute("required", "");
   await rejectionForm.locator('textarea[name="decisionReason"]').fill("Conflicto de horario sin verificar");

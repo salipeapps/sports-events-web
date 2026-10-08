@@ -2,7 +2,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { FixtureDiscoveryRepository } from "@/data/fixtures/fixtureDiscoveryRepository";
-import { DiscoveryExecutionDetail, DiscoveryOverview, DiscoveryResultDetail, resolveDiscoveryTab } from "./DiscoveryOverview";
+import {
+  DiscoveryExecutionDetail,
+  DiscoveryOverview,
+  DiscoveryResultDetail,
+  resolveDiscoveryTab,
+} from "./DiscoveryOverview";
 
 describe("Admin v0 discovery presentation", () => {
   it("preserves provider DEFAULT and explicit override without exposing any credentials", async () => {

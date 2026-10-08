@@ -168,7 +168,9 @@ export function AdminSourcesCatalog({
         <header className="admin-catalog-header">
           <div>
             <h2>Ejecuciones recientes</h2>
-            <p className="admin-muted-copy">Últimos trabajos de captación; consulta el historial completo por separado.</p>
+            <p className="admin-muted-copy">
+              Últimos trabajos de captación; consulta el historial completo por separado.
+            </p>
           </div>
           <Link href="/admin/runs">Ver todas →</Link>
         </header>
@@ -179,27 +181,45 @@ export function AdminSourcesCatalog({
             <table className="admin-activities-table admin-runs-table">
               <thead>
                 <tr>
-                  <th>ID</th><th>Fuente</th><th>Inicio</th><th>Duración</th><th>Nuevos</th>
-                  <th>Actualizados</th><th>Descartados</th><th>Revisión</th><th>Coste</th><th>Estado</th>
+                  <th>ID</th>
+                  <th>Fuente</th>
+                  <th>Inicio</th>
+                  <th>Duración</th>
+                  <th>Nuevos</th>
+                  <th>Actualizados</th>
+                  <th>Descartados</th>
+                  <th>Revisión</th>
+                  <th>Coste</th>
+                  <th>Estado</th>
                 </tr>
               </thead>
               <tbody>
-                {filterRuns(runs, sources, {}).slice(0, 5).map((run) => (
-                  <tr key={run.id}>
-                    <td><Link href={`/admin/runs/${encodeURIComponent(run.id)}`}>{run.id}</Link></td>
-                    <td>{run.sourceId.state === "known" ? (
-                      <SourceLink id={run.sourceId.value} sources={sources} />
-                    ) : displayField(run.sourceId)}</td>
-                    <td>{formatCheckedAt(run.startedAt)}</td>
-                    <td>{formatDuration(run.durationSeconds)}</td>
-                    <td>{run.counters.created}</td>
-                    <td>{run.counters.updated}</td>
-                    <td>{run.counters.discarded}</td>
-                    <td>{run.counters.review}</td>
-                    <td>{formatMoney(run.cost)}</td>
-                    <td><RunStatus run={run} /></td>
-                  </tr>
-                ))}
+                {filterRuns(runs, sources, {})
+                  .slice(0, 5)
+                  .map((run) => (
+                    <tr key={run.id}>
+                      <td>
+                        <Link href={`/admin/runs/${encodeURIComponent(run.id)}`}>{run.id}</Link>
+                      </td>
+                      <td>
+                        {run.sourceId.state === "known" ? (
+                          <SourceLink id={run.sourceId.value} sources={sources} />
+                        ) : (
+                          displayField(run.sourceId)
+                        )}
+                      </td>
+                      <td>{formatCheckedAt(run.startedAt)}</td>
+                      <td>{formatDuration(run.durationSeconds)}</td>
+                      <td>{run.counters.created}</td>
+                      <td>{run.counters.updated}</td>
+                      <td>{run.counters.discarded}</td>
+                      <td>{run.counters.review}</td>
+                      <td>{formatMoney(run.cost)}</td>
+                      <td>
+                        <RunStatus run={run} />
+                      </td>
+                    </tr>
+                  ))}
               </tbody>
             </table>
           </div>

@@ -51,9 +51,7 @@ function EmptyDiscovery({ label }: { label: string }) {
 }
 
 function QueryProvider({ selected, snapshot }: { selected: string; snapshot: DiscoverySnapshot }) {
-  const provider = snapshot.providers.find((item) =>
-    selected === "DEFAULT" ? item.isDefault : item.id === selected,
-  );
+  const provider = snapshot.providers.find((item) => (selected === "DEFAULT" ? item.isDefault : item.id === selected));
   return (
     <>
       <strong>{selected === "DEFAULT" ? "DEFAULT" : "Override explícito"}</strong>
@@ -99,8 +97,16 @@ export function DiscoveryOverview({ snapshot, activeTab }: { snapshot: Discovery
                 <tbody>
                   {snapshot.providers.map((provider) => (
                     <tr key={provider.id}>
-                      <td className="admin-table-title"><strong>{provider.name}</strong></td>
-                      <td>{provider.status === "active" ? "Activo" : provider.status === "degraded" ? "Degradado" : "Sin configurar"}</td>
+                      <td className="admin-table-title">
+                        <strong>{provider.name}</strong>
+                      </td>
+                      <td>
+                        {provider.status === "active"
+                          ? "Activo"
+                          : provider.status === "degraded"
+                            ? "Degradado"
+                            : "Sin configurar"}
+                      </td>
                       <td>{provider.credentialsAvailable ? "Configuradas" : "No configuradas"}</td>
                       <td>{provider.isDefault ? "DEFAULT" : "No"}</td>
                       <td>{provider.incident ?? provider.capabilities.join(" · ")}</td>
@@ -141,8 +147,12 @@ export function DiscoveryOverview({ snapshot, activeTab }: { snapshot: Discovery
                           <small>{query.expression}</small>
                         </div>
                       </td>
-                      <td><QueryProvider selected={query.providerSelection} snapshot={snapshot} /></td>
-                      <td>{query.territory} · {query.category}</td>
+                      <td>
+                        <QueryProvider selected={query.providerSelection} snapshot={snapshot} />
+                      </td>
+                      <td>
+                        {query.territory} · {query.category}
+                      </td>
                       <td>{query.language.toUpperCase()}</td>
                       <td>{query.frequency}</td>
                       <td>{query.maxResults} resultados</td>
@@ -186,14 +196,14 @@ export function DiscoveryOverview({ snapshot, activeTab }: { snapshot: Discovery
                     <tr key={result.id}>
                       <td>
                         <div className="admin-table-title">
-                          <Link href={`/admin/discovery/results/${encodeURIComponent(result.id)}`}>
-                            {result.title}
-                          </Link>
+                          <Link href={`/admin/discovery/results/${encodeURIComponent(result.id)}`}>{result.title}</Link>
                           <small>{result.url}</small>
                         </div>
                       </td>
                       <td>{snapshot.queries.find((item) => item.id === result.queryId)?.name ?? result.queryId}</td>
-                      <td>{snapshot.providers.find((item) => item.id === result.providerId)?.name ?? result.providerId}</td>
+                      <td>
+                        {snapshot.providers.find((item) => item.id === result.providerId)?.name ?? result.providerId}
+                      </td>
                       <td>{result.observationCount}</td>
                       <td>{resultLabels[result.status]}</td>
                     </tr>
@@ -206,38 +216,60 @@ export function DiscoveryOverview({ snapshot, activeTab }: { snapshot: Discovery
       ) : null}
 
       <p className="admin-muted-copy">
-        <button className="admin-primary-button" type="button" disabled title="Ejecución manual no disponible sin backend">
+        <button
+          className="admin-primary-button"
+          type="button"
+          disabled
+          title="Ejecución manual no disponible sin backend"
+        >
           Probar consulta
-        </button>
-        {" "}La ejecución manual aún no está disponible. No se crean fuentes ni eventos automáticamente.
+        </button>{" "}
+        La ejecución manual aún no está disponible. No se crean fuentes ni eventos automáticamente.
       </p>
     </main>
   );
 }
 
-export function DiscoveryResultDetail({
-  snapshot,
-  result,
-}: {
-  snapshot: DiscoverySnapshot;
-  result: DiscoveryResult;
-}) {
+export function DiscoveryResultDetail({ snapshot, result }: { snapshot: DiscoverySnapshot; result: DiscoveryResult }) {
   const query = snapshot.queries.find((item) => item.id === result.queryId);
   const provider = snapshot.providers.find((item) => item.id === result.providerId);
   return (
     <main className="admin-page admin-discovery-page">
-      <Link className="admin-back-link" href="/admin/discovery?tab=resultados">← Volver a resultados</Link>
+      <Link className="admin-back-link" href="/admin/discovery?tab=resultados">
+        ← Volver a resultados
+      </Link>
       <DiscoveryHeader detail />
       <section className="admin-review-card">
         <h2>{result.title}</h2>
         <dl className="admin-definition-list">
-          <div><dt>Resultado</dt><dd>{result.id}</dd></div>
-          <div><dt>URL observada</dt><dd className="admin-discovery-url">{result.url}</dd></div>
-          <div><dt>Consulta</dt><dd>{query?.name ?? result.queryId}</dd></div>
-          <div><dt>Proveedor</dt><dd>{provider?.name ?? result.providerId}</dd></div>
-          <div><dt>Estado</dt><dd>{resultLabels[result.status]}</dd></div>
-          <div><dt>Observaciones</dt><dd>{result.observationCount}</dd></div>
-          <div><dt>Última observación</dt><dd>{formatCheckedAt(result.observedAt)}</dd></div>
+          <div>
+            <dt>Resultado</dt>
+            <dd>{result.id}</dd>
+          </div>
+          <div>
+            <dt>URL observada</dt>
+            <dd className="admin-discovery-url">{result.url}</dd>
+          </div>
+          <div>
+            <dt>Consulta</dt>
+            <dd>{query?.name ?? result.queryId}</dd>
+          </div>
+          <div>
+            <dt>Proveedor</dt>
+            <dd>{provider?.name ?? result.providerId}</dd>
+          </div>
+          <div>
+            <dt>Estado</dt>
+            <dd>{resultLabels[result.status]}</dd>
+          </div>
+          <div>
+            <dt>Observaciones</dt>
+            <dd>{result.observationCount}</dd>
+          </div>
+          <div>
+            <dt>Última observación</dt>
+            <dd>{formatCheckedAt(result.observedAt)}</dd>
+          </div>
           <div>
             <dt>Ejecución de origen</dt>
             <dd>
@@ -278,20 +310,51 @@ export function DiscoveryExecutionDetail({
   const results = snapshot.results.filter((item) => item.executionId === execution.id);
   return (
     <main className="admin-page admin-discovery-page">
-      <Link className="admin-back-link" href="/admin/discovery">← Volver a consultas</Link>
+      <Link className="admin-back-link" href="/admin/discovery">
+        ← Volver a consultas
+      </Link>
       <DiscoveryHeader detail />
       <section className="admin-review-card">
         <h2>Ejecución {execution.id}</h2>
         <dl className="admin-definition-list">
-          <div><dt>Consulta</dt><dd>{query?.name ?? execution.queryId}</dd></div>
-          <div><dt>Proveedor</dt><dd>{provider?.name ?? execution.providerId}</dd></div>
-          <div><dt>Estado</dt><dd>{execution.state === "succeeded" ? "Completada" : execution.state === "failed" ? "Fallida" : "En cola"}</dd></div>
-          <div><dt>Inicio</dt><dd>{formatCheckedAt(execution.startedAt)}</dd></div>
-          <div><dt>Observados</dt><dd>{execution.observed}</dd></div>
-          <div><dt>Nuevos</dt><dd>{execution.newResults}</dd></div>
-          <div><dt>Conocidos</dt><dd>{execution.knownResults}</dd></div>
-          <div><dt>Coste</dt><dd>{execution.cost === null ? "Sin dato" : `${execution.cost} €`}</dd></div>
-          <div><dt>Incidencia</dt><dd>{execution.incident ?? "Sin incidencia observada"}</dd></div>
+          <div>
+            <dt>Consulta</dt>
+            <dd>{query?.name ?? execution.queryId}</dd>
+          </div>
+          <div>
+            <dt>Proveedor</dt>
+            <dd>{provider?.name ?? execution.providerId}</dd>
+          </div>
+          <div>
+            <dt>Estado</dt>
+            <dd>
+              {execution.state === "succeeded" ? "Completada" : execution.state === "failed" ? "Fallida" : "En cola"}
+            </dd>
+          </div>
+          <div>
+            <dt>Inicio</dt>
+            <dd>{formatCheckedAt(execution.startedAt)}</dd>
+          </div>
+          <div>
+            <dt>Observados</dt>
+            <dd>{execution.observed}</dd>
+          </div>
+          <div>
+            <dt>Nuevos</dt>
+            <dd>{execution.newResults}</dd>
+          </div>
+          <div>
+            <dt>Conocidos</dt>
+            <dd>{execution.knownResults}</dd>
+          </div>
+          <div>
+            <dt>Coste</dt>
+            <dd>{execution.cost === null ? "Sin dato" : `${execution.cost} €`}</dd>
+          </div>
+          <div>
+            <dt>Incidencia</dt>
+            <dd>{execution.incident ?? "Sin incidencia observada"}</dd>
+          </div>
         </dl>
       </section>
       <section className="admin-review-card admin-operation-related">
@@ -303,7 +366,8 @@ export function DiscoveryExecutionDetail({
             {results.map((result) => (
               <li key={result.id}>
                 <Link href={`/admin/discovery/results/${encodeURIComponent(result.id)}`}>{result.title}</Link>
-                {" · "}{resultLabels[result.status]}
+                {" · "}
+                {resultLabels[result.status]}
               </li>
             ))}
           </ul>

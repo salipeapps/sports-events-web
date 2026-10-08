@@ -6,11 +6,11 @@ Documento Figma: https://www.figma.com/design/j4mi5fmAMTVN3A9At8U0L8
 
 Los cuatro frames **están disponibles** en la página `02 · Admin`. Se comprobaron sus IDs y jerarquías:
 
-| Frame | Node ID | Referencia |
-| --- | --- | --- |
-| Admin / 01 Dashboard | `5:13` | métricas, distribución y urgentes |
-| Admin / 02 Actividades | `5:119` | tabs, filtros, tabla y estados |
-| Admin / 03 Revisar candidatura | `5:255` | extracción, evaluación, evidencia y decisiones |
+| Frame                            | Node ID | Referencia                                               |
+| -------------------------------- | ------- | -------------------------------------------------------- |
+| Admin / 01 Dashboard             | `5:13`  | métricas, distribución y urgentes                        |
+| Admin / 02 Actividades           | `5:119` | tabs, filtros, tabla y estados                           |
+| Admin / 03 Revisar candidatura   | `5:255` | extracción, evaluación, evidencia y decisiones           |
 | Admin / 04 Fuentes y ejecuciones | `5:360` | registro de fuentes arriba y ejecuciones recientes abajo |
 
 Referencias compartidas: `00 · Foundations` y el shell de `#3` (sidebar de 210px, topbar de 62px, tokens definidos en `globals.css`). Los valores de las tablas Figma **son ejemplos de diseño**, no datos observados por el motor. No se sustituyen los fixtures de investigación por los datos decorativos del frame.
