@@ -86,6 +86,17 @@ export function isLoopbackOrigin(value: string | undefined): boolean {
   }
 }
 
+export function isLoopbackRequestHost(value: string | null): boolean {
+  if (!value) return false;
+
+  try {
+    const url = new URL(`http://${value}`);
+    return url.username === "" && url.password === "" && ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
 export function getAuthConfig(source: ServerEnvironment = process.env) {
   try {
     const url = new URL(source.NEXT_PUBLIC_SUPABASE_URL ?? "");

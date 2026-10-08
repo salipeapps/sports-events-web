@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { createAuthClient } from "./supabaseServer";
 import { SupabaseAdminSessionProvider } from "./supabaseAccess";
 
-import { getServerConfig, type ServerEnvironment } from "@/config/env";
+import { getServerConfig, isLoopbackRequestHost, type ServerEnvironment } from "@/config/env";
 import { canAdmin, requireAdminCapability, type AdminCapability, type AdminAccessResult } from "@/domain/adminAccess";
 
 export interface AdminSessionProvider {
@@ -49,9 +49,8 @@ export async function getAdminAccess(): Promise<AdminAccessResult> {
   try {
     const config = getServerConfig();
     if (config.adminDevAuthMode === "enabled") {
-      const host = (await headers()).get("host")?.split(":")[0];
-      if (!["localhost", "127.0.0.1"].includes(host ?? ""))
-        return { status: "unauthenticated", reason: "unauthorized" };
+      const host = (await headers()).get("host");
+      if (!isLoopbackRequestHost(host)) return { status: "unauthenticated", reason: "unauthorized" };
       return createAdminSessionProvider().getAccess();
     }
     const client = await createAuthClient();

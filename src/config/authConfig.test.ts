@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getAuthConfig, getServerConfig } from "./env";
+import { getAuthConfig, getServerConfig, isLoopbackRequestHost } from "./env";
 describe("auth configuration boundaries", () => {
   it.each([
     { VERCEL: "1" },
@@ -42,5 +42,21 @@ describe("auth configuration boundaries", () => {
       key: "sb_publishable_example",
       origin: "https://admin.example.test",
     });
+  });
+
+  it.each(["localhost:3000", "127.0.0.1:3100", "[::1]:3000"])("accepts a loopback request host: %s", (host) => {
+    expect(isLoopbackRequestHost(host)).toBe(true);
+  });
+
+  it.each([
+    null,
+    "",
+    "example.com",
+    "localhost.example.com:3000",
+    "[::2]:3000",
+    "localhost:invalid",
+    "localhost@evil.test",
+  ])("rejects a non-loopback or malformed request host: %s", (host) => {
+    expect(isLoopbackRequestHost(host)).toBe(false);
   });
 });
