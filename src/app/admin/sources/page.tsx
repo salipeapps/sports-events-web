@@ -7,10 +7,6 @@ export default async function SourcesPage({
   searchParams: Promise<{ q?: string; status?: string }>;
 }) {
   const repository = getAdminRepository();
-  const [sources, runs, query] = await Promise.all([
-    repository.listSources(),
-    repository.listRuns(),
-    searchParams,
-  ]);
+  const [sources, runs, query] = await Promise.all([repository.listSources(), repository.listRuns(), searchParams]);
   return <AdminSourcesCatalog sources={sources} runs={runs} query={query} />;
 }

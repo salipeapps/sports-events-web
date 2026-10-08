@@ -47,8 +47,6 @@ describe("source and run presentation", () => {
     expect(formatMoney(unknown("not_observed"))).toBe("Sin dato");
     expect(formatMoney(known({ amount: 0, currency: "EUR" }))).toContain("0");
     expect(formatDuration(unknown("not_verified"))).toBe("No verificado");
-    expect(sourceBudgetLabel(sourceFixtures.find((source) => source.id === "S038")!)).toBe(
-      "Agotado (escenario)",
-    );
+    expect(sourceBudgetLabel(sourceFixtures.find((source) => source.id === "S038")!)).toBe("Agotado (escenario)");
   });
 });

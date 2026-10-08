@@ -5,11 +5,7 @@ import { AdminRunDetail } from "@/presentation/admin/AdminSourceRunViews";
 
 export default async function RunDetailPage({ params }: { params: Promise<{ runId: string }> }) {
   const repository = getAdminRepository();
-  const [{ runId }, runs, sources] = await Promise.all([
-    params,
-    repository.listRuns(),
-    repository.listSources(),
-  ]);
+  const [{ runId }, runs, sources] = await Promise.all([params, repository.listRuns(), repository.listSources()]);
   const run = runs.find((item) => item.id === runId);
   if (!run || run.kind === "discovery") notFound();
 

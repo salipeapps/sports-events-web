@@ -40,7 +40,14 @@ describe("Admin source and run observability", () => {
     );
 
     for (const heading of [
-      "Inicio", "Duración", "Nuevos", "Actualizados", "Descartados", "Revisión", "Coste / consumo", "Estado",
+      "Inicio",
+      "Duración",
+      "Nuevos",
+      "Actualizados",
+      "Descartados",
+      "Revisión",
+      "Coste / consumo",
+      "Estado",
     ]) {
       expect(html).toContain(heading);
     }
@@ -55,9 +62,7 @@ describe("Admin source and run observability", () => {
     const sources = await repository.listSources();
     const source = sources.find((item) => item.id === "S001");
     if (!source) throw new Error("Missing source fixture");
-    const html = renderToStaticMarkup(
-      <AdminSourceDetail source={source} runs={await repository.listRuns()} />,
-    );
+    const html = renderToStaticMarkup(<AdminSourceDetail source={source} runs={await repository.listRuns()} />);
     expect(html).toContain("/admin/runs/fixture-run-8421");
     expect(html).toContain("No consta una relación de descubrimiento");
     expect(html).toContain("Configuración y política");
@@ -83,18 +88,14 @@ describe("Admin source and run observability", () => {
     const run = runs.find((item) => item.id === "fixture-run-8421");
     if (!run) throw new Error("Missing fixture run");
     const linked = await repository.listCandidates({ executionId: run.id });
-    const html = renderToStaticMarkup(
-      <AdminRunDetail run={run} sources={sources} candidates={linked.items} />,
-    );
+    const html = renderToStaticMarkup(<AdminRunDetail run={run} sources={sources} candidates={linked.items} />);
     expect(html).toContain("Candidatos originados por esta ejecución");
     expect(html).toContain("/admin/candidates/");
     expect(html).toContain("/admin/sources/S001");
 
     const failedRun = runs.find((item) => item.id === "fixture-run-8419");
     if (!failedRun) throw new Error("Missing failure fixture");
-    const failedHtml = renderToStaticMarkup(
-      <AdminRunDetail run={failedRun} sources={sources} candidates={[]} />,
-    );
+    const failedHtml = renderToStaticMarkup(<AdminRunDetail run={failedRun} sources={sources} candidates={[]} />);
     expect(failedHtml).toContain("Error");
     expect(failedHtml).toContain("Reintentos");
   });

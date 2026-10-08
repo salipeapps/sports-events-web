@@ -107,9 +107,13 @@ export function AdminSourcesCatalog({
           <span className="sr-only">Buscar fuente</span>
           <input name="q" type="search" defaultValue={query.q ?? ""} placeholder="Buscar fuente o cobertura..." />
         </label>
-        <button className="admin-filter-submit" type="submit">Filtrar</button>
+        <button className="admin-filter-submit" type="submit">
+          Filtrar
+        </button>
       </form>
-      <p className="admin-results-count">Mostrando {rows.length} de {sources.length} fuentes</p>
+      <p className="admin-results-count">
+        Mostrando {rows.length} de {sources.length} fuentes
+      </p>
       {rows.length === 0 ? (
         <EmptyTable message="No se encontraron fuentes con estos filtros. Prueba otra búsqueda." />
       ) : (
@@ -187,7 +191,9 @@ export function AdminRunsCatalog({
           <select name="status" defaultValue={query.status ?? ""}>
             <option value="">Todos los estados</option>
             {(["queued", "running", "succeeded", "partial", "failed"] as const).map((state) => (
-              <option key={state} value={state}>{runStateLabels[state]}</option>
+              <option key={state} value={state}>
+                {runStateLabels[state]}
+              </option>
             ))}
           </select>
         </label>
@@ -196,7 +202,9 @@ export function AdminRunsCatalog({
           <select name="source" defaultValue={query.source ?? ""}>
             <option value="">Todas las fuentes</option>
             {sources.map((source) => (
-              <option key={source.id} value={source.id}>{source.name}</option>
+              <option key={source.id} value={source.id}>
+                {source.name}
+              </option>
             ))}
           </select>
         </label>
@@ -204,9 +212,13 @@ export function AdminRunsCatalog({
           <span className="sr-only">Buscar ejecución</span>
           <input name="q" type="search" defaultValue={query.q ?? ""} placeholder="Buscar ID o fuente..." />
         </label>
-        <button className="admin-filter-submit" type="submit">Filtrar</button>
+        <button className="admin-filter-submit" type="submit">
+          Filtrar
+        </button>
       </form>
-      <p className="admin-results-count">Mostrando {rows.length} de {operations.length} ejecuciones</p>
+      <p className="admin-results-count">
+        Mostrando {rows.length} de {operations.length} ejecuciones
+      </p>
       {rows.length === 0 ? (
         <EmptyTable message="No se encontraron ejecuciones con estos filtros." />
       ) : (
@@ -249,7 +261,9 @@ export function AdminRunsCatalog({
                     <td>{run.counters.discarded}</td>
                     <td>{run.counters.review}</td>
                     <td>{formatMoney(run.cost)}</td>
-                    <td><RunStatus run={run} /></td>
+                    <td>
+                      <RunStatus run={run} />
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -267,7 +281,10 @@ function DetailSection({ title, values }: { title: string; values: [string, stri
       <h2>{title}</h2>
       <dl className="admin-definition-list">
         {values.map(([label, value]) => (
-          <div key={label}><dt>{label}</dt><dd>{value}</dd></div>
+          <div key={label}>
+            <dt>{label}</dt>
+            <dd>{value}</dd>
+          </div>
         ))}
       </dl>
     </section>
@@ -281,7 +298,11 @@ function NoteList({ title, notes }: { title: string; notes: string[] }) {
       {notes.length === 0 ? (
         <p className="admin-muted-copy">Sin incidencias registradas.</p>
       ) : (
-        <ul className="admin-operation-notes">{notes.map((note) => <li key={note}>{note}</li>)}</ul>
+        <ul className="admin-operation-notes">
+          {notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
       )}
     </section>
   );
@@ -290,13 +311,19 @@ function NoteList({ title, notes }: { title: string; notes: string[] }) {
 export function AdminSourceDetail({ source, runs }: { source: SourceConfig; runs: EngineRun[] }) {
   const sourceRuns = filterRuns(runs, [source], { source: source.id });
   const origin = source.discoveryOrigin;
-  const reviewedDiscoveryUrl =
-    origin?.reviewUrl?.startsWith("/admin/discovery/") ? origin.reviewUrl : null;
+  const reviewedDiscoveryUrl = origin?.reviewUrl?.startsWith("/admin/discovery/") ? origin.reviewUrl : null;
   return (
     <main className="admin-page admin-operations-page">
-      <Link className="admin-back-link" href="/admin/sources">← Volver a fuentes</Link>
+      <Link className="admin-back-link" href="/admin/sources">
+        ← Volver a fuentes
+      </Link>
       <header className="admin-detail-header">
-        <div><h1>{source.name}</h1><p>{source.type} · {source.id} · Prioridad {source.priority}</p></div>
+        <div>
+          <h1>{source.name}</h1>
+          <p>
+            {source.type} · {source.id} · Prioridad {source.priority}
+          </p>
+        </div>
         <SourceStatus source={source} />
       </header>
       <div className="admin-summary-grid">
@@ -306,7 +333,14 @@ export function AdminSourceDetail({ source, runs }: { source: SourceConfig; runs
             ["Cobertura", source.coverage.join(" · ") || "Sin dato"],
             ["Frecuencia", displayField(source.frequency)],
             ["Política", sourcePolicyLabels[source.publicationPolicy]],
-            ["Publicación automática", source.autoPublishMode === "simulation" ? "Solo simulación" : source.autoPublishMode === "enabled" ? "Activada" : "Desactivada"],
+            [
+              "Publicación automática",
+              source.autoPublishMode === "simulation"
+                ? "Solo simulación"
+                : source.autoPublishMode === "enabled"
+                  ? "Activada"
+                  : "Desactivada",
+            ],
             ["Captación", source.accessMethod],
             ["Última ejecución", formatRunDate(source.lastRunAt)],
             ["Presupuesto", sourceBudgetLabel(source)],
@@ -347,7 +381,10 @@ export function AdminSourceDetail({ source, runs }: { source: SourceConfig; runs
             {sourceRuns.map((run) => (
               <li key={run.id}>
                 <Link href={`/admin/runs/${encodeURIComponent(run.id)}`}>{run.id}</Link>
-                {" · "}{formatCheckedAt(run.startedAt)}{" · "}{runStateLabels[run.status]}
+                {" · "}
+                {formatCheckedAt(run.startedAt)}
+                {" · "}
+                {runStateLabels[run.status]}
               </li>
             ))}
           </ul>
@@ -366,12 +403,20 @@ export function AdminRunDetail({
   sources: SourceConfig[];
   candidates: ActivityListItem[];
 }) {
-  const source = run.sourceId.state === "known" ? sources.find((item) => item.id === run.sourceId.value) : null;
+  const sourceId = run.sourceId.state === "known" ? run.sourceId.value : null;
+  const source = sourceId ? sources.find((item) => item.id === sourceId) : null;
   return (
     <main className="admin-page admin-operations-page">
-      <Link className="admin-back-link" href="/admin/runs">← Volver a ejecuciones</Link>
+      <Link className="admin-back-link" href="/admin/runs">
+        ← Volver a ejecuciones
+      </Link>
       <header className="admin-detail-header">
-        <div><h1>{run.id}</h1><p>Tipo: {run.kind} · {formatCheckedAt(run.startedAt)}</p></div>
+        <div>
+          <h1>{run.id}</h1>
+          <p>
+            Tipo: {run.kind} · {formatCheckedAt(run.startedAt)}
+          </p>
+        </div>
         <RunStatus run={run} />
       </header>
       <div className="admin-summary-grid">
@@ -416,7 +461,8 @@ export function AdminRunDetail({
                 <Link href={`/admin/candidates/${encodeURIComponent(candidate.id)}`}>
                   {displayField(candidate.title)}
                 </Link>
-                {" · "}{candidate.id}
+                {" · "}
+                {candidate.id}
               </li>
             ))}
           </ul>
