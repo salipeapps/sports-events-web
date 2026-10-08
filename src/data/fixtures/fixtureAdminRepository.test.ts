@@ -432,6 +432,7 @@ describe("FixtureAdminRepository", () => {
       expectedVersion: await currentVersion(repository, "candidate-possible-duplicate-E019-mirror"),
       kind: "match",
       targetId: "match-fixture-E019",
+      disposition: "distinct",
       reason: "Reviewed as a distinct occurrence",
     });
     const matchCandidate = await repository.getCandidate("candidate-possible-duplicate-E019-mirror");
@@ -457,6 +458,45 @@ describe("FixtureAdminRepository", () => {
     const published = await repository.listActivities({ statuses: ["published"] });
     const updatedOccurrence = published.items.find((item) => item.id === "pub-fixture-E023-web-1900");
     expect(updatedOccurrence?.startLocal).toEqual(known("2026-10-07T18:30:00"));
+  });
+
+  it("requires a match decision and rejects confirmed duplicates without publishing", async () => {
+    const repository = new FixtureAdminRepository();
+    const candidateId = "candidate-possible-duplicate-E019-mirror";
+    const before = await repository.getCandidate(candidateId);
+
+    await expect(
+      repository.resolveCandidateBlocker(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        kind: "match",
+        targetId: "match-fixture-E019",
+        reason: "A generic resolution is insufficient",
+      }),
+    ).rejects.toThrow("requires a distinct or duplicate disposition");
+    expect(await repository.getCandidate(candidateId)).toEqual(before);
+
+    const confirmed = await repository.resolveCandidateBlocker(candidateId, {
+      actor: reviewer,
+      expectedVersion: await currentVersion(repository, candidateId),
+      kind: "match",
+      targetId: "match-fixture-E019",
+      disposition: "duplicate",
+      reason: "The source mirrors the existing candidate",
+    });
+    expect(confirmed.editorialStatus).toBe("rejected");
+    expect(confirmed.blockerResolutions?.at(-1)?.disposition).toBe("duplicate");
+    expect(publicationBlockReasons(confirmed)).toContain("confirmed_duplicate");
+    expect(confirmed.history.some((item) => item.action === "rejected")).toBe(true);
+
+    await expect(
+      repository.approveCandidate(candidateId, {
+        actor: reviewer,
+        expectedVersion: await currentVersion(repository, candidateId),
+        reason: "This must not create a second published event",
+      }),
+    ).rejects.toThrow("terminal state rejected");
+    expect((await repository.listActivities({ statuses: ["published"] })).items).toHaveLength(1);
   });
 
   it("rejects a change proposal without modifying the published occurrence", async () => {
