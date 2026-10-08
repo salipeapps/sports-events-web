@@ -8,6 +8,7 @@ import {
   deserializeSourceConfig,
   canPublishCandidate,
   parseAdminCandidate,
+  parseSourceConfig,
   publicationBlockReasons,
   serializeContract,
 } from "./adminValidation";
@@ -125,6 +126,24 @@ describe("admin contracts", () => {
     };
 
     expect(() => parseAdminCandidate(malformed)).toThrow(ContractValidationError);
+  });
+
+  it("validates optional budget state and reviewed discovery lineage", () => {
+    const source = structuredClone(sourceFixtures[0]);
+    source.budgetStatus = "available";
+    source.discoveryOrigin = {
+      candidateId: "source-candidate-1",
+      queryId: "query-1",
+      executionId: "discovery-run-1",
+      reviewUrl: "/admin/discovery/results/source-candidate-1",
+    };
+    expect(deserializeSourceConfig(serializeContract(source))).toEqual(source);
+
+    const invalidState = { ...source, budgetStatus: "made-up" };
+    expect(() => parseSourceConfig(invalidState)).toThrow(ContractValidationError);
+
+    const invalidOrigin = { ...source, discoveryOrigin: { candidateId: 42 } };
+    expect(() => parseSourceConfig(invalidOrigin)).toThrow(ContractValidationError);
   });
 
   it("rejects negative source budgets and engine run costs", () => {

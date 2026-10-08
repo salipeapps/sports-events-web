@@ -570,6 +570,19 @@ function validateSourceShape(value: unknown): string[] {
   validateEnum(value.autoPublishMode, ["disabled", "simulation", "enabled"], "source.autoPublishMode", errors);
   validateFieldValue(value.lastRunAt, "source.lastRunAt", errors, validateString);
   validateFieldValue(value.budget, "source.budget", errors, validateBudget);
+  if (value.budgetStatus !== undefined) {
+    validateEnum(value.budgetStatus, ["available", "exhausted", "unknown"], "source.budgetStatus", errors);
+  }
+  if (value.discoveryOrigin !== undefined) {
+    if (!isRecord(value.discoveryOrigin)) {
+      errors.push("source.discoveryOrigin must be an object");
+    } else {
+      validateString(value.discoveryOrigin.candidateId, "source.discoveryOrigin.candidateId", errors);
+      validateOptionalString(value.discoveryOrigin.queryId, "source.discoveryOrigin.queryId", errors);
+      validateOptionalString(value.discoveryOrigin.executionId, "source.discoveryOrigin.executionId", errors);
+      validateOptionalString(value.discoveryOrigin.reviewUrl, "source.discoveryOrigin.reviewUrl", errors);
+    }
+  }
   validateStringArray(value.capabilities, "source.capabilities", errors);
   validateStringArray(value.limitations, "source.limitations", errors);
   validateStringArray(value.notes, "source.notes", errors);

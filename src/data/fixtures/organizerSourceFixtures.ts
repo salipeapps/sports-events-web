@@ -174,9 +174,13 @@ export const sourceFixtures: SourceConfig[] = [
     autoPublishMode: "disabled",
     lastRunAt: unknown("not_observed"),
     budget: unknown("not_observed"),
+    budgetStatus: "exhausted",
     capabilities: ["community discovery"],
     limitations: ["header date/time can describe the post rather than a real occurrence"],
-    notes: ["Source behavior comes from dataset v0.1; operational state is a fixture scenario."],
+    notes: [
+      "Source behavior comes from dataset v0.1; operational state is a fixture scenario.",
+      "Budget-exhausted state is a UI fixture scenario; no real consumption was measured.",
+    ],
   },
   {
     id: "S039",

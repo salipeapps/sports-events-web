@@ -251,6 +251,13 @@ export function CandidateReview({
             Actividad detectada automáticamente desde {sourceName}. Revisa información, evidencia y conflictos antes de
             publicar.
           </p>
+          {candidate.runId.state === "known" ? (
+            <p>
+              <Link href={`/admin/runs/${encodeURIComponent(candidate.runId.value)}`}>
+                Ver ejecución de origen: {candidate.runId.value} →
+              </Link>
+            </p>
+          ) : null}
         </div>
 
         <button
