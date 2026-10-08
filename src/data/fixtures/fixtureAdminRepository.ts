@@ -543,7 +543,9 @@ export class FixtureAdminRepository implements AdminRepository {
         }
         for (const field of changedFields) {
           if (JSON.stringify(existingOccurrence.event[field]) !== JSON.stringify(baseline.event[field])) {
-            throw new Error(`Stale published occurrence correction: ${field} changed since this candidate was reviewed.`);
+            throw new Error(
+              `Stale published occurrence correction: ${field} changed since this candidate was reviewed.`,
+            );
           }
         }
       }
@@ -708,7 +710,10 @@ export class FixtureAdminRepository implements AdminRepository {
           reason: { state: "known", value: `Accepted change proposal ${proposal.id}: ${reason}` },
         });
         if (candidateForResolution.publishedBaseline?.occurrenceId === currentOccurrence.id) {
-          const baselineEvent = candidateForResolution.publishedBaseline.event as unknown as Record<string, FieldValue<unknown>>;
+          const baselineEvent = candidateForResolution.publishedBaseline.event as unknown as Record<
+            string,
+            FieldValue<unknown>
+          >;
           for (const field of proposal.fields) {
             baselineEvent[field.field] = clone(nextOccurrence.event[field.field]);
           }
