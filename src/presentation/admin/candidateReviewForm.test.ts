@@ -52,6 +52,15 @@ describe("candidate review form", () => {
     expect(() => buildCandidateCorrections(form, candidate)).toThrow("anteriores al inicio");
   });
 
+  it("rejects malformed edited dates even when the retained end is unknown", async () => {
+    const candidate = await new FixtureAdminRepository().getCandidate("candidate-valid-E019");
+    if (!candidate) throw new Error("fixture missing");
+    candidate.final.endLocal = { state: "unknown", reason: "not_observed" };
+    const form = formFor(candidate);
+    form.set("startLocal", "not-a-date");
+    expect(() => buildCandidateCorrections(form, candidate)).toThrow("formato local válido");
+  });
+
   it("builds structured corrections including essential publication fields", async () => {
     const candidate = await new FixtureAdminRepository().getCandidate("candidate-incomplete-E017");
     if (!candidate) throw new Error("fixture candidate missing");
