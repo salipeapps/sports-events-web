@@ -111,7 +111,7 @@ describe("FixtureAdminRepository", () => {
       repository.updateCandidateFinal(candidateId, {
         actor: reviewer,
         expectedVersion: await currentVersion(repository, candidateId),
-        corrections: { startLocal: known("2026-10-06T21:30:00") },
+        corrections: { startLocal: known("2026-10-24T20:30:00") },
         reason: "Check start and end consistency",
       }),
     ).rejects.toThrow("anteriores al inicio");
@@ -127,7 +127,7 @@ describe("FixtureAdminRepository", () => {
       repository.approveCandidate("candidate-valid-E019", {
         actor: reviewer,
         expectedVersion: await currentVersion(repository, "candidate-valid-E019"),
-        corrections: { startLocal: known("2026-10-06T21:30:00") },
+        corrections: { startLocal: known("2026-10-24T20:30:00") },
         reason: "Invalid start time during approval",
       }),
     ).rejects.toThrow("anteriores al inicio");
