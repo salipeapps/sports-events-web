@@ -264,6 +264,8 @@ export interface AdminCandidate {
   conflicts: Conflict[];
   matches: CandidateMatch[];
   changeProposal: FieldValue<ChangeProposal>;
+  /** Published values observed when editorial review began; used to reject stale manual corrections. */
+  publishedBaseline?: { occurrenceId: string; event: EventDetails };
   blockerResolutions?: CandidateBlockerResolution[];
   history: EditorialHistoryEntry[];
 }
