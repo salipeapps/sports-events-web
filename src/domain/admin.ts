@@ -217,7 +217,7 @@ export interface CandidateBlockerResolution {
   id: string;
   kind: CandidateBlockerKind;
   targetId: string;
-  disposition?: "accepted" | "rejected";
+  disposition?: "accepted" | "rejected" | "distinct" | "duplicate";
   at: string;
   actor: EditorialActor;
   reason: string;
