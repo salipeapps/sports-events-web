@@ -18,6 +18,7 @@ export function candidateReviewVersion(candidate: AdminCandidate): string {
     conflicts: candidate.conflicts.map(({ id, status, blocking, summary }) => ({ id, status, blocking, summary })),
     matches: candidate.matches.map(({ id, status, relation }) => ({ id, status, relation })),
     changeProposal: candidate.changeProposal,
+    publishedBaseline: candidate.publishedBaseline ?? null,
     blockerResolutions: candidate.blockerResolutions ?? [],
     history: candidate.history.map(({ id, action, at }) => ({ id, action, at })),
   });
