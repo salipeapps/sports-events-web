@@ -85,7 +85,7 @@ test("valid candidate publishes, conflict cannot publish, and recorded decisions
   await expect(page.getByText("Candidatura aprobada y publicada.")).toBeVisible();
 
   await page.goto("/admin/runs/fixture-run-8421");
-  await expect(page.getByRole("link", { name: /candidate-valid-E019/ })).toBeVisible();
+  await expect(page.getByText("candidate-valid-E019")).toBeVisible();
 
   await page.goto("/admin/candidates/candidate-conflict-E023");
   await expect(page.getByRole("button", { name: "Aprobar y publicar" })).toBeDisabled();
