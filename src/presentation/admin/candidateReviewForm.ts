@@ -8,6 +8,7 @@ import {
   type FieldValue,
   type PriceDetails,
 } from "@/domain/admin";
+import { assertValidEventTimeRange } from "@/domain/adminValidation";
 
 const editablePriceKinds: PriceDetails["kind"][] = [
   "free",
@@ -294,5 +295,6 @@ export function buildCandidateCorrections(formData: FormData, candidate: AdminCa
     if (!sameValue(parsedPrice, candidate.final.price)) corrections.price = parsedPrice;
   }
 
+  assertValidEventTimeRange({ ...candidate.final, ...corrections });
   return corrections;
 }
