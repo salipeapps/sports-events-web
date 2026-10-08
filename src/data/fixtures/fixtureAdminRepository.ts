@@ -21,10 +21,7 @@ import {
   parseAdminCandidate,
   publicationBlockReasons,
 } from "@/domain/adminValidation";
-import {
-  assertExpectedCandidateVersion,
-  publishedOccurrenceReviewVersion,
-} from "@/domain/candidateReviewVersion";
+import { assertExpectedCandidateVersion, publishedOccurrenceReviewVersion } from "@/domain/candidateReviewVersion";
 import type {
   AdminRepository,
   CandidateActionInput,
