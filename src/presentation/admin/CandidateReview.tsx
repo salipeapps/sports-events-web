@@ -21,6 +21,7 @@ import {
 } from "./adminPresentation";
 import { candidateReviewVersion } from "@/domain/candidateReviewVersion";
 import { editablePriceKind, formatEditablePrice, formatObservedPrice } from "./candidateReviewForm";
+import { changeFieldLabels, formatChangeFieldValue } from "./changeProposalPresentation";
 import {
   approveCandidateAction,
   blockCandidateAction,
@@ -76,6 +77,7 @@ const publicationReasonLabels: Record<string, string> = {
   open_blocking_conflict: "Existe un conflicto bloqueante abierto.",
   blocking_rule: "Existe una regla determinista bloqueante.",
   pending_match: "Hay una posible coincidencia o duplicado pendiente.",
+  confirmed_duplicate: "Duplicado confirmado: no puede publicarse como un evento nuevo.",
   pending_essential_change: "Hay un cambio esencial pendiente de resolver.",
   pending_change_proposal: "Hay una propuesta de cambio pendiente de aceptar o rechazar.",
   missing_title: "Falta un título confirmado.",
@@ -171,7 +173,7 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
         kind: "match" as const,
         id: match.id,
         title: `Coincidencia pendiente · ${match.relation}`,
-        description: match.signals.join(" · "),
+        description: `Coincidencia con ${match.targetId}. ${match.signals.join(" · ")}`,
       })),
     ...(candidate.changeProposal.state === "known" &&
     candidate.changeProposal.value.status === "pending" &&
@@ -578,6 +580,27 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
                   <input type="hidden" name="blockerKind" value={blocker.kind} />
                   <input type="hidden" name="blockerId" value={blocker.id} />
                   <p>{blocker.description}</p>
+                  {blocker.kind === "change_proposal" && candidate.changeProposal.state === "known" ? (
+                    <section aria-label="Comparación de cambios propuestos">
+                      <h3>Comprueba cada cambio antes de aceptar</h3>
+                      <p>Se verificará que los valores publicados no hayan cambiado al confirmar la decisión.</p>
+                      <dl className="admin-proposal-comparison">
+                        {candidate.changeProposal.value.fields.map((field) => (
+                          <div key={field.field}>
+                            <dt>{changeFieldLabels[field.field]}</dt>
+                            <dd>
+                              <span>Publicado al detectar</span>
+                              <strong>{formatChangeFieldValue(field, "before", organizers)}</strong>
+                            </dd>
+                            <dd>
+                              <span>Propuesto</span>
+                              <strong>{formatChangeFieldValue(field, "after", organizers)}</strong>
+                            </dd>
+                          </div>
+                        ))}
+                      </dl>
+                    </section>
+                  ) : null}
                   <label>
                     <span>Motivo de resolución</span>
                     <textarea name="blockerReason" required rows={3} />
@@ -589,6 +612,15 @@ export function CandidateReview({ candidate, organizers, sources, result, error 
                       </button>
                       <button className="admin-danger-button" type="submit" name="blockerDisposition" value="rejected">
                         Rechazar cambio
+                      </button>
+                    </div>
+                  ) : blocker.kind === "match" ? (
+                    <div className="admin-engine-actions">
+                      <button className="admin-secondary-button" type="submit" name="blockerDisposition" value="distinct">
+                        Confirmar evento distinto
+                      </button>
+                      <button className="admin-danger-button" type="submit" name="blockerDisposition" value="duplicate">
+                        Confirmar duplicado y rechazar
                       </button>
                     </div>
                   ) : (
