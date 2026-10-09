@@ -224,14 +224,14 @@ function checkItem(resource: string, value: unknown): void {
   }
 }
 
-function options(page: PageArgs & Record<string, string | number | undefined>): URLSearchParams {
+function options<T extends PageArgs>(page: T): URLSearchParams {
   const p = new URLSearchParams();
   const limit = page.limit ?? 20;
   if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new DiscoveryReadError("INVALID_REQUEST");
   p.set("limit", String(limit));
   for (const [key, value] of Object.entries(page)) {
     if (key === "limit" || value === undefined || value === "") continue;
-    if (key === "cursor" && (typeof value !== "string" || value.length > 2048))
+    if ((typeof value !== "string" && typeof value !== "number") || (key === "cursor" && (typeof value !== "string" || value.length > 2048)))
       throw new DiscoveryReadError("INVALID_REQUEST");
     if (key === "search" && (typeof value !== "string" || value.length > 200))
       throw new DiscoveryReadError("INVALID_REQUEST");
@@ -324,7 +324,7 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
     return jsonBounded(response);
   }
 
-  private async page<T>(resource: string, path: string, filters: PageArgs & Record<string, string | number | undefined>): Promise<DiscoveryPage<T>> {
+  private async page<T>(resource: string, path: string, filters: PageArgs): Promise<DiscoveryPage<T>> {
     const body = await this.get(path, options(filters));
     checkPage(body);
     for (const item of body.items) checkItem(resource, item);
