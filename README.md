@@ -31,8 +31,8 @@ Open:
 - `/admin` — Admin v0 bootstrap
 
 > The Admin is **private by default**: an unauthenticated request redirects to `/admin-access`.
-> Only the explicit local development bypass described in `docs/admin-auth.md` enables its fixture UI.
-> There is no production identity provider or persistent backend yet; do not deploy it as an operating admin.
+> Supabase Auth verifies identity and active admin/reviewer membership in the server. See `docs/admin-auth.md`.
+> Engine data still uses fixtures. Real STAGING Auth smoke awaits the approved origin and invited test account; PROD is untouched.
 
 ## Quality commands
 

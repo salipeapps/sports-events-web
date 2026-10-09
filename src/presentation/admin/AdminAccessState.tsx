@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import type { AdminAccessFailureReason } from "@/domain/adminAccess";
+import { AdminLoginForm } from "./AdminLoginForm";
 
 const messages: Record<AdminAccessFailureReason, { title: string; description: string }> = {
   missing_session: {
@@ -27,7 +28,13 @@ export function AdminAccessState({ reason }: { reason: AdminAccessFailureReason 
         <p className="admin-access-eyebrow">Sports Events · Admin</p>
         <h1 id="admin-access-title">{message.title}</h1>
         <p>{message.description}</p>
-        <Link href="/">Volver al sitio público</Link>
+        <AdminLoginForm />
+        <Link className="admin-access-recovery-link" href="/admin-access/recover">
+          Recuperar contraseña
+        </Link>
+        <Link className="admin-access-public-link" href="/">
+          Volver al sitio público <span aria-hidden="true">→</span>
+        </Link>
       </section>
     </main>
   );

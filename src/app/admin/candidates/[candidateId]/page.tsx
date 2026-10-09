@@ -1,3 +1,5 @@
+import { requireAdminAccess } from "@/integrations/auth/adminAuth";
+import { canAdmin } from "@/domain/adminAccess";
 import { notFound } from "next/navigation";
 
 import { getAdminRepository } from "@/data/adminRepositoryProvider";
@@ -10,6 +12,7 @@ export default async function CandidateReviewPage({
   params: Promise<{ candidateId: string }>;
   searchParams: Promise<{ result?: string; error?: string }>;
 }) {
+  const session = await requireAdminAccess("catalog.review");
   const { candidateId } = await params;
   const query = await searchParams;
   const repository = getAdminRepository();
@@ -25,6 +28,7 @@ export default async function CandidateReviewPage({
 
   return (
     <CandidateReview
+      canExecute={canAdmin(session.role, "runs.execute")}
       candidate={candidate}
       organizers={organizers}
       sources={sources}

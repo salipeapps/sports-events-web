@@ -1,3 +1,4 @@
+import { requireAdminAccess } from "@/integrations/auth/adminAuth";
 import { notFound } from "next/navigation";
 
 import { getAdminRepository } from "@/data/adminRepositoryProvider";
@@ -12,6 +13,7 @@ export default async function RunDetailPage({
   params: Promise<{ runId: string }>;
   searchParams: Promise<AdminSearchParams>;
 }) {
+  await requireAdminAccess("runs.execute");
   const repository = getAdminRepository();
   const [{ runId }, query, runs, sources] = await Promise.all([
     params,
