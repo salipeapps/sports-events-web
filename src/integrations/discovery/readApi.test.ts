@@ -116,6 +116,40 @@ describe("private discovery read adapter (offline)", () => {
     expect(result.items[0].candidateId).toBeNull();
   });
 
+  it.each([
+    ["missing knownSourceId", { candidateId: null, knownSourceId: undefined }],
+    ["missing candidateId", { candidateId: undefined, knownSourceId: null }],
+    ["both null", { candidateId: null, knownSourceId: null }],
+    ["both populated", { candidateId: candidate.id, knownSourceId: candidate.id }],
+    ["empty candidateId", { candidateId: "", knownSourceId: null }],
+    ["invalid knownSourceId", { candidateId: null, knownSourceId: "not-a-uuid" }],
+  ])("rejects %s instead of displaying an observation without identity", async (_name, ids) => {
+    const { repo } = setup(200, {
+      items: [{ ...candidate.latestObservation, ...ids }],
+      nextCursor: null,
+    });
+    await expect(repo.executionObservations("20a2a2a2-1111-4000-8000-111111111111")).rejects.toMatchObject({
+      code: "INCOMPATIBLE_CONTRACT",
+    });
+  });
+
+  it("rejects malformed or unrelated latest observation identities in candidate pages and details", async () => {
+    const missingIdentity = {
+      ...candidate,
+      latestObservation: { ...candidate.latestObservation, candidateId: null, knownSourceId: undefined },
+    };
+    const wrongCandidate = {
+      ...candidate,
+      latestObservation: { ...candidate.latestObservation, candidateId: "aa73b0ff-8001-4000-8000-111111111111" },
+    };
+    for (const malformed of [missingIdentity, wrongCandidate]) {
+      const page = setup(200, { items: [malformed], nextCursor: null });
+      await expect(page.repo.candidates()).rejects.toMatchObject({ code: "INCOMPATIBLE_CONTRACT" });
+      const detail = setup(200, { candidate: malformed, promotion: null });
+      await expect(detail.repo.candidate(candidate.id)).rejects.toMatchObject({ code: "INCOMPATIBLE_CONTRACT" });
+    }
+  });
+
   it("never activates fixtures in a deployed environment", () => {
     expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe(
       "disabled",
