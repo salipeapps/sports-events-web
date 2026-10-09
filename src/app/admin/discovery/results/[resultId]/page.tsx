@@ -37,9 +37,11 @@ export default async function DiscoveryResultPage({
       ]);
       return { detail, observations, reviews };
     } catch (error) {
-      return { code: (error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE") };
+      return { code: error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE" };
     }
   })();
   if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code} />;
-  return <LiveCandidateDetail detail={outcome.detail} observations={outcome.observations} reviews={outcome.reviews} />;
+  return (
+    <LiveCandidateDetail detail={outcome.detail} observations={outcome.observations} reviews={outcome.reviews} />
+  );
 }
