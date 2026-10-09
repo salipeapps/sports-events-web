@@ -26,16 +26,20 @@ export default async function DiscoveryResultPage({
     return <DiscoveryResultDetail snapshot={snapshot} result={result} />;
   }
   if (mode !== "staging") return <LiveDiscoveryFailure code="NOT_CONFIGURED" />;
-  try {
-    const cursors = await searchParams;
-    const repo = getLiveDiscoveryRepository();
-    const [detail, observations, reviews] = await Promise.all([
-      repo.candidate(resultId),
-      repo.candidateObservations(resultId, { cursor: cursors.observationsCursor, limit: 20 }),
-      repo.candidateReviews(resultId, { cursor: cursors.reviewsCursor, limit: 20 }),
-    ]);
-    return <LiveCandidateDetail detail={detail} observations={observations} reviews={reviews} />;
-  } catch (error) {
-    return <LiveDiscoveryFailure code={error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE"} />;
-  }
+  const outcome = await (async () => {
+    try {
+      const cursors = await searchParams;
+      const repo = getLiveDiscoveryRepository();
+      const [detail, observations, reviews] = await Promise.all([
+        repo.candidate(resultId),
+        repo.candidateObservations(resultId, { cursor: cursors.observationsCursor, limit: 20 }),
+        repo.candidateReviews(resultId, { cursor: cursors.reviewsCursor, limit: 20 }),
+      ]);
+      return { detail, observations, reviews };
+    } catch (error) {
+      return { code: (error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE") as const };
+    }
+  })();
+  if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code} />;
+  return <LiveCandidateDetail detail={outcome.detail} observations={outcome.observations} reviews={outcome.reviews} />;
 }
