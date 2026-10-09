@@ -251,9 +251,46 @@ describe("private discovery read adapter (offline)", () => {
     expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe(
       "disabled",
     );
+    expect(
+      getDiscoveryMode({
+        NODE_ENV: "production",
+        APP_ENV: "staging",
+        VERCEL_ENV: "preview",
+        VERCEL_TARGET_ENV: "staging",
+        DISCOVERY_READ_MODE: "staging",
+      }),
+    ).toBe("staging");
     expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "preview", DISCOVERY_READ_MODE: "staging" })).toBe(
-      "staging",
+      "disabled",
     );
+    expect(
+      getDiscoveryMode({
+        NODE_ENV: "production",
+        APP_ENV: "staging",
+        VERCEL_ENV: "preview",
+        VERCEL_TARGET_ENV: "preview",
+        DISCOVERY_READ_MODE: "staging",
+      }),
+    ).toBe("disabled");
+    expect(
+      getDiscoveryMode({
+        NODE_ENV: "production",
+        APP_ENV: "staging",
+        VERCEL_ENV: "production",
+        VERCEL_TARGET_ENV: "staging",
+        DISCOVERY_READ_MODE: "staging",
+      }),
+    ).toBe("disabled");
+    expect(
+      getDiscoveryMode({
+        NODE_ENV: "production",
+        APP_ENV: "staging",
+        VERCEL_ENV: "preview",
+        VERCEL_TARGET_ENV: "staging",
+        DISCOVERY_READ_MODE: "staging",
+        ADMIN_DEV_AUTH_MODE: "enabled",
+      }),
+    ).toBe("disabled");
     expect(
       getDiscoveryMode({
         NODE_ENV: "development",

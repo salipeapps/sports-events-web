@@ -512,7 +512,14 @@ export function getDiscoveryMode(env: NodeJS.ProcessEnv = process.env): Discover
   const requested = env.DISCOVERY_READ_MODE;
   if (requested === "demo" && !localDemo) return "disabled";
   if (requested === "demo" || (!requested && localDemo)) return "demo";
-  if (requested === "staging" && env.VERCEL_ENV === "preview" && env.ADMIN_DEV_AUTH_MODE !== "enabled")
+  if (
+    requested === "staging" &&
+    env.NODE_ENV === "production" &&
+    env.APP_ENV === "staging" &&
+    env.VERCEL_ENV === "preview" &&
+    env.VERCEL_TARGET_ENV === "staging" &&
+    env.ADMIN_DEV_AUTH_MODE !== "enabled"
+  )
     return "staging";
   return "disabled";
 }

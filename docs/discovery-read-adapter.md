@@ -7,9 +7,14 @@ remote migrations or cloud resources. **Real STAGING smoke is still pending.**
 ## Activation gates
 
 Deployed environments fail closed by default (`DISCOVERY_READ_MODE=disabled`).
-Setting `DISCOVERY_READ_MODE=staging` only works in a Vercel Preview environment,
-after Supabase's separately approved access-token hook and the private Cloud Run
-service/roles are live. It is **not** authorization to deploy infrastructure.
+Setting `DISCOVERY_READ_MODE=staging` requires the approved Vercel **Custom
+Environment** `staging` (`NODE_ENV=production`, `APP_ENV=staging`,
+`VERCEL_ENV=preview`, `VERCEL_TARGET_ENV=staging`) after Supabase's
+separately approved access-token hook and the private Cloud Run service/roles
+are live. Generic Preview and PROD stay disabled even if someone accidentally
+sets the feature flag. It is **not** authorization to deploy infrastructure.
+The required Custom Environment must be available on the actual Vercel plan.
+See [STAGING activation gates](staging-discovery-activation.md).
 
 Server-only variables:
 
