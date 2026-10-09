@@ -1,11 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  DiscoveryReadError,
-  HttpDiscoveryReadRepository,
-  getDiscoveryMode,
-  parseStageConfig,
-} from "./readApi";
+import { DiscoveryReadError, HttpDiscoveryReadRepository, getDiscoveryMode, parseStageConfig } from "./readApi";
 
 const candidate = {
   id: "ca73b0ff-8001-4000-8000-111111111111",
@@ -15,18 +10,43 @@ const candidate = {
   reviewStatus: "PENDING_REVIEW",
   latestReviewId: null,
   linkedSourceId: null,
-  classification: { kind: "UNSUPPORTED_REVIEWABLE", reason: null, sourceFamily: null, proposedAdapterKey: null, knownSourceId: null, ruleVersion: 1, classifiedAt: "2026-10-09T08:00:00Z" },
+  classification: {
+    kind: "UNSUPPORTED_REVIEWABLE",
+    reason: null,
+    sourceFamily: null,
+    proposedAdapterKey: null,
+    knownSourceId: null,
+    ruleVersion: 1,
+    classifiedAt: "2026-10-09T08:00:00Z",
+  },
   observationCount: 1,
   minPosition: null,
   maxPosition: null,
-  latestObservation: { id: "3afeef88-1111-4000-8000-111111111111", candidateId: "ca73b0ff-8001-4000-8000-111111111111", knownSourceId: null, queryId: "11a2a2a2-1111-4000-8000-111111111111", executionId: "20a2a2a2-1111-4000-8000-111111111111", providerKey: "serpapi", originalUrl: "https://example.org/event", observedAt: "2026-10-09T08:00:00Z", title: null, snippet: null, resultPosition: 1 },
+  latestObservation: {
+    id: "3afeef88-1111-4000-8000-111111111111",
+    candidateId: "ca73b0ff-8001-4000-8000-111111111111",
+    knownSourceId: null,
+    queryId: "11a2a2a2-1111-4000-8000-111111111111",
+    executionId: "20a2a2a2-1111-4000-8000-111111111111",
+    providerKey: "serpapi",
+    originalUrl: "https://example.org/event",
+    observedAt: "2026-10-09T08:00:00Z",
+    title: null,
+    snippet: null,
+    resultPosition: 1,
+  },
   source: null,
   latestReview: null,
 };
 
-function setup(status = 200, body: unknown = { items: [candidate], nextCursor: "opaque-keyset" }, contentType = "application/json") {
-  const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
-    new Response(JSON.stringify(body), { status, headers: { "content-type": contentType } }),
+function setup(
+  status = 200,
+  body: unknown = { items: [candidate], nextCursor: "opaque-keyset" },
+  contentType = "application/json",
+) {
+  const fetcher = vi.fn(
+    async (_input: RequestInfo | URL, _init?: RequestInit) =>
+      new Response(JSON.stringify(body), { status, headers: { "content-type": contentType } }),
   );
   const getUserToken = vi.fn(async () => "signed-user");
   const getWorkloadToken = vi.fn(async () => "signed-cloud-run");
@@ -84,7 +104,9 @@ describe("private discovery read adapter (offline)", () => {
 
   it("separates known-source observations from new source candidates", async () => {
     const { repo } = setup(200, {
-      items: [{ ...candidate.latestObservation, candidateId: null, knownSourceId: "aa73b0ff-8001-4000-8000-111111111111" }],
+      items: [
+        { ...candidate.latestObservation, candidateId: null, knownSourceId: "aa73b0ff-8001-4000-8000-111111111111" },
+      ],
       nextCursor: null,
     });
     const result = await repo.executionObservations("20a2a2a2-1111-4000-8000-111111111111");
@@ -93,9 +115,20 @@ describe("private discovery read adapter (offline)", () => {
   });
 
   it("never activates fixtures in a deployed environment", () => {
-    expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe("disabled");
-    expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "preview", DISCOVERY_READ_MODE: "staging" })).toBe("staging");
-    expect(getDiscoveryMode({ NODE_ENV: "development", APP_ENV: "development", ADMIN_DEV_AUTH_MODE: "enabled", APP_ORIGIN: "http://localhost:3000" })).toBe("demo");
+    expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe(
+      "disabled",
+    );
+    expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "preview", DISCOVERY_READ_MODE: "staging" })).toBe(
+      "staging",
+    );
+    expect(
+      getDiscoveryMode({
+        NODE_ENV: "development",
+        APP_ENV: "development",
+        ADMIN_DEV_AUTH_MODE: "enabled",
+        APP_ORIGIN: "http://localhost:3000",
+      }),
+    ).toBe("demo");
     expect(() => parseStageConfig({ ENGINE_STAGING_BASE_URL: "http://localhost:9000" })).toThrow();
   });
 });

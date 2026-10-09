@@ -144,7 +144,9 @@ export interface DiscoveryReadRepository {
   candidateReviews(id: string, page?: PageArgs): Promise<DiscoveryPage<DiscoveryReview>>;
   providers(page?: PageArgs): Promise<DiscoveryPage<DiscoveryProvider>>;
   queries(page?: PageArgs): Promise<DiscoveryPage<DiscoveryQuery>>;
-  executions(filters?: PageArgs & { providerKey?: string; queryId?: string }): Promise<DiscoveryPage<DiscoveryExecution>>;
+  executions(
+    filters?: PageArgs & { providerKey?: string; queryId?: string },
+  ): Promise<DiscoveryPage<DiscoveryExecution>>;
   execution(id: string): Promise<DiscoveryExecution>;
   executionObservations(id: string, page?: PageArgs): Promise<DiscoveryPage<DiscoveryObservation>>;
 }
@@ -182,7 +184,11 @@ function checkId(value: string): void {
 
 function checkPage(value: unknown): asserts value is DiscoveryPage<unknown> {
   const item = record(value);
-  if (!Array.isArray(item.items) || item.items.length > 100 || (item.nextCursor !== null && typeof item.nextCursor !== "string"))
+  if (
+    !Array.isArray(item.items) ||
+    item.items.length > 100 ||
+    (item.nextCursor !== null && typeof item.nextCursor !== "string")
+  )
     throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
 }
 
@@ -231,7 +237,10 @@ function options<T extends PageArgs>(page: T): URLSearchParams {
   p.set("limit", String(limit));
   for (const [key, value] of Object.entries(page)) {
     if (key === "limit" || value === undefined || value === "") continue;
-    if ((typeof value !== "string" && typeof value !== "number") || (key === "cursor" && (typeof value !== "string" || value.length > 2048)))
+    if (
+      (typeof value !== "string" && typeof value !== "number") ||
+      (key === "cursor" && (typeof value !== "string" || value.length > 2048))
+    )
       throw new DiscoveryReadError("INVALID_REQUEST");
     if (key === "search" && (typeof value !== "string" || value.length > 200))
       throw new DiscoveryReadError("INVALID_REQUEST");
@@ -364,7 +373,9 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
     return this.page("queries", "/queries", page);
   }
 
-  async executions(filters: PageArgs & { providerKey?: string; queryId?: string } = {}): Promise<DiscoveryPage<DiscoveryExecution>> {
+  async executions(
+    filters: PageArgs & { providerKey?: string; queryId?: string } = {},
+  ): Promise<DiscoveryPage<DiscoveryExecution>> {
     return this.page("executions", "/executions", filters);
   }
 
@@ -478,7 +489,10 @@ async function workloadToken(config: StageConfig): Promise<string> {
   const audience = claims.aud;
   if (
     claims.iss !== config.expectedIssuer ||
-    !(audience === config.expectedAudience || (Array.isArray(audience) && audience.includes(config.expectedAudience))) ||
+    !(
+      audience === config.expectedAudience ||
+      (Array.isArray(audience) && audience.includes(config.expectedAudience))
+    ) ||
     typeof claims.exp !== "number" ||
     claims.exp <= Math.floor(Date.now() / 1000) + 30
   )

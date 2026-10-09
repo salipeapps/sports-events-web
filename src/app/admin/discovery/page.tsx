@@ -1,16 +1,8 @@
 import { requireAdminAccess } from "@/integrations/auth/adminAuth";
 import { getDiscoveryRepository } from "@/data/discoveryRepositoryProvider";
 import { DiscoveryOverview, resolveDiscoveryTab } from "@/presentation/admin/DiscoveryOverview";
-import {
-  DiscoveryReadError,
-  getDiscoveryMode,
-  getLiveDiscoveryRepository,
-} from "@/integrations/discovery/readApi";
-import {
-  LiveDiscoveryFailure,
-  LiveDiscoveryOverview,
-  readQueryParams,
-} from "@/presentation/admin/LiveDiscovery";
+import { DiscoveryReadError, getDiscoveryMode, getLiveDiscoveryRepository } from "@/integrations/discovery/readApi";
+import { LiveDiscoveryFailure, LiveDiscoveryOverview, readQueryParams } from "@/presentation/admin/LiveDiscovery";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
