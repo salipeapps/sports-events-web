@@ -176,6 +176,18 @@ function checkId(value: string): void {
   if (!uuid.test(value)) throw new DiscoveryReadError("INVALID_REQUEST");
 }
 
+function checkObservationIdentity(item: Record<string, unknown>): void {
+  const candidateIdValid = typeof item.candidateId === "string" && uuid.test(item.candidateId);
+  const knownSourceIdValid = typeof item.knownSourceId === "string" && uuid.test(item.knownSourceId);
+  if (
+    !(
+      (candidateIdValid && item.knownSourceId === null) ||
+      (item.candidateId === null && knownSourceIdValid)
+    )
+  )
+    throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+}
+
 function checkPage(value: unknown): asserts value is DiscoveryPage<unknown> {
   const item = record(value);
   if (
@@ -198,6 +210,9 @@ function checkItem(resource: string, value: unknown): void {
       requiredString(latest.executionId);
       requiredString(latest.originalUrl);
       requiredString(latest.providerKey);
+      checkObservationIdentity(latest);
+      if (latest.candidateId !== item.id)
+        throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
     }
   } else if (resource === "executions") {
     requiredString(item.id);
@@ -217,8 +232,7 @@ function checkItem(resource: string, value: unknown): void {
   } else if (resource === "observations") {
     requiredString(item.id);
     requiredString(item.originalUrl);
-    if ((item.candidateId === null) === (item.knownSourceId === null))
-      throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+    checkObservationIdentity(item);
   } else if (resource === "reviews") {
     requiredString(item.id);
     requiredString(item.decision);
