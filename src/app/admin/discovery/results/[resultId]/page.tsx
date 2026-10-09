@@ -41,7 +41,5 @@ export default async function DiscoveryResultPage({
     }
   })();
   if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code} />;
-  return (
-    <LiveCandidateDetail detail={outcome.detail} observations={outcome.observations} reviews={outcome.reviews} />
-  );
+  return <LiveCandidateDetail detail={outcome.detail} observations={outcome.observations} reviews={outcome.reviews} />;
 }
