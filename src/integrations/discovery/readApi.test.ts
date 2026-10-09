@@ -25,7 +25,7 @@ const candidate = {
 };
 
 function setup(status = 200, body: unknown = { items: [candidate], nextCursor: "opaque-keyset" }, contentType = "application/json") {
-  const fetcher = vi.fn(async () =>
+  const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) =>
     new Response(JSON.stringify(body), { status, headers: { "content-type": contentType } }),
   );
   const getUserToken = vi.fn(async () => "signed-user");
