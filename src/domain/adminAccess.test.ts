@@ -11,6 +11,7 @@ const reviewer: AdminSession = {
 describe("admin authorization", () => {
   it("lets reviewers perform editorial review and publication", () => {
     expect(canAdmin("reviewer", "catalog.review")).toBe(true);
+    expect(canAdmin("reviewer", "discovery.view")).toBe(true);
     expect(canAdmin("reviewer", "catalog.publish")).toBe(true);
   });
 
