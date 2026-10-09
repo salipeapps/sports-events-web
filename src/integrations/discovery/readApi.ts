@@ -160,7 +160,6 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const providerKeyPattern = /^[a-zA-Z0-9_-]{1,120}$/;
 const maxBytes = 1024 * 1024;
 const basePath = "/api/admin/v1/discovery";
-const allowedResources = ["candidates", "providers", "queries", "executions"] as const;
 
 function record(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value))
@@ -171,11 +170,6 @@ function record(value: unknown): Record<string, unknown> {
 function requiredString(value: unknown): string {
   if (typeof value !== "string") throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
   return value;
-}
-
-function checkResource(value: string): void {
-  if (!allowedResources.includes(value as (typeof allowedResources)[number]))
-    throw new DiscoveryReadError("INVALID_REQUEST");
 }
 
 function checkId(value: string): void {
@@ -209,6 +203,8 @@ function checkItem(resource: string, value: unknown): void {
     requiredString(item.id);
     requiredString(item.status);
     requiredString(item.providerKey);
+    if (item.cost !== null && typeof item.cost !== "number")
+      throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
     if (typeof item.observed !== "number" || typeof item.candidatesCreated !== "number")
       throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
   } else if (resource === "queries") {
@@ -328,7 +324,11 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
       // Google IAM errors may not be JSON; never forward upstream details.
       if (!(response.headers.get("content-type") ?? "").startsWith("application/json"))
         throw new DiscoveryReadError("READ_UNAVAILABLE");
-      throw new DiscoveryReadError(knownError(response.status));
+      const body = record(await jsonBounded(response));
+      const code = knownError(response.status);
+      if (body.code !== code || typeof body.requestId !== "string")
+        throw new DiscoveryReadError("READ_UNAVAILABLE");
+      throw new DiscoveryReadError(code);
     }
     return jsonBounded(response);
   }
