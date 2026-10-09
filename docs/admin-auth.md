@@ -1,5 +1,9 @@
 # Admin Auth v1
 
+The prepared JWT bridge and future STAGING activation/rollback procedure are in
+[Discovery Auth bridge](discovery-auth-bridge.md). It derives the signed engine role
+from this same membership table; activation and the discovery HTTP adapter remain pending.
+
 ## Architecture
 
 Supabase Auth owns identity; `public.admin_memberships` owns authorization. The existing

@@ -16,6 +16,16 @@ permissions:
   contents: read
 
 jobs:
+  auth-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Isolated PostgreSQL Auth migrations and RLS
+        shell: pwsh
+        run: ./scripts/test-auth-db.ps1
+
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 15
