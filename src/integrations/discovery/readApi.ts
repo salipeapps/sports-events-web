@@ -416,7 +416,7 @@ interface StageConfig {
   expectedAudience: string;
 }
 
-export function parseStageConfig(env: NodeJS.ProcessEnv = process.env): StageConfig {
+export function parseStageConfig(env: Partial<NodeJS.ProcessEnv> = process.env): StageConfig {
   let u: URL;
   try {
     u = new URL(env.ENGINE_STAGING_BASE_URL ?? "");
