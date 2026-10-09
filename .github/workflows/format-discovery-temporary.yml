@@ -1,0 +1,30 @@
+name: Temporary Discovery Formatter
+on:
+  push:
+    branches:
+      - feat/issue-26-discovery-read-adapter
+permissions:
+  contents: write
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/issue-26-discovery-read-adapter
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npx prettier --write src/integrations/discovery/readApi.ts
+      - name: Commit normalized formatting
+        run: |
+          git diff --check
+          if ! git diff --quiet; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add src/integrations/discovery/readApi.ts
+            git commit -m "style(discovery): normalize observation guard formatting"
+            git push origin HEAD:feat/issue-26-discovery-read-adapter
+          fi
