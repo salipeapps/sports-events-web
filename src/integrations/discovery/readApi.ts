@@ -259,7 +259,15 @@ function checkItem(resource: string, value: unknown): void {
     requiredUuid(item.id);
     requiredUuid(item.queryId);
     requiredStrings(item, "providerKey", "status", "createdAt");
-    nullableStrings(item, "submissionState", "recoveryState", "startedAt", "finishedAt", "failureCode", "queryExpression");
+    nullableStrings(
+      item,
+      "submissionState",
+      "recoveryState",
+      "startedAt",
+      "finishedAt",
+      "failureCode",
+      "queryExpression",
+    );
     nullableUuid(item.originalExecutionId);
     requiredInteger(item.observed);
     requiredInteger(item.candidatesCreated);
@@ -275,7 +283,15 @@ function checkItem(resource: string, value: unknown): void {
     requiredUuid(item.id);
     requiredStrings(item, "expression", "providerKey");
     requiredBoolean(item.enabled);
-    nullableStrings(item, "activityContext", "geographicScope", "localeHint", "scheduleExpression", "lastExecutionStatus", "lastExecutionAt");
+    nullableStrings(
+      item,
+      "activityContext",
+      "geographicScope",
+      "localeHint",
+      "scheduleExpression",
+      "lastExecutionStatus",
+      "lastExecutionAt",
+    );
     requiredInteger(item.resultLimit);
     requiredInteger(item.requestBudget);
     nullableUuid(item.lastExecutionId);
