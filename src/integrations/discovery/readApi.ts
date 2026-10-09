@@ -436,6 +436,7 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
     checkId(id);
     const detail = record(await this.get("/candidates/" + id));
     checkItem("candidates", detail.candidate);
+    if (record(detail.candidate).id !== id) throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
     if (detail.promotion !== null) {
       const promotion = record(detail.promotion);
       requiredUuid(promotion.sourceId);
@@ -448,7 +449,10 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
 
   async candidateObservations(id: string, page: PageArgs = {}): Promise<DiscoveryPage<DiscoveryObservation>> {
     checkId(id);
-    return this.page("observations", "/candidates/" + id + "/observations", page);
+    const observations = await this.page<DiscoveryObservation>("observations", "/candidates/" + id + "/observations", page);
+    if (observations.items.some((observation) => observation.candidateId !== id))
+      throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+    return observations;
   }
 
   async candidateReviews(id: string, page: PageArgs = {}): Promise<DiscoveryPage<DiscoveryReview>> {
@@ -474,12 +478,16 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
     checkId(id);
     const item = await this.get("/executions/" + id);
     checkItem("executions", item);
+    if (record(item).id !== id) throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
     return item as DiscoveryExecution;
   }
 
   async executionObservations(id: string, page: PageArgs = {}): Promise<DiscoveryPage<DiscoveryObservation>> {
     checkId(id);
-    return this.page("observations", "/executions/" + id + "/observations", page);
+    const observations = await this.page<DiscoveryObservation>("observations", "/executions/" + id + "/observations", page);
+    if (observations.items.some((observation) => observation.executionId !== id))
+      throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+    return observations;
   }
 }
 

@@ -35,11 +35,18 @@ export default async function DiscoveryResultPage({
         repo.candidateObservations(resultId, { cursor: cursors.observationsCursor, limit: 20 }),
         repo.candidateReviews(resultId, { cursor: cursors.reviewsCursor, limit: 20 }),
       ]);
-      return { detail, observations, reviews };
+      return { detail, observations, reviews, cursors };
     } catch (error) {
       return { code: error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE" };
     }
   })();
   if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code ?? "READ_UNAVAILABLE"} />;
-  return <LiveCandidateDetail detail={outcome.detail} observations={outcome.observations} reviews={outcome.reviews} />;
+  return (
+    <LiveCandidateDetail
+      detail={outcome.detail}
+      observations={outcome.observations}
+      reviews={outcome.reviews}
+      cursors={outcome.cursors}
+    />
+  );
 }

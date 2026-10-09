@@ -85,6 +85,20 @@ export function liveHref(tab: LiveDiscoveryTab, params: Record<string, string | 
   return "/admin/discovery?" + url.toString();
 }
 
+export function candidatePageHref(
+  candidateId: string,
+  section: "observations" | "reviews",
+  cursor: string,
+  siblingCursor?: string,
+): string {
+  const params = new URLSearchParams();
+  const cursorKey = section === "observations" ? "observationsCursor" : "reviewsCursor";
+  const siblingKey = section === "observations" ? "reviewsCursor" : "observationsCursor";
+  params.set(cursorKey, cursor);
+  if (siblingCursor) params.set(siblingKey, siblingCursor);
+  return "/admin/discovery/results/" + encodeURIComponent(candidateId) + "?" + params.toString();
+}
+
 function Filters({ params }: { params: Record<string, string | undefined> }) {
   return (
     <form action="/admin/discovery" method="get">
@@ -298,10 +312,12 @@ export function LiveCandidateDetail({
   detail,
   observations,
   reviews,
+  cursors,
 }: {
   detail: DiscoveryCandidateDetail;
   observations: DiscoveryPage<DiscoveryObservation>;
   reviews: DiscoveryPage<DiscoveryReview>;
+  cursors: { observationsCursor?: string; reviewsCursor?: string };
 }) {
   const c = detail.candidate;
   const o = c.latestObservation;
@@ -393,12 +409,7 @@ export function LiveCandidateDetail({
         </ul>
         {observations.nextCursor ? (
           <Link
-            href={
-              "/admin/discovery/results/" +
-              encodeURIComponent(c.id) +
-              "?observationsCursor=" +
-              encodeURIComponent(observations.nextCursor)
-            }
+            href={candidatePageHref(c.id, "observations", observations.nextCursor, cursors.reviewsCursor)}
           >
             Siguiente página →
           </Link>
@@ -419,12 +430,7 @@ export function LiveCandidateDetail({
         )}
         {reviews.nextCursor ? (
           <Link
-            href={
-              "/admin/discovery/results/" +
-              encodeURIComponent(c.id) +
-              "?reviewsCursor=" +
-              encodeURIComponent(reviews.nextCursor)
-            }
+            href={candidatePageHref(c.id, "reviews", reviews.nextCursor, cursors.observationsCursor)}
           >
             Siguiente página →
           </Link>

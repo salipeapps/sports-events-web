@@ -184,6 +184,69 @@ describe("private discovery read adapter (offline)", () => {
     expect(result.items[0].resultPosition).toBeNull();
   });
 
+  it("rejects valid DTO details whose identity does not match the requested UUID", async () => {
+    const unrelatedId = "aa73b0ff-8001-4000-8000-111111111111";
+    const wrongCandidate = {
+      ...candidate,
+      id: unrelatedId,
+      latestObservation: { ...candidate.latestObservation, candidateId: unrelatedId },
+    };
+    const detail = setup(200, { candidate: wrongCandidate, promotion: null });
+    await expect(detail.repo.candidate(candidate.id)).rejects.toMatchObject({ code: "INCOMPATIBLE_CONTRACT" });
+
+    const execution = {
+      id: unrelatedId,
+      queryId: candidate.latestObservation.queryId,
+      providerKey: "serpapi",
+      status: "SUCCEEDED",
+      submissionState: null,
+      recoveryState: null,
+      originalExecutionId: null,
+      createdAt: "2026-10-09T08:00:00Z",
+      startedAt: null,
+      finishedAt: null,
+      observed: 1,
+      candidatesCreated: 1,
+      candidatesReobserved: null,
+      knownSources: null,
+      invalidResults: null,
+      providerFailures: null,
+      countersVersion: 1,
+      providerRequestCount: null,
+      failureCode: null,
+      queryExpression: null,
+      cost: null,
+    };
+    const wrongExecution = setup(200, execution);
+    await expect(wrongExecution.repo.execution(candidate.latestObservation.executionId)).rejects.toMatchObject({
+      code: "INCOMPATIBLE_CONTRACT",
+    });
+  });
+
+  it("rejects candidate observation pages for another candidate or a known source", async () => {
+    const otherId = "aa73b0ff-8001-4000-8000-111111111111";
+    for (const observation of [
+      { ...candidate.latestObservation, candidateId: otherId },
+      { ...candidate.latestObservation, candidateId: null, knownSourceId: otherId },
+    ]) {
+      const page = setup(200, { items: [observation], nextCursor: null });
+      await expect(page.repo.candidateObservations(candidate.id)).rejects.toMatchObject({
+        code: "INCOMPATIBLE_CONTRACT",
+      });
+    }
+  });
+
+  it("rejects an execution observation from a different execution even when its identity is valid", async () => {
+    const observation = {
+      ...candidate.latestObservation,
+      executionId: "aa73b0ff-8001-4000-8000-111111111111",
+    };
+    const page = setup(200, { items: [observation], nextCursor: null });
+    await expect(page.repo.executionObservations(candidate.latestObservation.executionId)).rejects.toMatchObject({
+      code: "INCOMPATIBLE_CONTRACT",
+    });
+  });
+
   it("never activates fixtures in a deployed environment", () => {
     expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe(
       "disabled",
