@@ -203,8 +203,7 @@ function checkItem(resource: string, value: unknown): void {
     requiredString(item.id);
     requiredString(item.status);
     requiredString(item.providerKey);
-    if (item.cost !== null && typeof item.cost !== "number")
-      throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+    if (item.cost !== null && typeof item.cost !== "number") throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
     if (typeof item.observed !== "number" || typeof item.candidatesCreated !== "number")
       throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
   } else if (resource === "queries") {
@@ -326,8 +325,7 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
         throw new DiscoveryReadError("READ_UNAVAILABLE");
       const body = record(await jsonBounded(response));
       const code = knownError(response.status);
-      if (body.code !== code || typeof body.requestId !== "string")
-        throw new DiscoveryReadError("READ_UNAVAILABLE");
+      if (body.code !== code || typeof body.requestId !== "string") throw new DiscoveryReadError("READ_UNAVAILABLE");
       throw new DiscoveryReadError(code);
     }
     return jsonBounded(response);
