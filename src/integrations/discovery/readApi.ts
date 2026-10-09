@@ -207,8 +207,7 @@ function checkItem(resource: string, value: unknown): void {
       requiredString(latest.originalUrl);
       requiredString(latest.providerKey);
       checkObservationIdentity(latest);
-      if (latest.candidateId !== item.id)
-        throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+      if (latest.candidateId !== item.id) throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
     }
   } else if (resource === "executions") {
     requiredString(item.id);
