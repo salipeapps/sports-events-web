@@ -37,7 +37,7 @@ export default async function DiscoveryResultPage({
       ]);
       return { detail, observations, reviews };
     } catch (error) {
-      return { code: (error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE") as const };
+      return { code: (error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE") };
     }
   })();
   if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code} />;
