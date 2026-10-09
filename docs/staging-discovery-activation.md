@@ -58,20 +58,20 @@ are committed. The API remains disabled in all existing deployments.
 5. In Vercel, create/confirm Custom Environment `staging` and target a
    controlled staging deployment. Scope **only to this environment**:
 
-   | Server-only environment key | Required source |
-   | --- | --- |
-   | `APP_ENV` | Literal `staging` |
-   | `ADMIN_DEV_AUTH_MODE` | Literal `disabled` |
-   | `DISCOVERY_READ_MODE` | Initially `disabled`; `staging` after all preceding gates |
-   | `APP_ORIGIN` | Exact approved, stable HTTPS staging web origin |
-   | `NEXT_PUBLIC_SUPABASE_URL` | `https://yfytzogjrhwstcnzspdv.supabase.co` |
-   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Existing STAGING publishable key only |
-   | `ENGINE_STAGING_BASE_URL` | Exact verified Cloud Run `engine_base_url` output |
-   | `ENGINE_STAGING_ID_TOKEN_AUDIENCE` | The exact same verified HTTPS origin |
-   | `GCP_WORKLOAD_PROVIDER_AUDIENCE` | Exact `workload_provider_audience` output |
-   | `GCP_INVOKER_SERVICE_ACCOUNT_EMAIL` | Exact `invoker_service_account_email` output |
-   | `VERCEL_EXPECTED_OIDC_ISSUER` | Exact reviewed team-mode `https://oidc.vercel.com/<team-slug>` |
-   | `VERCEL_EXPECTED_OIDC_AUDIENCE` | Exact reviewed `https://vercel.com/<team-slug>` |
+   | Server-only environment key            | Required source                                                |
+   | -------------------------------------- | -------------------------------------------------------------- |
+   | `APP_ENV`                              | Literal `staging`                                              |
+   | `ADMIN_DEV_AUTH_MODE`                  | Literal `disabled`                                             |
+   | `DISCOVERY_READ_MODE`                  | Initially `disabled`; `staging` after all preceding gates      |
+   | `APP_ORIGIN`                           | Exact approved, stable HTTPS staging web origin                |
+   | `NEXT_PUBLIC_SUPABASE_URL`             | `https://yfytzogjrhwstcnzspdv.supabase.co`                     |
+   | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Existing STAGING publishable key only                          |
+   | `ENGINE_STAGING_BASE_URL`              | Exact verified Cloud Run `engine_base_url` output              |
+   | `ENGINE_STAGING_ID_TOKEN_AUDIENCE`     | The exact same verified HTTPS origin                           |
+   | `GCP_WORKLOAD_PROVIDER_AUDIENCE`       | Exact `workload_provider_audience` output                      |
+   | `GCP_INVOKER_SERVICE_ACCOUNT_EMAIL`    | Exact `invoker_service_account_email` output                   |
+   | `VERCEL_EXPECTED_OIDC_ISSUER`          | Exact reviewed team-mode `https://oidc.vercel.com/<team-slug>` |
+   | `VERCEL_EXPECTED_OIDC_AUDIENCE`        | Exact reviewed `https://vercel.com/<team-slug>`                |
 
    Confirm platform system env `VERCEL_ENV=preview` and
    `VERCEL_TARGET_ENV=staging` in the target deployment. Do not set
@@ -80,6 +80,7 @@ are committed. The API remains disabled in all existing deployments.
    (Vercel injects `x-vercel-oidc-token`); it must not accept a browser
    forged header as a trust grant because Google STS verifies signed
    issuer, audience and exact IAM subject.
+
 6. Before opening the web UI, run the **existing read-only**
    `sports-events-engine/scripts/discovery-admin-read-smoke.ps1`
    with a verified engine origin, the existing execution UUID and
@@ -103,6 +104,7 @@ are committed. The API remains disabled in all existing deployments.
    disabled users and backend failures. Use separate read-only before/after
    row digest/count evidence and engine logs to corroborate no mutations
    and no provider dispatch.
+
 7. Record revision/digest, request IDs/statuses, role outcomes, ten distinct
    candidates and matching ten original provenances. Only after **real**
    passing evidence activate `DISCOVERY_READ_MODE=staging` for that
