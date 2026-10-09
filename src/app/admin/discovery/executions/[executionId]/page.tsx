@@ -39,6 +39,6 @@ export default async function DiscoveryExecutionPage({
       return { code: error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE" };
     }
   })();
-  if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code} />;
+  if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code ?? "READ_UNAVAILABLE"} />;
   return <LiveExecutionDetail execution={outcome.execution} observations={outcome.observations} />;
 }
