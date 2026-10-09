@@ -40,6 +40,6 @@ export default async function DiscoveryResultPage({
       return { code: error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE" };
     }
   })();
-  if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code} />;
+  if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code ?? "READ_UNAVAILABLE"} />;
   return <LiveCandidateDetail detail={outcome.detail} observations={outcome.observations} reviews={outcome.reviews} />;
 }
