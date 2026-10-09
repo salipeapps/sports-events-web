@@ -1,0 +1,101 @@
+import { describe, expect, it, vi } from "vitest";
+
+import {
+  DiscoveryReadError,
+  HttpDiscoveryReadRepository,
+  getDiscoveryMode,
+  parseStageConfig,
+} from "./readApi";
+
+const candidate = {
+  id: "ca73b0ff-8001-4000-8000-111111111111",
+  canonicalUrl: "https://example.org/event",
+  firstObservedAt: "2026-10-09T08:00:00Z",
+  lastObservedAt: "2026-10-09T08:00:00Z",
+  reviewStatus: "PENDING_REVIEW",
+  latestReviewId: null,
+  linkedSourceId: null,
+  classification: { kind: "UNSUPPORTED_REVIEWABLE", reason: null, sourceFamily: null, proposedAdapterKey: null, knownSourceId: null, ruleVersion: 1, classifiedAt: "2026-10-09T08:00:00Z" },
+  observationCount: 1,
+  minPosition: null,
+  maxPosition: null,
+  latestObservation: { id: "3afeef88-1111-4000-8000-111111111111", candidateId: "ca73b0ff-8001-4000-8000-111111111111", knownSourceId: null, queryId: "11a2a2a2-1111-4000-8000-111111111111", executionId: "20a2a2a2-1111-4000-8000-111111111111", providerKey: "serpapi", originalUrl: "https://example.org/event", observedAt: "2026-10-09T08:00:00Z", title: null, snippet: null, resultPosition: 1 },
+  source: null,
+  latestReview: null,
+};
+
+function setup(status = 200, body: unknown = { items: [candidate], nextCursor: "opaque-keyset" }, contentType = "application/json") {
+  const fetcher = vi.fn(async () =>
+    new Response(JSON.stringify(body), { status, headers: { "content-type": contentType } }),
+  );
+  const getUserToken = vi.fn(async () => "signed-user");
+  const getWorkloadToken = vi.fn(async () => "signed-cloud-run");
+  const repo = new HttpDiscoveryReadRepository({
+    origin: "https://example.a.run.app",
+    fetcher: fetcher as unknown as typeof fetch,
+    getUserToken,
+    getWorkloadToken,
+  });
+  return { repo, fetcher, getUserToken, getWorkloadToken };
+}
+
+describe("private discovery read adapter (offline)", () => {
+  it("preserves nullable values and opaque cursors, pushes filters to the engine, and revalidates authorization per read", async () => {
+    const { repo, fetcher, getUserToken } = setup();
+    const result = await repo.candidates({ classificationKind: "UNSUPPORTED_REVIEWABLE", limit: 1 });
+    expect(result.items[0].latestObservation?.title).toBeNull();
+    expect(result.items[0].classification?.kind).toBe("UNSUPPORTED_REVIEWABLE");
+    expect(result.nextCursor).toBe("opaque-keyset");
+    await repo.candidates({ cursor: result.nextCursor!, limit: 1 });
+    expect(getUserToken).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls.length).toBe(2);
+    const url = String(fetcher.mock.calls[0][0]);
+    expect(url).toContain("classificationKind=UNSUPPORTED_REVIEWABLE");
+    expect(url).toContain("limit=1");
+    expect(url).not.toContain("signed-user");
+    const init = fetcher.mock.calls[0][1] as RequestInit;
+    expect(init.cache).toBe("no-store");
+    expect(init.redirect).toBe("error");
+    expect(init.headers).toMatchObject({
+      Authorization: "Bearer signed-user",
+      "X-Serverless-Authorization": "Bearer signed-cloud-run",
+    });
+  });
+
+  it.each([
+    [400, "INVALID_REQUEST"],
+    [401, "UNAUTHENTICATED"],
+    [403, "FORBIDDEN"],
+    [404, "NOT_FOUND"],
+    [409, "READ_CONFLICT"],
+    [503, "READ_UNAVAILABLE"],
+  ] as const)("maps engine %s to %s safely", async (status, code) => {
+    const { repo } = setup(status, { code, requestId: "safe" });
+    await expect(repo.candidates()).rejects.toMatchObject({ code });
+  });
+
+  it("fails closed for a non-JSON upstream, oversized or malformed contract, and invalid page limits", async () => {
+    const wrongType = setup(403, "Forbidden", "text/html");
+    await expect(wrongType.repo.candidates()).rejects.toMatchObject({ code: "READ_UNAVAILABLE" });
+    const invalid = setup(200, { items: [{ ...candidate, observationCount: "1" }], nextCursor: null });
+    await expect(invalid.repo.candidates()).rejects.toMatchObject({ code: "INCOMPATIBLE_CONTRACT" });
+    await expect(invalid.repo.candidates({ limit: 101 })).rejects.toBeInstanceOf(DiscoveryReadError);
+  });
+
+  it("separates known-source observations from new source candidates", async () => {
+    const { repo } = setup(200, {
+      items: [{ ...candidate.latestObservation, candidateId: null, knownSourceId: "aa73b0ff-8001-4000-8000-111111111111" }],
+      nextCursor: null,
+    });
+    const result = await repo.executionObservations("20a2a2a2-1111-4000-8000-111111111111");
+    expect(result.items[0].knownSourceId).not.toBeNull();
+    expect(result.items[0].candidateId).toBeNull();
+  });
+
+  it("never activates fixtures in a deployed environment", () => {
+    expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe("disabled");
+    expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "preview", DISCOVERY_READ_MODE: "staging" })).toBe("staging");
+    expect(getDiscoveryMode({ NODE_ENV: "development", APP_ENV: "development", ADMIN_DEV_AUTH_MODE: "enabled", APP_ORIGIN: "http://localhost:3000" })).toBe("demo");
+    expect(() => parseStageConfig({ ENGINE_STAGING_BASE_URL: "http://localhost:9000" })).toThrow();
+  });
+});
