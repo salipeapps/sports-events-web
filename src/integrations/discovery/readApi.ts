@@ -177,15 +177,11 @@ function checkId(value: string): void {
 }
 
 function checkObservationIdentity(item: Record<string, unknown>): void {
-  const candidateIdValid = typeof item.candidateId === "string" && uuid.test(item.candidateId);
-  const knownSourceIdValid = typeof item.knownSourceId === "string" && uuid.test(item.knownSourceId);
-  if (
-    !(
-      (candidateIdValid && item.knownSourceId === null) ||
-      (item.candidateId === null && knownSourceIdValid)
-    )
-  )
-    throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+  const isCandidateObservation =
+    typeof item.candidateId === "string" && uuid.test(item.candidateId) && item.knownSourceId === null;
+  const isKnownSourceObservation =
+    item.candidateId === null && typeof item.knownSourceId === "string" && uuid.test(item.knownSourceId);
+  if (!isCandidateObservation && !isKnownSourceObservation) throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
 }
 
 function checkPage(value: unknown): asserts value is DiscoveryPage<unknown> {
