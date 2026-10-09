@@ -21,25 +21,29 @@ export default async function DiscoveryPage({
     return <DiscoveryOverview snapshot={snapshot} activeTab={tab} />;
   }
   if (mode !== "staging") return <LiveDiscoveryFailure code="NOT_CONFIGURED" />;
-  try {
-    const repo = getLiveDiscoveryRepository();
-    const page = { cursor: query.cursor, limit: 20 };
-    const data =
-      tab === "resultados"
-        ? await repo.candidates({
-            ...page,
-            reviewStatus: query.reviewStatus,
-            classificationKind: query.classificationKind,
-            queryId: query.queryId,
-            providerKey: query.providerKey,
-            executionId: query.executionId,
-            search: query.search,
-          })
-        : tab === "consultas"
-          ? await repo.queries(page)
-          : await repo.providers(page);
-    return <LiveDiscoveryOverview tab={tab} data={data} params={query} />;
-  } catch (error) {
-    return <LiveDiscoveryFailure code={error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE"} />;
-  }
+  const outcome = await (async () => {
+    try {
+      const repo = getLiveDiscoveryRepository();
+      const page = { cursor: query.cursor, limit: 20 };
+      const data =
+        tab === "resultados"
+          ? await repo.candidates({
+              ...page,
+              reviewStatus: query.reviewStatus,
+              classificationKind: query.classificationKind,
+              queryId: query.queryId,
+              providerKey: query.providerKey,
+              executionId: query.executionId,
+              search: query.search,
+            })
+          : tab === "consultas"
+            ? await repo.queries(page)
+            : await repo.providers(page);
+      return { data };
+    } catch (error) {
+      return { code: (error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE") as const };
+    }
+  })();
+  if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code} />;
+  return <LiveDiscoveryOverview tab={tab} data={outcome.data} params={query} />;
 }
