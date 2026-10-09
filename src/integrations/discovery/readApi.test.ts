@@ -150,6 +150,40 @@ describe("private discovery read adapter (offline)", () => {
     }
   });
 
+  it.each([
+    ["providerKey as object", { providerKey: { value: "serpapi" } }],
+    ["missing providerKey", { providerKey: undefined }],
+    ["missing title", { title: undefined }],
+    ["title as object", { title: { text: "Unsafe" } }],
+    ["snippet as array", { snippet: ["unexpected"] }],
+    ["resultPosition as text", { resultPosition: "1" }],
+    ["missing resultPosition", { resultPosition: undefined }],
+    ["invalid observedAt", { observedAt: 123 }],
+    ["missing queryId", { queryId: undefined }],
+    ["invalid executionId", { executionId: "unexpected" }],
+    ["missing originalUrl", { originalUrl: undefined }],
+  ])("rejects malformed observation %s before rendering", async (_label, fields) => {
+    const observation = { ...candidate.latestObservation, ...fields };
+    const page = setup(200, { items: [observation], nextCursor: null });
+    await expect(page.repo.executionObservations(candidate.latestObservation.executionId)).rejects.toMatchObject({
+      code: "INCOMPATIBLE_CONTRACT",
+    });
+
+    const latest = setup(200, {
+      items: [{ ...candidate, latestObservation: observation }],
+      nextCursor: null,
+    });
+    await expect(latest.repo.candidates()).rejects.toMatchObject({ code: "INCOMPATIBLE_CONTRACT" });
+  });
+
+  it("retains nullable observation fields and valid source/candidate provenance", async () => {
+    const valid = { ...candidate.latestObservation, title: null, snippet: null, resultPosition: null };
+    const page = setup(200, { items: [valid], nextCursor: null });
+    const result = await page.repo.candidateObservations(candidate.id);
+    expect(result.items[0].title).toBeNull();
+    expect(result.items[0].resultPosition).toBeNull();
+  });
+
   it("never activates fixtures in a deployed environment", () => {
     expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe(
       "disabled",

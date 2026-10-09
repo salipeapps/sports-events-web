@@ -172,6 +172,38 @@ function requiredString(value: unknown): string {
   return value;
 }
 
+function requiredUuid(value: unknown): void {
+  if (typeof value !== "string" || !uuid.test(value)) throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+}
+
+function nullableString(value: unknown): void {
+  if (value !== null) requiredString(value);
+}
+
+function nullableUuid(value: unknown): void {
+  if (value !== null) requiredUuid(value);
+}
+
+function requiredInteger(value: unknown): void {
+  if (!Number.isSafeInteger(value)) throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+}
+
+function nullableInteger(value: unknown): void {
+  if (value !== null) requiredInteger(value);
+}
+
+function requiredBoolean(value: unknown): void {
+  if (typeof value !== "boolean") throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+}
+
+function requiredStrings(item: Record<string, unknown>, ...fields: string[]): void {
+  for (const field of fields) requiredString(item[field]);
+}
+
+function nullableStrings(item: Record<string, unknown>, ...fields: string[]): void {
+  for (const field of fields) nullableString(item[field]);
+}
+
 function checkId(value: string): void {
   if (!uuid.test(value)) throw new DiscoveryReadError("INVALID_REQUEST");
 }
@@ -197,40 +229,73 @@ function checkPage(value: unknown): asserts value is DiscoveryPage<unknown> {
 function checkItem(resource: string, value: unknown): void {
   const item = record(value);
   if (resource === "candidates") {
-    requiredString(item.id);
-    requiredString(item.canonicalUrl);
-    requiredString(item.reviewStatus);
-    if (!Number.isSafeInteger(item.observationCount)) throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+    requiredUuid(item.id);
+    requiredStrings(item, "canonicalUrl", "firstObservedAt", "lastObservedAt", "reviewStatus");
+    nullableUuid(item.latestReviewId);
+    nullableUuid(item.linkedSourceId);
+    requiredInteger(item.observationCount);
+    nullableInteger(item.minPosition);
+    nullableInteger(item.maxPosition);
+    if (item.classification !== null) {
+      const classification = record(item.classification);
+      requiredStrings(classification, "kind", "classifiedAt");
+      nullableStrings(classification, "reason", "sourceFamily", "proposedAdapterKey");
+      nullableUuid(classification.knownSourceId);
+      requiredInteger(classification.ruleVersion);
+    }
     if (item.latestObservation !== null) {
+      checkItem("observations", item.latestObservation);
       const latest = record(item.latestObservation);
-      requiredString(latest.executionId);
-      requiredString(latest.originalUrl);
-      requiredString(latest.providerKey);
-      checkObservationIdentity(latest);
       if (latest.candidateId !== item.id) throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
     }
+    if (item.source !== null) {
+      const source = record(item.source);
+      requiredUuid(source.id);
+      requiredStrings(source, "status", "adapterKey");
+      if (source.enabled !== null) requiredBoolean(source.enabled);
+    }
+    if (item.latestReview !== null) checkItem("reviews", item.latestReview);
   } else if (resource === "executions") {
-    requiredString(item.id);
-    requiredString(item.status);
-    requiredString(item.providerKey);
-    if (item.cost !== null && typeof item.cost !== "number") throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
-    if (typeof item.observed !== "number" || typeof item.candidatesCreated !== "number")
+    requiredUuid(item.id);
+    requiredUuid(item.queryId);
+    requiredStrings(item, "providerKey", "status", "createdAt");
+    nullableStrings(item, "submissionState", "recoveryState", "startedAt", "finishedAt", "failureCode", "queryExpression");
+    nullableUuid(item.originalExecutionId);
+    requiredInteger(item.observed);
+    requiredInteger(item.candidatesCreated);
+    requiredInteger(item.countersVersion);
+    nullableInteger(item.candidatesReobserved);
+    nullableInteger(item.knownSources);
+    nullableInteger(item.invalidResults);
+    nullableInteger(item.providerFailures);
+    nullableInteger(item.providerRequestCount);
+    if (item.cost !== null && (typeof item.cost !== "number" || !Number.isFinite(item.cost)))
       throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
   } else if (resource === "queries") {
-    requiredString(item.id);
-    requiredString(item.expression);
-    requiredString(item.providerKey);
+    requiredUuid(item.id);
+    requiredStrings(item, "expression", "providerKey");
+    requiredBoolean(item.enabled);
+    nullableStrings(item, "activityContext", "geographicScope", "localeHint", "scheduleExpression", "lastExecutionStatus", "lastExecutionAt");
+    requiredInteger(item.resultLimit);
+    requiredInteger(item.requestBudget);
+    nullableUuid(item.lastExecutionId);
   } else if (resource === "providers") {
-    requiredString(item.providerKey);
-    requiredString(item.displayName);
-    if (typeof item.enabled !== "boolean") throw new DiscoveryReadError("INCOMPATIBLE_CONTRACT");
+    requiredStrings(item, "providerKey", "displayName");
+    requiredBoolean(item.enabled);
+    requiredInteger(item.maxRequestsPerExecution);
+    nullableInteger(item.dailyRequestCap);
+    nullableInteger(item.monthlyRequestCap);
   } else if (resource === "observations") {
-    requiredString(item.id);
-    requiredString(item.originalUrl);
+    requiredUuid(item.id);
+    requiredUuid(item.queryId);
+    requiredUuid(item.executionId);
+    requiredStrings(item, "providerKey", "originalUrl", "observedAt");
+    nullableStrings(item, "title", "snippet");
+    nullableInteger(item.resultPosition);
     checkObservationIdentity(item);
   } else if (resource === "reviews") {
-    requiredString(item.id);
-    requiredString(item.decision);
+    requiredUuid(item.id);
+    requiredStrings(item, "decision", "reviewerRef", "reasonCode", "reviewedAt");
   }
 }
 
@@ -355,9 +420,12 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
     checkId(id);
     const detail = record(await this.get("/candidates/" + id));
     checkItem("candidates", detail.candidate);
-    if (detail.promotion !== null && detail.promotion !== undefined) {
+    if (detail.promotion !== null) {
       const promotion = record(detail.promotion);
-      requiredString(promotion.sourceId);
+      requiredUuid(promotion.sourceId);
+      requiredUuid(promotion.reviewId);
+      requiredBoolean(promotion.reusedSource);
+      requiredString(promotion.promotedAt);
     }
     return detail as unknown as DiscoveryCandidateDetail;
   }
