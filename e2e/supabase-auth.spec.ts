@@ -34,7 +34,7 @@ test("reviewer can read discovery but cannot access sensitive source or run data
   }
   await page.goto("/admin/discovery");
   await expect(page.getByRole("heading", { name: "Descubrimiento" })).toBeVisible();
-  await expect(page.getByRole("alert")).toContainText("NOT_CONFIGURED");
+  await expect(page.getByRole("alert").filter({ hasText: "NOT_CONFIGURED" })).toContainText("NOT_CONFIGURED");
 });
 for (const subject of ["outsider", "inactive", "expired"])
   test(`${subject} cannot enter Admin despite forged user metadata`, async ({ page }) => {
