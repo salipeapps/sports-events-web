@@ -3,6 +3,7 @@ export type AdminRole = (typeof adminRoles)[number];
 
 export const adminCapabilities = [
   "dashboard.view",
+  "discovery.view",
   "catalog.review",
   "catalog.publish",
   "sources.manage",
@@ -24,7 +25,7 @@ export type AdminAccessResult =
 
 const capabilitiesByRole: Record<AdminRole, readonly AdminCapability[]> = {
   admin: adminCapabilities,
-  reviewer: ["dashboard.view", "catalog.review", "catalog.publish"],
+  reviewer: ["dashboard.view", "discovery.view", "catalog.review", "catalog.publish"],
 };
 
 export class AdminAuthorizationError extends Error {

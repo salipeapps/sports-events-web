@@ -22,16 +22,19 @@ test("admin login persists verified cookies; deactivation takes effect on next r
   await page.goto("/admin/activities");
   await expect(page).toHaveURL(/reason=unauthorized/);
 });
-test("reviewer has editorial access and cannot access source or run data", async ({ page }) => {
+test("reviewer can read discovery but cannot access sensitive source or run data", async ({ page }) => {
   await login(page, "reviewer");
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto("/admin/activities");
   await expect(page.getByRole("heading", { name: "Actividades", exact: true })).toBeVisible();
-  for (const route of ["/admin/sources", "/admin/runs", "/admin/discovery"]) {
+  for (const route of ["/admin/sources", "/admin/runs"]) {
     await page.goto(route);
     await expect(page.locator(".admin-content")).toHaveCount(0);
     await expect(page).toHaveURL(/admin-access\?reason=unauthorized/);
   }
+  await page.goto("/admin/discovery");
+  await expect(page.getByRole("heading", { name: "Descubrimiento" })).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: "NOT_CONFIGURED" })).toContainText("NOT_CONFIGURED");
 });
 for (const subject of ["outsider", "inactive", "expired"])
   test(`${subject} cannot enter Admin despite forged user metadata`, async ({ page }) => {
