@@ -408,9 +408,7 @@ export function LiveCandidateDetail({
           ))}
         </ul>
         {observations.nextCursor ? (
-          <Link
-            href={candidatePageHref(c.id, "observations", observations.nextCursor, cursors.reviewsCursor)}
-          >
+          <Link href={candidatePageHref(c.id, "observations", observations.nextCursor, cursors.reviewsCursor)}>
             Siguiente página →
           </Link>
         ) : null}
@@ -429,9 +427,7 @@ export function LiveCandidateDetail({
           </ul>
         )}
         {reviews.nextCursor ? (
-          <Link
-            href={candidatePageHref(c.id, "reviews", reviews.nextCursor, cursors.observationsCursor)}
-          >
+          <Link href={candidatePageHref(c.id, "reviews", reviews.nextCursor, cursors.observationsCursor)}>
             Siguiente página →
           </Link>
         ) : null}
