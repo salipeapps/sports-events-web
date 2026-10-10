@@ -60,14 +60,18 @@ export async function GET(request: Request): Promise<Response> {
       const classification = candidate.classification?.kind ?? "UNKNOWN";
       counts[classification] = (counts[classification] ?? 0) + 1;
     }
+    const observationCandidateIds = new Set(observations.items.map((item) => item.candidateId));
+    const returnedCandidateIds = new Set(candidates.items.map((item) => item.id));
     const valid =
       (execution.status === "SUCCEEDED" || execution.recoveryState === "SUCCEEDED") &&
       observations.nextCursor === null &&
       candidates.nextCursor === null &&
       observations.items.length === 10 &&
       candidates.items.length === 10 &&
-      new Set(observations.items.map((item) => item.candidateId)).size === 10 &&
+      observationCandidateIds.size === 10 &&
+      returnedCandidateIds.size === 10 &&
       observations.items.every((item) => item.candidateId !== null && item.knownSourceId === null) &&
+      [...returnedCandidateIds].every((id) => observationCandidateIds.has(id)) &&
       counts.UNSUPPORTED_REVIEWABLE === 9 &&
       counts.AMBIGUOUS_REVIEW_REQUIRED === 1;
     return output(
