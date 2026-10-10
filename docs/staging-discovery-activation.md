@@ -22,19 +22,27 @@ are committed. The API remains disabled in all existing deployments.
   and 1 `AMBIGUOUS_REVIEW_REQUIRED`. This was verified with SELECT,
   **not** through private HTTP.
 - GCP project/billing, Cloud Run deployment URL/revision, IAM, Terraform
-  remote state, reader credentials, Vercel team/project/custom environment and
+  remote state, reader credentials, Vercel deployment identity and
   real STAGING tokens are **not verified**. Do not invent these values.
 
 ## Activation order (operator runbook)
 
 1. Confirm the exact GCP STAGING project/billing account and
-   Vercel team/project/environment identifiers. Per the
-   [engine runtime runbook](https://github.com/raulacden/sports-events-engine/blob/develop/docs/private-staging-runtime.md),
-   trust requires a distinct Vercel Custom Environment `staging`
-   with exact `iss`, `aud`, `sub`, `owner_id`, `project_id` and
-   `custom_environment_id`; **generic Preview is not sufficient**.
-   If Custom Environments are unavailable on the plan, stop and design a
-   separately reviewed, dedicated staging-only Vercel project.
+   Vercel team/project/environment identifiers. The **dedicated Hobby STAGING**
+   project is `sports-events-web-staging` (`prj_MU4pprIXpAdKUGcBPx8uWztULHxb`)
+   under team `raulsp` (`team_EH6GksyEmuYgo1EtauFaEdhv`), with GitHub
+   `develop` as production branch and canonical origin
+   `https://sports-events-web-staging.vercel.app`. Vercel's environment is
+   `production` **inside this staging-only project**; never confuse it
+   with the real PROD project `sports-events-web`
+   (`prj_mJZ53ELTCu9TBUAGHO3QbYfwJIdX`).
+   [Vercel OIDC reference](https://vercel.com/docs/oidc/reference) binds
+   `iss=https://oidc.vercel.com/raulsp`,
+   `aud=https://vercel.com/raulsp`,
+   `sub=owner:raulsp:project:sports-events-web-staging:environment:production`,
+   `owner_id`, `project_id` and `environment=production`.
+   The existing engine Terraform/runbook still require the matching reviewed
+   update before any GCP plan/apply. Never authorize generic Preview.
 2. In Supabase Dashboard for **this** project, inspect
    Authentication > Hooks. Do not overwrite an existing Custom Access Token hook.
    Confirm the reviewed hook is enabled or arrange its approved activation.
@@ -55,8 +63,9 @@ are committed. The API remains disabled in all existing deployments.
    and activate only after checking private IAM, OIDC trust, Flyway disabled,
    provider/search runners disabled and safe budget. Never run existing
    `staging-discovery-smoke.yml`: it performs provider discovery writes.
-5. In Vercel, create/confirm Custom Environment `staging` and target a
-   controlled staging deployment. Scope **only to this environment**:
+5. In Vercel, use ONLY project `sports-events-web-staging`, whose
+   **Production target represents STAGING**. Scope **only to that project's
+   Production environment**, never the original project or generic Preview:
 
    | Server-only environment key            | Required source                                                |
    | -------------------------------------- | -------------------------------------------------------------- |
@@ -74,9 +83,16 @@ are committed. The API remains disabled in all existing deployments.
    | `VERCEL_EXPECTED_OIDC_ISSUER`          | Exact reviewed team-mode `https://oidc.vercel.com/<team-slug>` |
    | `VERCEL_EXPECTED_OIDC_AUDIENCE`        | Exact reviewed `https://vercel.com/<team-slug>`                |
 
-   Confirm platform system env `VERCEL_ENV=preview` and
-   `VERCEL_TARGET_ENV=staging` in the target deployment. Do not set
-   these as fabricated values, and do not target generic Preview or PROD.
+   Set `APP_ENV=staging` **only after this updated gate is merged and the
+   previous deployment has been verified**; the existing project currently
+   uses `APP_ENV=production`, which correctly leaves discovery disabled.
+   Confirm platform-provided `VERCEL=1`, `VERCEL_ENV=production`,
+   `VERCEL_TARGET_ENV=production`,
+   `VERCEL_PROJECT_ID=prj_MU4pprIXpAdKUGcBPx8uWztULHxb` and
+   `VERCEL_GIT_COMMIT_REF=develop` in the actual target runtime.
+   These must be system-provided, never added as operator env overrides.
+   Require team-mode OIDC and a signed token carrying the exact subject,
+   stable project ID, owner ID and environment above. Other projects fail closed.
    The runtime reads the OIDC token from the function request header
    (Vercel injects `x-vercel-oidc-token`); it must not accept a browser
    forged header as a trust grant because Google STS verifies signed
@@ -92,7 +108,7 @@ are committed. The API remains disabled in all existing deployments.
 
    - Keep `DISCOVERY_READ_MODE=disabled` and temporarily set
      `DISCOVERY_STAGING_SMOKE_ENABLED=enabled` in the
-     **approved staging Custom Environment only**; redeploy there. The temporary route is
+     **dedicated staging project's Production target only**; redeploy there. The temporary route is
      `GET /api/internal/discovery-read-smoke`. It refuses generic Preview,
      PROD, local dev, unapproved origins and development-auth bypass;
      it is inactive unless **both** feature flags have the exact values
@@ -127,7 +143,7 @@ are committed. The API remains disabled in all existing deployments.
 
 7. Turn `DISCOVERY_STAGING_SMOKE_ENABLED=disabled` in STAGING, set
    `DISCOVERY_READ_MODE=staging` **only after step 6 succeeds**, and redeploy
-   the approved Custom Environment. Confirm the temporary smoke route now
+   the approved STAGING project. Confirm the temporary smoke route now
    returns 404. Perform the **actual web UI smoke** as admin and reviewer:
    candidate list, cursor pagination, filters, detail, provenance,
    incomplete/backend-failure behavior and access revocation. The pages
@@ -147,7 +163,7 @@ are committed. The API remains disabled in all existing deployments.
 ## Rollback
 
 Set `DISCOVERY_READ_MODE=disabled` and
-`DISCOVERY_STAGING_SMOKE_ENABLED=disabled` in the STAGING Custom Environment
+`DISCOVERY_STAGING_SMOKE_ENABLED=disabled` in the STAGING project's Production target
 and redeploy, leaving PROD unchanged. If there is workload identity exposure,
 remove the exact invoker/WIF trust first. Restore the previously approved
 engine revision if a runtime regression is confirmed; reconcile Terraform
