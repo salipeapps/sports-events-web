@@ -15,7 +15,9 @@ describe("server environment", () => {
     expect(parseAppEnvironment("test")).toBe("test");
     expect(parseAppEnvironment("production")).toBe("production");
     expect(parseAppEnvironment("staging")).toBe("staging");
-    expect(getServerConfig({ APP_ENV: "staging", NODE_ENV: "production", ADMIN_DEV_AUTH_MODE: "disabled" })).toMatchObject({
+    expect(
+      getServerConfig({ APP_ENV: "staging", NODE_ENV: "production", ADMIN_DEV_AUTH_MODE: "disabled" }),
+    ).toMatchObject({
       appEnv: "staging",
       adminDevAuthMode: "disabled",
     });
