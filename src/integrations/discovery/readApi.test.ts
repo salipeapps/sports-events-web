@@ -294,7 +294,7 @@ describe("private discovery read adapter (offline)", () => {
     ["dev bypass", { ADMIN_DEV_AUTH_MODE: "enabled" }],
     ["missing bypass lock", { ADMIN_DEV_AUTH_MODE: undefined }],
   ])("fails closed for %s", (_description, overrides) => {
-    const env = { ...approvedHobbyStaging, ...overrides };
+    const env: NodeJS.ProcessEnv = { ...approvedHobbyStaging, ...overrides };
     expect(isApprovedStagingDeployment(env)).toBe(false);
     expect(isStagingSmokeEnabled(env)).toBe(false);
     expect(getDiscoveryMode({ ...env, DISCOVERY_READ_MODE: "staging" })).toBe("disabled");
