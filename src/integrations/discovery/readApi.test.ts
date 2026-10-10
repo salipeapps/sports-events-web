@@ -285,7 +285,7 @@ describe("private discovery read adapter (offline)", () => {
     ["master branch", { VERCEL_GIT_COMMIT_REF: "master" }],
     ["missing branch", { VERCEL_GIT_COMMIT_REF: undefined }],
     ["local runtime", { VERCEL: undefined }],
-    ["non-production Node runtime", { NODE_ENV: "development" }],
+    ["non-production Node runtime", { NODE_ENV: "development" as const }],
     ["wrong app environment", { APP_ENV: "production" }],
     ["unset app environment", { APP_ENV: undefined }],
     ["wrong origin", { APP_ORIGIN: "https://sports-events-web-raulsp.vercel.app" }],
