@@ -65,8 +65,9 @@ Offline: `npm run quality`; local demo Playwright:
 `npm run test:e2e` with the existing explicit dev-auth loopback setup.
 
 Real HTTP STAGING evidence is **NOT RUN**. It requires separate approval,
-provisioned custom-environment Vercel OIDC, a verified token hook, dedicated
-SELECT-only engine reader and private ingress. Read the engine PR #83 runbook
+the dedicated Vercel Hobby STAGING project's verified OIDC identity,
+a verified token hook, dedicated SELECT-only engine reader and private
+Cloud Run IAM ingress. Read the engine PR #84 / #83 runbooks
 before activation. With the already recovered Valencia execution UUID, verify
 10 distinct candidates, 10 original provenance records, 9
 `UNSUPPORTED_REVIEWABLE` and 1 `AMBIGUOUS_REVIEW_REQUIRED` across paged
