@@ -61,7 +61,7 @@ export async function GET(request: Request): Promise<Response> {
       counts[classification] = (counts[classification] ?? 0) + 1;
     }
     const valid =
-      execution.status === "SUCCEEDED" &&
+      (execution.status === "SUCCEEDED" || execution.recoveryState === "SUCCEEDED") &&
       observations.nextCursor === null &&
       candidates.nextCursor === null &&
       observations.items.length === 10 &&
@@ -75,6 +75,7 @@ export async function GET(request: Request): Promise<Response> {
         code: valid ? "SMOKE_OK" : "SMOKE_MISMATCH",
         role: access.role,
         executionStatus: execution.status,
+        recoveryState: execution.recoveryState ?? null,
         candidates: candidates.items.length,
         observations: observations.items.length,
         classificationCounts: counts,
@@ -84,7 +85,8 @@ export async function GET(request: Request): Promise<Response> {
     );
   } catch (error) {
     const code = error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE";
-    const status = code === "UNAUTHENTICATED" ? 401 : code === "FORBIDDEN" ? 403 : code === "NOT_CONFIGURED" ? 404 : 502;
+    const status =
+      code === "UNAUTHENTICATED" ? 401 : code === "FORBIDDEN" ? 403 : code === "NOT_CONFIGURED" ? 404 : 502;
     return output({ code }, status);
   }
 }
