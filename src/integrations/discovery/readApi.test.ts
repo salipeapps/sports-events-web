@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-import { DiscoveryReadError, HttpDiscoveryReadRepository, getDiscoveryMode, parseStageConfig } from "./readApi";
+import {
+  DiscoveryReadError,
+  HttpDiscoveryReadRepository,
+  getDiscoveryMode,
+  isStagingSmokeEnabled,
+  parseStageConfig,
+} from "./readApi";
 
 const candidate = {
   id: "ca73b0ff-8001-4000-8000-111111111111",
@@ -245,6 +251,24 @@ describe("private discovery read adapter (offline)", () => {
     await expect(page.repo.executionObservations(candidate.latestObservation.executionId)).rejects.toMatchObject({
       code: "INCOMPATIBLE_CONTRACT",
     });
+  });
+
+  it("permits the temporary smoke only in approved STAGING while public discovery is disabled", () => {
+    const approved = {
+      NODE_ENV: "production",
+      APP_ENV: "staging",
+      VERCEL_ENV: "preview",
+      VERCEL_TARGET_ENV: "staging",
+      ADMIN_DEV_AUTH_MODE: "disabled",
+      DISCOVERY_READ_MODE: "disabled",
+      DISCOVERY_STAGING_SMOKE_ENABLED: "enabled",
+    };
+    expect(isStagingSmokeEnabled(approved)).toBe(true);
+    expect(isStagingSmokeEnabled({ ...approved, DISCOVERY_READ_MODE: "staging" })).toBe(false);
+    expect(isStagingSmokeEnabled({ ...approved, VERCEL_TARGET_ENV: "preview" })).toBe(false);
+    expect(isStagingSmokeEnabled({ ...approved, VERCEL_ENV: "production" })).toBe(false);
+    expect(isStagingSmokeEnabled({ ...approved, ADMIN_DEV_AUTH_MODE: "enabled" })).toBe(false);
+    expect(isStagingSmokeEnabled({ ...approved, DISCOVERY_STAGING_SMOKE_ENABLED: "disabled" })).toBe(false);
   });
 
   it("never activates fixtures in a deployed environment", () => {
