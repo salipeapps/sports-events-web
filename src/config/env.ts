@@ -1,4 +1,4 @@
-const APP_ENVIRONMENTS = ["development", "test", "production"] as const;
+const APP_ENVIRONMENTS = ["development", "test", "staging", "production"] as const;
 const ADMIN_DEV_AUTH_MODES = ["disabled", "enabled"] as const;
 const ADMIN_ROLES = ["admin", "reviewer"] as const;
 
