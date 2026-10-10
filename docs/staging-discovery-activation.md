@@ -91,8 +91,8 @@ are committed. The API remains disabled in all existing deployments.
    operator workstation is **not proof of the required Vercel identity**.
 
    - Keep `DISCOVERY_READ_MODE=disabled` and temporarily set
-     `DISCOVERY_STAGING_SMOKE_ENABLED=enabled` in the **approved staging
-     Custom Environment only**; redeploy there. The temporary route is
+     `DISCOVERY_STAGING_SMOKE_ENABLED=enabled` in the
+     **approved staging Custom Environment only**; redeploy there. The temporary route is
      `GET /api/internal/discovery-read-smoke`. It refuses generic Preview,
      PROD, local dev, unapproved origins and development-auth bypass;
      it is inactive unless **both** feature flags have the exact values
@@ -134,8 +134,8 @@ are committed. The API remains disabled in all existing deployments.
    render `Referencia UNAUTHENTICATED` / `Referencia FORBIDDEN` in
    `LiveDiscoveryFailure` (usually HTTP 200) for engine read errors,
    while `requireAdminAccess()` sends unauthenticated or unauthorized
-   users to `/admin-access` with a redirect; **do not require raw 401/403
-   on rendered UI pages**. Verify genuine engine 401/403 separately against
+   users to `/admin-access` with a redirect;
+   **do not require raw 401/403 on rendered UI pages**. Verify genuine engine 401/403 separately against
    private HTTP/log evidence from step 6 or other approved server-side
    tests, and distinguish those from BFF-side authorization errors.
    Record safe request IDs/statuses, role outcomes, revision/image digest,
