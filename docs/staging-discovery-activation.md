@@ -1,6 +1,6 @@
 # STAGING activation gates — web #26 / engine #80
 
-Updated 2026-10-09. This is a **fail-closed handoff**, not proof of a deployed
+Updated 2026-10-10. This is a **fail-closed handoff**, not proof of a deployed
 Cloud Run service. No credentials, tokens, secret values or infrastructure changes
 are committed. The API remains disabled in all existing deployments.
 
@@ -62,7 +62,8 @@ are committed. The API remains disabled in all existing deployments.
    | -------------------------------------- | -------------------------------------------------------------- |
    | `APP_ENV`                              | Literal `staging`                                              |
    | `ADMIN_DEV_AUTH_MODE`                  | Literal `disabled`                                             |
-   | `DISCOVERY_READ_MODE`                  | Initially `disabled`; `staging` after all preceding gates      |
+   | `DISCOVERY_READ_MODE`                  | Initially `disabled`; `staging` after the private smoke        |
+   | `DISCOVERY_STAGING_SMOKE_ENABLED`      | `disabled` normally; temporarily `enabled` for step 6 only    |
    | `APP_ORIGIN`                           | Exact approved, stable HTTPS staging web origin                |
    | `NEXT_PUBLIC_SUPABASE_URL`             | `https://yfytzogjrhwstcnzspdv.supabase.co`                     |
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Existing STAGING publishable key only                          |
@@ -81,48 +82,73 @@ are committed. The API remains disabled in all existing deployments.
    forged header as a trust grant because Google STS verifies signed
    issuer, audience and exact IAM subject.
 
-6. Before opening the web UI, run the **existing read-only**
-   `sports-events-engine/scripts/discovery-admin-read-smoke.ps1`
-   with a verified engine origin, the existing execution UUID and
-   ephemeral tokens from approved real admin/reviewer accounts plus a
-   short-lived Google Cloud Run ID token from the exact Vercel WIF
-   identity (never a generic operator invoker credential):
+6. Perform the **private engine HTTP smoke from Vercel itself**, using its
+   signed workload identity. A local PowerShell process cannot produce the
+   exact Vercel OIDC assertion or Cloud Run invoker ID token, and the
+   application must **never export or return those credentials**. The
+   engine's existing `scripts/discovery-admin-read-smoke.ps1 -ValidateOnly`
+   can be run offline to check the script, but `-ApprovedStaging` from an
+   operator workstation is **not proof of the required Vercel identity**.
 
-   ```powershell
-   ./scripts/discovery-admin-read-smoke.ps1 -ValidateOnly
+   - Keep `DISCOVERY_READ_MODE=disabled` and temporarily set
+     `DISCOVERY_STAGING_SMOKE_ENABLED=enabled` in the **approved staging
+     Custom Environment only**; redeploy there. The temporary route is
+     `GET /api/internal/discovery-read-smoke`. It refuses generic Preview,
+     PROD, local dev, unapproved origins and development-auth bypass;
+     it is inactive unless **both** feature flags have the exact values
+     above. The request host must match the approved `APP_ORIGIN` (HTTPS).
+   - From the approved staging host, sign in normally with a real eligible
+     `admin`, then with a real eligible `reviewer`, and invoke that exact
+     GET endpoint in each session (same-origin). Do **not** supply JWTs,
+     Cloud Run ID tokens, external URLs, execution IDs or an operator
+     impersonation header in the URL. Server-only Supabase validation checks
+     the live membership and signed role claim; Vercel forwards its own
+     signed workload assertion to Google STS/IAM Credentials. The resulting
+     Cloud Run ID token and Supabase bearer are never serialized to the UI.
+   - The probe uses **only GET** against the private engine API for the
+     fixed recovered Valencia execution
+     `2c17a493-2f68-4e3e-a2bb-9d75bb7a4a06`, its observations and
+     associated candidates. Expect HTTP 200/`SMOKE_OK` for both roles,
+     ten distinct candidates, ten observations, nine
+     `UNSUPPORTED_REVIEWABLE` and one `AMBIGUOUS_REVIEW_REQUIRED`.
+     HTTP 409/`SMOKE_MISMATCH` or any 401/403/404/502 **blocks activation**.
+     Verify an unauthenticated request returns HTTP 401, a revoked or
+     role-mismatched session returns HTTP 403 as applicable, and a generic
+     Preview/PROD attempt is HTTP 404. For an upstream authorization error,
+     use Cloud Run status/audit evidence; a local 401/403 before forwarding
+     proves the BFF boundary, not an actual engine rejection.
+   - Compare read-only before/after STAGING row digests/counts and
+     Cloud Run request/audit logs to prove no mutations, no provider
+     dispatch and the expected service identity. Never trigger
+     `staging-discovery-smoke.yml`: that workflow performs provider writes.
+     The temporary endpoint exposes **only aggregate status/counts**, uses
+     no-store responses, accepts no arbitrary IDs or URLs and must be
+     deactivated immediately after acceptance or upon failure.
 
-   ./scripts/discovery-admin-read-smoke.ps1 -ApprovedStaging `
-      -Environment staging `
-      -BaseUrl '<verified engine_base_url>' `
-      -ExecutionId '2c17a493-2f68-4e3e-a2bb-9d75bb7a4a06'
-   ```
-
-   Inject `DISCOVERY_ADMIN_TOKEN`, `DISCOVERY_REVIEWER_TOKEN`,
-   `CLOUD_RUN_ID_TOKEN` only transiently via an approved operator process.
-   Do not echo values, log headers or commit an env file. Verify private
-   engine HTTP responses for admin, reviewer, unauthorized and invalid tokens.
-   Use separate read-only before/after row digest/count evidence and engine
-   logs to corroborate no mutations and no provider dispatch. This step
-   is an **engine-only smoke**; the web UI cannot load live results while
-   `DISCOVERY_READ_MODE=disabled`.
-
-7. **Only after the private engine HTTP smoke passes**, set
-   `DISCOVERY_READ_MODE=staging` in the approved Vercel Custom Environment
-   (never generic Preview or PROD), then redeploy that environment.
-   Run the **real web UI smoke** as both admin and reviewer; verify
+7. Turn `DISCOVERY_STAGING_SMOKE_ENABLED=disabled` in STAGING, set
+   `DISCOVERY_READ_MODE=staging` **only after step 6 succeeds**, and redeploy
+   the approved Custom Environment. Confirm the temporary smoke route now
+   returns 404. Perform the **actual web UI smoke** as admin and reviewer:
    candidate list, cursor pagination, filters, detail, provenance,
-   401/403 responses, disabled users and backend failures. Capture safe
-   request IDs/statuses and evidence that the ten distinct Valencia
-   candidates match their ten original observations, without mutations
-   or provider dispatch. If any gate fails, disable the flag and redeploy
-   immediately according to Rollback. Record the approved revision/image
-   digest and role outcomes. Only then consider closing web #26 and
+   incomplete/backend-failure behavior and access revocation. The pages
+   render `Referencia UNAUTHENTICATED` / `Referencia FORBIDDEN` in
+   `LiveDiscoveryFailure` (usually HTTP 200) for engine read errors,
+   while `requireAdminAccess()` sends unauthenticated or unauthorized
+   users to `/admin-access` with a redirect; **do not require raw 401/403
+   on rendered UI pages**. Verify genuine engine 401/403 separately against
+   private HTTP/log evidence from step 6 or other approved server-side
+   tests, and distinguish those from BFF-side authorization errors.
+   Record safe request IDs/statuses, role outcomes, revision/image digest,
+   the ten historic candidates/observations and unchanged DB counters.
+   If any gate fails, disable the flags and redeploy according to Rollback.
+   Only after passing all real checks consider closing web #26 and
    engine #80. PROD remains disabled.
 
 ## Rollback
 
-Set `DISCOVERY_READ_MODE=disabled` in the STAGING Custom Environment and
-redeploy, leaving PROD unchanged. If there is workload identity exposure,
+Set `DISCOVERY_READ_MODE=disabled` and
+`DISCOVERY_STAGING_SMOKE_ENABLED=disabled` in the STAGING Custom Environment
+and redeploy, leaving PROD unchanged. If there is workload identity exposure,
 remove the exact invoker/WIF trust first. Restore the previously approved
 engine revision if a runtime regression is confirmed; reconcile Terraform
 state against the immutable previous digest. Disable the Auth hook only in a
@@ -137,6 +163,7 @@ SerpAPI search to make acceptance pass.
 - **PASS (offline only):** engine and web CI contract/test fixtures before this
   change; rerun this branch's web Quality and E2E before merge.
 - **NOT RUN (real HTTP):** workload trust, Spring JWT/Cloud Run IAM,
-  admin/reviewer private GET smoke, UI E2E and no-write snapshot comparison.
+  admin/reviewer private GET via the temporary Vercel probe, UI E2E and
+  no-write snapshot comparison.
   Lack of approved Cloud Run and reader is a hard blocker, not a failure
   to be bypassed with public ingress or fixtures.
