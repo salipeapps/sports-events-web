@@ -63,7 +63,7 @@ export async function GET(request: Request): Promise<Response> {
     const observationCandidateIds = new Set(observations.items.map((item) => item.candidateId));
     const returnedCandidateIds = new Set(candidates.items.map((item) => item.id));
     const valid =
-      (execution.status === "SUCCEEDED" || execution.recoveryState === "SUCCEEDED") &&
+      execution.recoveryState === "SUCCEEDED" &&
       observations.nextCursor === null &&
       candidates.nextCursor === null &&
       observations.items.length === 10 &&
