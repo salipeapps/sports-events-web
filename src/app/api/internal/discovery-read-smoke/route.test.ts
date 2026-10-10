@@ -40,7 +40,7 @@ function repository() {
     classification: { kind: index === 9 ? "AMBIGUOUS_REVIEW_REQUIRED" : "UNSUPPORTED_REVIEWABLE" },
   }));
   return {
-    execution: vi.fn().mockResolvedValue({ status: "SUCCEEDED" }),
+    execution: vi.fn().mockResolvedValue({ status: "FAILED", recoveryState: "SUCCEEDED" }),
     executionObservations: vi.fn().mockResolvedValue({ items: observations, nextCursor: null }),
     candidates: vi.fn().mockResolvedValue({ items: candidates, nextCursor: null }),
   };
@@ -135,6 +135,18 @@ describe("temporary read-only Vercel-side discovery smoke", () => {
         items[9] = { ...items[9], id: "00000000-0000-4000-8000-999999999999" };
       }
       repo.candidates.mockResolvedValue({ items, nextCursor: null });
+      vi.mocked(getStagingSmokeDiscoveryRepository).mockReturnValue(repo as unknown as DiscoveryReadRepository);
+      const response = await GET(request());
+      expect(response.status).toBe(409);
+      expect((await response.json()).code).toBe("SMOKE_MISMATCH");
+    },
+  );
+
+  it.each(["FAILED", null] as const)(
+    "refuses SMOKE_OK when a reported successful execution has recoveryState %s",
+    async (recoveryState) => {
+      const repo = repository();
+      repo.execution.mockResolvedValue({ status: "SUCCEEDED", recoveryState });
       vi.mocked(getStagingSmokeDiscoveryRepository).mockReturnValue(repo as unknown as DiscoveryReadRepository);
       const response = await GET(request());
       expect(response.status).toBe(409);
