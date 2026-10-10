@@ -501,6 +501,25 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
 
 export type DiscoveryMode = "demo" | "staging" | "disabled";
 
+export function isApprovedStagingDeployment(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (
+    env.NODE_ENV === "production" &&
+    env.APP_ENV === "staging" &&
+    env.VERCEL_ENV === "preview" &&
+    env.VERCEL_TARGET_ENV === "staging" &&
+    env.ADMIN_DEV_AUTH_MODE !== "enabled"
+  );
+}
+
+export function isStagingSmokeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  // Temporary, read-only acceptance path. Never active alongside live discovery.
+  return (
+    isApprovedStagingDeployment(env) &&
+    env.DISCOVERY_READ_MODE === "disabled" &&
+    env.DISCOVERY_STAGING_SMOKE_ENABLED === "enabled"
+  );
+}
+
 export function getDiscoveryMode(env: NodeJS.ProcessEnv = process.env): DiscoveryMode {
   const localDemo =
     env.NODE_ENV === "development" &&
@@ -512,15 +531,7 @@ export function getDiscoveryMode(env: NodeJS.ProcessEnv = process.env): Discover
   const requested = env.DISCOVERY_READ_MODE;
   if (requested === "demo" && !localDemo) return "disabled";
   if (requested === "demo" || (!requested && localDemo)) return "demo";
-  if (
-    requested === "staging" &&
-    env.NODE_ENV === "production" &&
-    env.APP_ENV === "staging" &&
-    env.VERCEL_ENV === "preview" &&
-    env.VERCEL_TARGET_ENV === "staging" &&
-    env.ADMIN_DEV_AUTH_MODE !== "enabled"
-  )
-    return "staging";
+  if (requested === "staging" && isApprovedStagingDeployment(env)) return "staging";
   return "disabled";
 }
 
@@ -634,8 +645,7 @@ async function workloadToken(config: StageConfig): Promise<string> {
   return iam.token;
 }
 
-export function getLiveDiscoveryRepository(): DiscoveryReadRepository {
-  if (getDiscoveryMode() !== "staging") throw new DiscoveryReadError("NOT_CONFIGURED");
+function createStagingReadRepository(): DiscoveryReadRepository {
   const config = parseStageConfig();
   return new HttpDiscoveryReadRepository({
     origin: config.origin,
@@ -649,4 +659,14 @@ export function getLiveDiscoveryRepository(): DiscoveryReadRepository {
       return workloadToken(config);
     },
   });
+}
+
+export function getLiveDiscoveryRepository(): DiscoveryReadRepository {
+  if (getDiscoveryMode() !== "staging") throw new DiscoveryReadError("NOT_CONFIGURED");
+  return createStagingReadRepository();
+}
+
+export function getStagingSmokeDiscoveryRepository(): DiscoveryReadRepository {
+  if (!isStagingSmokeEnabled()) throw new DiscoveryReadError("NOT_CONFIGURED");
+  return createStagingReadRepository();
 }
