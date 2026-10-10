@@ -6,6 +6,7 @@ import {
   DiscoveryReadError,
   HttpDiscoveryReadRepository,
   getDiscoveryMode,
+  isApprovedStagingDeployment,
   isStagingSmokeEnabled,
   parseStageConfig,
 } from "./readApi";
@@ -253,68 +254,57 @@ describe("private discovery read adapter (offline)", () => {
     });
   });
 
-  it("permits the temporary smoke only in approved STAGING while public discovery is disabled", () => {
-    const approved = {
-      NODE_ENV: "production",
-      APP_ENV: "staging",
-      VERCEL_ENV: "preview",
-      VERCEL_TARGET_ENV: "staging",
-      ADMIN_DEV_AUTH_MODE: "disabled",
-      DISCOVERY_READ_MODE: "disabled",
-      DISCOVERY_STAGING_SMOKE_ENABLED: "enabled",
-    } as const;
-    expect(isStagingSmokeEnabled(approved)).toBe(true);
-    expect(isStagingSmokeEnabled({ ...approved, DISCOVERY_READ_MODE: "staging" })).toBe(false);
-    expect(isStagingSmokeEnabled({ ...approved, VERCEL_TARGET_ENV: "preview" })).toBe(false);
-    expect(isStagingSmokeEnabled({ ...approved, VERCEL_ENV: "production" })).toBe(false);
-    expect(isStagingSmokeEnabled({ ...approved, ADMIN_DEV_AUTH_MODE: "enabled" })).toBe(false);
-    expect(isStagingSmokeEnabled({ ...approved, DISCOVERY_STAGING_SMOKE_ENABLED: "disabled" })).toBe(false);
+  const approvedHobbyStaging = {
+    NODE_ENV: "production",
+    APP_ENV: "staging",
+    VERCEL: "1",
+    VERCEL_ENV: "production",
+    VERCEL_TARGET_ENV: "production",
+    VERCEL_PROJECT_ID: "prj_MU4pprIXpAdKUGcBPx8uWztULHxb",
+    VERCEL_GIT_COMMIT_REF: "develop",
+    APP_ORIGIN: "https://sports-events-web-staging.vercel.app",
+    NEXT_PUBLIC_SUPABASE_URL: "https://yfytzogjrhwstcnzspdv.supabase.co",
+    ADMIN_DEV_AUTH_MODE: "disabled",
+    DISCOVERY_READ_MODE: "disabled",
+    DISCOVERY_STAGING_SMOKE_ENABLED: "enabled",
+  } as const;
+
+  it("allows only the dedicated Hobby STAGING project, with the temporary smoke isolated from live reads", () => {
+    expect(isApprovedStagingDeployment(approvedHobbyStaging)).toBe(true);
+    expect(isStagingSmokeEnabled(approvedHobbyStaging)).toBe(true);
+    expect(getDiscoveryMode({ ...approvedHobbyStaging, DISCOVERY_READ_MODE: "staging" })).toBe("staging");
+    expect(isStagingSmokeEnabled({ ...approvedHobbyStaging, DISCOVERY_READ_MODE: "staging" })).toBe(false);
+    expect(isStagingSmokeEnabled({ ...approvedHobbyStaging, DISCOVERY_STAGING_SMOKE_ENABLED: "disabled" })).toBe(false);
   });
 
-  it("never activates fixtures in a deployed environment", () => {
+  it.each([
+    ["real PROD project ID", { VERCEL_PROJECT_ID: "prj_mJZ53ELTCu9TBUAGHO3QbYfwJIdX" }],
+    ["missing project ID", { VERCEL_PROJECT_ID: undefined }],
+    ["generic preview", { VERCEL_ENV: "preview", VERCEL_TARGET_ENV: "preview" }],
+    ["non-production custom env", { VERCEL_TARGET_ENV: "staging" }],
+    ["master branch", { VERCEL_GIT_COMMIT_REF: "master" }],
+    ["missing branch", { VERCEL_GIT_COMMIT_REF: undefined }],
+    ["local runtime", { VERCEL: undefined }],
+    ["non-production Node runtime", { NODE_ENV: "development" }],
+    ["wrong app environment", { APP_ENV: "production" }],
+    ["unset app environment", { APP_ENV: undefined }],
+    ["wrong origin", { APP_ORIGIN: "https://sports-events-web-raulsp.vercel.app" }],
+    ["wrong Supabase", { NEXT_PUBLIC_SUPABASE_URL: "https://akqxscbqtqwtducvlozs.supabase.co" }],
+    ["missing Supabase", { NEXT_PUBLIC_SUPABASE_URL: undefined }],
+    ["dev bypass", { ADMIN_DEV_AUTH_MODE: "enabled" }],
+    ["missing bypass lock", { ADMIN_DEV_AUTH_MODE: undefined }],
+  ])("fails closed for %s", (_description, overrides) => {
+    const env = { ...approvedHobbyStaging, ...overrides };
+    expect(isApprovedStagingDeployment(env)).toBe(false);
+    expect(isStagingSmokeEnabled(env)).toBe(false);
+    expect(getDiscoveryMode({ ...env, DISCOVERY_READ_MODE: "staging" })).toBe("disabled");
+  });
+
+  it("never activates demo in Vercel and keeps offline dev demo local only", () => {
     expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe(
       "disabled",
     );
-    expect(
-      getDiscoveryMode({
-        NODE_ENV: "production",
-        APP_ENV: "staging",
-        VERCEL_ENV: "preview",
-        VERCEL_TARGET_ENV: "staging",
-        DISCOVERY_READ_MODE: "staging",
-      }),
-    ).toBe("staging");
-    expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "preview", DISCOVERY_READ_MODE: "staging" })).toBe(
-      "disabled",
-    );
-    expect(
-      getDiscoveryMode({
-        NODE_ENV: "production",
-        APP_ENV: "staging",
-        VERCEL_ENV: "preview",
-        VERCEL_TARGET_ENV: "preview",
-        DISCOVERY_READ_MODE: "staging",
-      }),
-    ).toBe("disabled");
-    expect(
-      getDiscoveryMode({
-        NODE_ENV: "production",
-        APP_ENV: "staging",
-        VERCEL_ENV: "production",
-        VERCEL_TARGET_ENV: "staging",
-        DISCOVERY_READ_MODE: "staging",
-      }),
-    ).toBe("disabled");
-    expect(
-      getDiscoveryMode({
-        NODE_ENV: "production",
-        APP_ENV: "staging",
-        VERCEL_ENV: "preview",
-        VERCEL_TARGET_ENV: "staging",
-        DISCOVERY_READ_MODE: "staging",
-        ADMIN_DEV_AUTH_MODE: "enabled",
-      }),
-    ).toBe("disabled");
+    expect(getDiscoveryMode({ ...approvedHobbyStaging, DISCOVERY_READ_MODE: "disabled" })).toBe("disabled");
     expect(
       getDiscoveryMode({
         NODE_ENV: "development",
