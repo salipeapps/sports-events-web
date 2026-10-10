@@ -63,7 +63,7 @@ are committed. The API remains disabled in all existing deployments.
    | `APP_ENV`                              | Literal `staging`                                              |
    | `ADMIN_DEV_AUTH_MODE`                  | Literal `disabled`                                             |
    | `DISCOVERY_READ_MODE`                  | Initially `disabled`; `staging` after the private smoke        |
-   | `DISCOVERY_STAGING_SMOKE_ENABLED`      | `disabled` normally; temporarily `enabled` for step 6 only    |
+   | `DISCOVERY_STAGING_SMOKE_ENABLED`      | `disabled` normally; temporarily `enabled` for step 6 only     |
    | `APP_ORIGIN`                           | Exact approved, stable HTTPS staging web origin                |
    | `NEXT_PUBLIC_SUPABASE_URL`             | `https://yfytzogjrhwstcnzspdv.supabase.co`                     |
    | `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Existing STAGING publishable key only                          |

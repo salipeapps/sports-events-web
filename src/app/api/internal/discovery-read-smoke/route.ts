@@ -86,13 +86,7 @@ export async function GET(request: Request): Promise<Response> {
   } catch (error) {
     const code = error instanceof DiscoveryReadError ? error.code : "READ_UNAVAILABLE";
     const status =
-      code === "UNAUTHENTICATED"
-        ? 401
-        : code === "FORBIDDEN"
-          ? 403
-          : code === "NOT_CONFIGURED"
-            ? 404
-            : 502;
+      code === "UNAUTHENTICATED" ? 401 : code === "FORBIDDEN" ? 403 : code === "NOT_CONFIGURED" ? 404 : 502;
     return output({ code }, status);
   }
 }
