@@ -99,16 +99,24 @@ are committed. The API remains disabled in all existing deployments.
 
    Inject `DISCOVERY_ADMIN_TOKEN`, `DISCOVERY_REVIEWER_TOKEN`,
    `CLOUD_RUN_ID_TOKEN` only transiently via an approved operator process.
-   Do not echo values, log headers or commit an env file. Run a real UI
-   smoke as both roles, check cursor/filter/detail/401/403 behavior,
-   disabled users and backend failures. Use separate read-only before/after
-   row digest/count evidence and engine logs to corroborate no mutations
-   and no provider dispatch.
+   Do not echo values, log headers or commit an env file. Verify private
+   engine HTTP responses for admin, reviewer, unauthorized and invalid tokens.
+   Use separate read-only before/after row digest/count evidence and engine
+   logs to corroborate no mutations and no provider dispatch. This step
+   is an **engine-only smoke**; the web UI cannot load live results while
+   `DISCOVERY_READ_MODE=disabled`.
 
-7. Record revision/digest, request IDs/statuses, role outcomes, ten distinct
-   candidates and matching ten original provenances. Only after **real**
-   passing evidence activate `DISCOVERY_READ_MODE=staging` for that
-   environment, redeploy, smoke UI and consider closing web #26 /
+7. **Only after the private engine HTTP smoke passes**, set
+   `DISCOVERY_READ_MODE=staging` in the approved Vercel Custom Environment
+   (never generic Preview or PROD), then redeploy that environment.
+   Run the **real web UI smoke** as both admin and reviewer; verify
+   candidate list, cursor pagination, filters, detail, provenance,
+   401/403 responses, disabled users and backend failures. Capture safe
+   request IDs/statuses and evidence that the ten distinct Valencia
+   candidates match their ten original observations, without mutations
+   or provider dispatch. If any gate fails, disable the flag and redeploy
+   immediately according to Rollback. Record the approved revision/image
+   digest and role outcomes. Only then consider closing web #26 and
    engine #80. PROD remains disabled.
 
 ## Rollback
