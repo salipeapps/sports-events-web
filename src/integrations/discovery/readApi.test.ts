@@ -262,7 +262,7 @@ describe("private discovery read adapter (offline)", () => {
       ADMIN_DEV_AUTH_MODE: "disabled",
       DISCOVERY_READ_MODE: "disabled",
       DISCOVERY_STAGING_SMOKE_ENABLED: "enabled",
-    };
+    } as const;
     expect(isStagingSmokeEnabled(approved)).toBe(true);
     expect(isStagingSmokeEnabled({ ...approved, DISCOVERY_READ_MODE: "staging" })).toBe(false);
     expect(isStagingSmokeEnabled({ ...approved, VERCEL_TARGET_ENV: "preview" })).toBe(false);
