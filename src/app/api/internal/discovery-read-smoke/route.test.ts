@@ -123,6 +123,25 @@ describe("temporary read-only Vercel-side discovery smoke", () => {
     expect((await response.json()).code).toBe("SMOKE_MISMATCH");
   });
 
+  it.each(["duplicate", "unrelated"] as const)(
+    "rejects a %s candidate identity even with ten unique observations",
+    async (scenario) => {
+      const repo = repository();
+      const page = await repo.candidates();
+      const items = [...page.items];
+      if (scenario === "duplicate") {
+        items[9] = items[0];
+      } else {
+        items[9] = { ...items[9], id: "00000000-0000-4000-8000-999999999999" };
+      }
+      repo.candidates.mockResolvedValue({ items, nextCursor: null });
+      vi.mocked(getStagingSmokeDiscoveryRepository).mockReturnValue(repo as unknown as DiscoveryReadRepository);
+      const response = await GET(request());
+      expect(response.status).toBe(409);
+      expect((await response.json()).code).toBe("SMOKE_MISMATCH");
+    },
+  );
+
   it("redacts service exceptions and does not leak upstream data", async () => {
     const repo = repository();
     repo.execution.mockRejectedValue(new DiscoveryReadError("FORBIDDEN"));
