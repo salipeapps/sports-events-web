@@ -501,13 +501,20 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
 
 export type DiscoveryMode = "demo" | "staging" | "disabled";
 
+// Project-scoped Hobby STAGING uses Vercel's "production" target, NOT our actual PROD project.
+// These stable IDs are public identifiers, not credentials. Every condition fails closed.
 export function isApprovedStagingDeployment(env: NodeJS.ProcessEnv = process.env): boolean {
   return (
     env.NODE_ENV === "production" &&
     env.APP_ENV === "staging" &&
-    env.VERCEL_ENV === "preview" &&
-    env.VERCEL_TARGET_ENV === "staging" &&
-    env.ADMIN_DEV_AUTH_MODE !== "enabled"
+    env.VERCEL === "1" &&
+    env.VERCEL_ENV === "production" &&
+    env.VERCEL_TARGET_ENV === "production" &&
+    env.VERCEL_PROJECT_ID === "prj_MU4pprIXpAdKUGcBPx8uWztULHxb" &&
+    env.VERCEL_GIT_COMMIT_REF === "develop" &&
+    env.APP_ORIGIN === "https://sports-events-web-staging.vercel.app" &&
+    env.NEXT_PUBLIC_SUPABASE_URL === "https://yfytzogjrhwstcnzspdv.supabase.co" &&
+    env.ADMIN_DEV_AUTH_MODE === "disabled"
   );
 }
 
@@ -564,8 +571,8 @@ export function parseStageConfig(env: Partial<NodeJS.ProcessEnv> = process.env):
       env.GCP_WORKLOAD_PROVIDER_AUDIENCE ?? "",
     ) ||
     !/^[a-zA-Z0-9.-]+@[a-zA-Z0-9-]+\.iam\.gserviceaccount\.com$/.test(env.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL ?? "") ||
-    !/^https:\/\/oidc\.vercel\.com(?:\/[a-zA-Z0-9-]+)?$/.test(env.VERCEL_EXPECTED_OIDC_ISSUER ?? "") ||
-    !(env.VERCEL_EXPECTED_OIDC_AUDIENCE ?? "").startsWith("https://vercel.com/")
+    env.VERCEL_EXPECTED_OIDC_ISSUER !== "https://oidc.vercel.com/raulsp" ||
+    env.VERCEL_EXPECTED_OIDC_AUDIENCE !== "https://vercel.com/raulsp"
   )
     throw new DiscoveryReadError("NOT_CONFIGURED");
   return {
@@ -618,6 +625,10 @@ async function workloadToken(config: StageConfig): Promise<string> {
       audience === config.expectedAudience ||
       (Array.isArray(audience) && audience.includes(config.expectedAudience))
     ) ||
+    claims.sub !== "owner:raulsp:project:sports-events-web-staging:environment:production" ||
+    claims.owner_id !== "team_EH6GksyEmuYgo1EtauFaEdhv" ||
+    claims.project_id !== "prj_MU4pprIXpAdKUGcBPx8uWztULHxb" ||
+    claims.environment !== "production" ||
     typeof claims.exp !== "number" ||
     claims.exp <= Math.floor(Date.now() / 1000) + 30
   )
