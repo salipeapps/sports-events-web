@@ -7,14 +7,18 @@ remote migrations or cloud resources. **Real STAGING smoke is still pending.**
 ## Activation gates
 
 Deployed environments fail closed by default (`DISCOVERY_READ_MODE=disabled`).
-Setting `DISCOVERY_READ_MODE=staging` requires the approved Vercel **Custom
-Environment** `staging` (`NODE_ENV=production`, `APP_ENV=staging`,
-`VERCEL_ENV=preview`, `VERCEL_TARGET_ENV=staging`) after Supabase's
-separately approved access-token hook and the private Cloud Run service/roles
-are live. Generic Preview and PROD stay disabled even if someone accidentally
-sets the feature flag. It is **not** authorization to deploy infrastructure.
-The required Custom Environment must be available on the actual Vercel plan.
-See [STAGING activation gates](staging-discovery-activation.md).
+Setting `DISCOVERY_READ_MODE=staging` requires the dedicated Vercel Hobby project
+`sports-events-web-staging` (project ID `prj_MU4pprIXpAdKUGcBPx8uWztULHxb`,
+`APP_ENV=staging`, `NODE_ENV=production`, `VERCEL_ENV=production`,
+`VERCEL_TARGET_ENV=production`, system `VERCEL_PROJECT_ID`, branch `develop`,
+approved `APP_ORIGIN` and STAGING-only Supabase URL). The word `production`
+here is Vercel's per-project deployment target; it is **not** the separate real
+PROD project `sports-events-web` (`prj_mJZ53ELTCu9TBUAGHO3QbYfwJIdX`).
+Generic Preview, other branches and PROD all fail closed even with a feature flag.
+The Vercel system variables must be exposed by the platform, not fabricated by hand.
+Activate only after Supabase's approved Auth hook, read-only database reader and
+private Cloud Run IAM/OIDC are live and verified. See
+[STAGING activation gates](staging-discovery-activation.md).
 
 Server-only variables:
 
