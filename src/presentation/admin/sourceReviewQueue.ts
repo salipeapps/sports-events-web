@@ -92,6 +92,8 @@ export function sourceCandidateGuidance(candidate: DiscoveryCandidate): string {
   if (candidate.reviewStatus === "REJECTED") return "Rechazada; se conserva el historial de la decisión.";
   if (candidate.linkedSourceId)
     return "Vinculada a una fuente B2; esto no implica captación ni publicación automática.";
+  if (candidate.reviewStatus === "APPROVED")
+    return "Aprobación registrada; todavía no consta una fuente B2 vinculada. No asumir promoción, captación ni publicación.";
   switch (candidate.classification?.kind) {
     case "SUPPORTED_ADAPTER_CANDIDATE":
       return "Compatibilidad técnica detectada. La aprobación requiere una revisión administrativa posterior.";
