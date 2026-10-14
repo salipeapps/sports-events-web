@@ -29,9 +29,7 @@ describe("read-only review queue filters", () => {
       const url = new URL(sourceQueueHref(view.id, {}), "https://example.test");
       expect(url.pathname).toBe("/admin/discovery");
       expect(url.searchParams.get("tab")).toBe("resultados");
-      expect(Object.fromEntries([...url.searchParams].filter(([key]) => key !== "tab"))).toEqual(
-        expected[view.id],
-      );
+      expect(Object.fromEntries([...url.searchParams].filter(([key]) => key !== "tab"))).toEqual(expected[view.id]);
       expect(activeSourceQueueView(expected[view.id])).toBe(view.id);
     }
   });
