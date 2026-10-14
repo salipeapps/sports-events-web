@@ -14,6 +14,13 @@ describe("server environment", () => {
   it("accepts known environments and development roles", () => {
     expect(parseAppEnvironment("test")).toBe("test");
     expect(parseAppEnvironment("production")).toBe("production");
+    expect(parseAppEnvironment("staging")).toBe("staging");
+    expect(
+      getServerConfig({ APP_ENV: "staging", NODE_ENV: "production", ADMIN_DEV_AUTH_MODE: "disabled" }),
+    ).toMatchObject({
+      appEnv: "staging",
+      adminDevAuthMode: "disabled",
+    });
     expect(parseAdminDevAuthMode("enabled")).toBe("enabled");
     expect(parseAdminDevRole("reviewer")).toBe("reviewer");
   });
@@ -24,7 +31,16 @@ describe("server environment", () => {
     expect(() => parseAdminDevRole("editor")).toThrow("Invalid ADMIN_DEV_AUTH_ROLE");
   });
 
-  it("fails closed if development bypass is enabled in production", () => {
+  it("fails closed if development bypass is enabled in production or staging", () => {
+    expect(() =>
+      getServerConfig({
+        APP_ENV: "staging",
+        NODE_ENV: "production",
+        VERCEL_ENV: "preview",
+        ADMIN_DEV_AUTH_MODE: "enabled",
+      }),
+    ).toThrow("development-only");
+
     expect(() =>
       getServerConfig({
         APP_ENV: "production",

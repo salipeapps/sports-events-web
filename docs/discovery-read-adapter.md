@@ -7,9 +7,18 @@ remote migrations or cloud resources. **Real STAGING smoke is still pending.**
 ## Activation gates
 
 Deployed environments fail closed by default (`DISCOVERY_READ_MODE=disabled`).
-Setting `DISCOVERY_READ_MODE=staging` only works in a Vercel Preview environment,
-after Supabase's separately approved access-token hook and the private Cloud Run
-service/roles are live. It is **not** authorization to deploy infrastructure.
+Setting `DISCOVERY_READ_MODE=staging` requires the dedicated Vercel Hobby project
+`sports-events-web-staging` (project ID `prj_MU4pprIXpAdKUGcBPx8uWztULHxb`,
+`APP_ENV=staging`, `NODE_ENV=production`, `VERCEL_ENV=production`,
+`VERCEL_TARGET_ENV=production`, system `VERCEL_PROJECT_ID`, branch `develop`,
+approved `APP_ORIGIN` and STAGING-only Supabase URL). The word `production`
+here is Vercel's per-project deployment target; it is **not** the separate real
+PROD project `sports-events-web` (`prj_mJZ53ELTCu9TBUAGHO3QbYfwJIdX`).
+Generic Preview, other branches and PROD all fail closed even with a feature flag.
+The Vercel system variables must be exposed by the platform, not fabricated by hand.
+Activate only after Supabase's approved Auth hook, read-only database reader and
+private Cloud Run IAM/OIDC are live and verified. See
+[STAGING activation gates](staging-discovery-activation.md).
 
 Server-only variables:
 
@@ -56,8 +65,9 @@ Offline: `npm run quality`; local demo Playwright:
 `npm run test:e2e` with the existing explicit dev-auth loopback setup.
 
 Real HTTP STAGING evidence is **NOT RUN**. It requires separate approval,
-provisioned custom-environment Vercel OIDC, a verified token hook, dedicated
-SELECT-only engine reader and private ingress. Read the engine PR #83 runbook
+the dedicated Vercel Hobby STAGING project's verified OIDC identity,
+a verified token hook, dedicated SELECT-only engine reader and private
+Cloud Run IAM ingress. Read the engine PR #84 / #83 runbooks
 before activation. With the already recovered Valencia execution UUID, verify
 10 distinct candidates, 10 original provenance records, 9
 `UNSUPPORTED_REVIEWABLE` and 1 `AMBIGUOUS_REVIEW_REQUIRED` across paged
