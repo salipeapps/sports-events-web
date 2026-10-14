@@ -1,5 +1,7 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
+import { canAdmin } from "@/domain/adminAccess";
 import { requireAdminAccess } from "@/integrations/auth/adminAuth";
 
 export default async function ForbiddenPage({
@@ -9,6 +11,14 @@ export default async function ForbiddenPage({
 }) {
   const session = await requireAdminAccess("dashboard.view");
   const { capability } = await searchParams;
+  const destinations = {
+    "sources.manage": "/admin/sources",
+    "runs.execute": "/admin/runs",
+  } as const;
+  if (capability === "sources.manage" || capability === "runs.execute") {
+    if (canAdmin(session.role, capability)) redirect(destinations[capability]);
+  }
+
   const restriction =
     capability === "sources.manage"
       ? "La gestión de fuentes está reservada a administradores."

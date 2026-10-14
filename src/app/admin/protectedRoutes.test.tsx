@@ -94,4 +94,17 @@ describe("server authorization before protected data access", () => {
       expect(html).not.toContain("evil.test");
     },
   );
+
+  it.each([
+    ["sources.manage", "/admin/sources"],
+    ["runs.execute", "/admin/runs"],
+  ])("redirects authorized admins from saved %s denial links", async (capability, destination) => {
+    getAccess.mockResolvedValue({
+      status: "authenticated",
+      session: { subject: "admin", displayName: "Admin", role: "admin" },
+    });
+    await expect(ForbiddenPage({ searchParams: Promise.resolve({ capability }) })).rejects.toThrow(
+      `REDIRECT:${destination}`,
+    );
+  });
 });
