@@ -22,19 +22,52 @@ test("admin login persists verified cookies; deactivation takes effect on next r
   await page.goto("/admin/activities");
   await expect(page).toHaveURL(/reason=unauthorized/);
 });
-test("reviewer can read discovery but cannot access sensitive source or run data", async ({ page }) => {
+test("reviewer stays in the shell on denied routes and retains discovery and logout", async ({ page, context }) => {
   await login(page, "reviewer");
   await expect(page).toHaveURL(/\/admin$/);
   await page.goto("/admin/activities");
   await expect(page.getByRole("heading", { name: "Actividades", exact: true })).toBeVisible();
-  for (const route of ["/admin/sources", "/admin/runs"]) {
-    await page.goto(route);
-    await expect(page.locator(".admin-content")).toHaveCount(0);
-    await expect(page).toHaveURL(/admin-access\?reason=unauthorized/);
+  const cookiesBefore = (await context.cookies()).filter(({ name }) => name.startsWith("sb-"));
+  for (const label of ["Fuentes", "Ejecuciones"]) {
+    await page.getByRole("link", { name: `${label} Solo admin`, exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/forbidden\?capability=/);
+    await expect(page.getByRole("heading", { name: "No tienes permisos para acceder a esta sección" })).toBeVisible();
+    await expect(page.locator(".admin-content")).toContainText("Tu rol es Revisor");
+    await expect(page.locator(".admin-content")).toContainText(
+      label === "Fuentes" ? "La gestión de fuentes" : "La gestión de ejecuciones",
+    );
+    await expect(page.locator(".admin-identity")).toContainText("Reviewer");
+    await expect(page.getByRole("button", { name: "Cerrar sesión" })).toBeVisible();
+    await page.getByRole("link", { name: "Volver a Resumen", exact: true }).click();
+    await expect(page).toHaveURL(/\/admin$/);
   }
-  await page.goto("/admin/discovery");
+  for (const route of ["/admin/sources", "/admin/sources/S001", "/admin/runs", "/admin/runs/fixture-run-8421"]) {
+    await page.goto(route);
+    await expect(page).toHaveURL(/\/admin\/forbidden\?capability=/);
+    await expect(page.locator(".admin-shell")).toBeVisible();
+    await expect(page.locator(".admin-content table")).toHaveCount(0);
+  }
+  expect((await context.cookies()).filter(({ name }) => name.startsWith("sb-"))).toEqual(cookiesBefore);
+  await page.getByRole("link", { name: "Volver a Descubrimiento", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Descubrimiento" })).toBeVisible();
   await expect(page.getByRole("alert").filter({ hasText: "NOT_CONFIGURED" })).toContainText("NOT_CONFIGURED");
+  await page.goto("/admin/candidates");
+  await expect(page.getByRole("heading", { name: "Candidatos", exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Cerrar sesión" }).click();
+  await expect(page).toHaveURL(/admin-access/);
+  await page.goto("/admin/forbidden");
+  await expect(page).toHaveURL(/admin-access/);
+});
+
+test("admin retains source and run list and detail access", async ({ page }) => {
+  await login(page, "admin");
+  await expect(page).toHaveURL(/\/admin$/);
+  for (const route of ["/admin/sources", "/admin/sources/S001", "/admin/runs", "/admin/runs/fixture-run-8421"]) {
+    await page.goto(route);
+    await expect(page).toHaveURL(new RegExp(`${route}$`));
+    await expect(page.locator(".admin-content h1")).toBeVisible();
+  }
+  await expect(page.getByRole("link", { name: "Fuentes", exact: true })).toBeVisible();
 });
 for (const subject of ["outsider", "inactive", "expired"])
   test(`${subject} cannot enter Admin despite forged user metadata`, async ({ page }) => {

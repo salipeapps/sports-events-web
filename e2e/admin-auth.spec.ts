@@ -5,6 +5,7 @@ test.skip(process.env.ADMIN_DEV_AUTH_MODE !== "disabled", "Run in the separate f
 test("every private Admin route denies a request with no session", async ({ page }) => {
   for (const route of [
     "/admin",
+    "/admin/forbidden",
     "/admin/activities",
     "/admin/candidates",
     "/admin/candidates/candidate-valid-E019",

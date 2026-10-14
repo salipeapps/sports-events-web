@@ -14,8 +14,8 @@ const navigation = [
   { id: "activities", label: "Actividades", href: "/admin/activities" },
   { id: "candidates", label: "Candidatos", href: "/admin/candidates" },
   { id: "discovery", label: "Descubrimiento", href: "/admin/discovery" },
-  { id: "sources", label: "Fuentes", href: "/admin/sources" },
-  { id: "runs", label: "Ejecuciones", href: "/admin/runs" },
+  { id: "sources", label: "Fuentes", href: "/admin/sources", capability: "sources.manage" as const },
+  { id: "runs", label: "Ejecuciones", href: "/admin/runs", capability: "runs.execute" as const },
   { id: "organizers", label: "Organizadores" },
   { id: "settings", label: "Configuración", capability: "settings.manage" as const },
 ];
@@ -42,7 +42,8 @@ export function AdminNavigation({ session }: AdminNavigationProps) {
               aria-current={active ? "page" : undefined}
               key={item.id}
             >
-              {item.label}
+              <span>{item.label}</span>
+              {!allowed ? <small>Solo admin</small> : null}
             </Link>
           );
         }
