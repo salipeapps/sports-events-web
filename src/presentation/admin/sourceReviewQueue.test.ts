@@ -105,6 +105,6 @@ describe("candidate classification and review presentation", () => {
         ...candidate,
         linkedSourceId: "01010101-1111-4111-8111-111111111111",
       }),
-    ).not.toContain("publicación automática");
+    ).toContain("no implica captación ni publicación automática");
   });
 });
