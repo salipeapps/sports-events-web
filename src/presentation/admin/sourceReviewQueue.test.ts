@@ -84,6 +84,38 @@ describe("candidate classification and review presentation", () => {
     expect(classificationReasonLabel("NEW_REASON")).toBe("NEW_REASON");
   });
 
+  it.each(["SUPPORTED_ADAPTER_CANDIDATE", "UNSUPPORTED_REVIEWABLE", "AMBIGUOUS_REVIEW_REQUIRED"])(
+    "keeps already approved %s sources distinct from B2 promotion",
+    (kind) => {
+      const guidance = sourceCandidateGuidance({
+        ...candidate,
+        reviewStatus: "APPROVED",
+        classification: { ...candidate.classification!, kind },
+      });
+      expect(guidance).toContain("Aprobación registrada");
+      expect(guidance).toContain("todavía no consta una fuente B2 vinculada");
+      expect(guidance).not.toContain("requiere una revisión");
+      expect(guidance).not.toContain("antes de tomar una decisión");
+    },
+  );
+
+  it("prioritizes recorded rejection and linked B2 source over technical classification", () => {
+    const rejection = sourceCandidateGuidance({
+      ...candidate,
+      reviewStatus: "REJECTED",
+      classification: { ...candidate.classification!, kind: "SUPPORTED_ADAPTER_CANDIDATE" },
+    });
+    expect(rejection).toContain("Rechazada");
+
+    const linked = sourceCandidateGuidance({
+      ...candidate,
+      reviewStatus: "APPROVED",
+      linkedSourceId: "01010101-1111-4111-8111-111111111111",
+    });
+    expect(linked).toContain("Vinculada a una fuente B2");
+    expect(linked).not.toContain("todavía no consta");
+  });
+
   it("does not imply approval or promotion for incompatible or ambiguous candidates", () => {
     expect(sourceCandidateGuidance(candidate)).toContain("todavía no puede pasar a captura B2");
     expect(
