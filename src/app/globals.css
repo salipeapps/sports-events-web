@@ -2102,6 +2102,203 @@ h1 {
   text-underline-offset: 2px;
 }
 
+/* Admin v1 — review queue remains read-only until the engine exposes audited commands. */
+.admin-discovery-review-queue {
+  margin-bottom: 18px;
+}
+
+.admin-discovery-review-queue h2 {
+  margin: 0 0 6px;
+  font-size: var(--type-h2-size);
+  line-height: var(--type-h2-line);
+}
+
+.admin-discovery-review-queue > p {
+  margin: 0 0 16px;
+}
+
+.admin-discovery-queue-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.admin-discovery-queue-link {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  padding: 7px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 999px;
+  color: var(--text-primary);
+  background: var(--surface-base);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.admin-discovery-queue-link:hover,
+.admin-discovery-queue-link:focus-visible {
+  border-color: var(--brand-500);
+}
+
+.admin-discovery-queue-link-active {
+  color: var(--brand-700);
+  border-color: var(--brand-500);
+  background: var(--accent-soft);
+}
+
+.admin-discovery-advanced {
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  background: var(--surface-base);
+}
+
+.admin-discovery-advanced summary {
+  padding: 12px 16px;
+  font-size: var(--type-label-size);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.admin-discovery-filter-form {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.admin-discovery-filter-form label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  font-size: var(--type-small-size);
+  font-weight: 600;
+}
+
+.admin-discovery-filter-form input,
+.admin-discovery-filter-form select {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-base);
+  color: var(--text-primary);
+}
+
+.admin-discovery-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+}
+
+.admin-discovery-status {
+  display: inline-block;
+  max-width: 100%;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+  font-weight: 600;
+  white-space: normal;
+}
+
+.admin-discovery-status-success {
+  border-color: color-mix(in srgb, var(--status-success) 35%, white);
+  color: #086b4d;
+  background: color-mix(in srgb, var(--status-success) 10%, white);
+}
+
+.admin-discovery-status-warning {
+  border-color: color-mix(in srgb, var(--status-warning) 55%, white);
+  color: #805900;
+  background: color-mix(in srgb, var(--status-warning) 15%, white);
+}
+
+.admin-discovery-status-danger {
+  border-color: color-mix(in srgb, var(--status-danger) 32%, white);
+  color: #ad2d35;
+  background: color-mix(in srgb, var(--status-danger) 10%, white);
+}
+
+.admin-discovery-status-neutral {
+  border-color: var(--border-default);
+  color: var(--text-muted);
+  background: var(--surface-soft);
+}
+
+.admin-discovery-snippet,
+.admin-discovery-cell-detail {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}
+
+.admin-discovery-snippet {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.admin-discovery-inspect-link {
+  color: var(--brand-700);
+  font-size: var(--type-small-size);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.admin-discovery-page-count,
+.admin-discovery-detail-eyebrow {
+  color: var(--text-muted);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}
+
+.admin-discovery-detail-eyebrow {
+  margin: 0 0 12px;
+  font-weight: 700;
+}
+
+.admin-discovery-detail-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.admin-discovery-guidance {
+  margin: 16px 0 0;
+  padding: 12px 14px;
+  border-left: 3px solid var(--brand-500);
+  border-radius: 0 8px 8px 0;
+  background: var(--surface-soft);
+  color: var(--text-primary);
+  font-size: var(--type-small-size);
+  line-height: var(--type-small-line);
+}
+
+@media (max-width: 900px) {
+  .admin-discovery-filter-form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .admin-discovery-filter-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Discovery extends the Admin Foundations system rather than introducing new tokens. */
 .admin-discovery-note {
   margin: 16px 0;
