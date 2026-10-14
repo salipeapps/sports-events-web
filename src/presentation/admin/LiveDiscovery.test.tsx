@@ -30,7 +30,6 @@ describe("independently paginated candidate sections", () => {
   });
 });
 
-
 const sampleCandidate: DiscoveryCandidate = {
   id: "ca73b0ff-8001-4000-8000-111111111111",
   canonicalUrl: "https://example.test/source",
