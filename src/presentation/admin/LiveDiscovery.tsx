@@ -1,5 +1,17 @@
 import Link from "next/link";
 
+import {
+  activeSourceQueueView,
+  classificationLabel,
+  classificationReasonLabel,
+  classificationTone,
+  reviewStatusLabel,
+  reviewStatusTone,
+  sourceCandidateGuidance,
+  sourceQueueHref,
+  sourceQueueViews,
+} from "./sourceReviewQueue";
+
 import type {
   DiscoveryCandidate,
   DiscoveryCandidateDetail,
@@ -99,47 +111,74 @@ export function candidatePageHref(
   return "/admin/discovery/results/" + encodeURIComponent(candidateId) + "?" + params.toString();
 }
 
+function QueueNavigation({ params }: { params: Record<string, string | undefined> }) {
+  const selected = activeSourceQueueView(params);
+  return (
+    <nav className="admin-discovery-queue-nav" aria-label="Filtrar cola de revisión">
+      {sourceQueueViews.map((view) => (
+        <Link
+          key={view.id}
+          href={sourceQueueHref(view.id, params)}
+          className={"admin-discovery-queue-link" + (selected === view.id ? " admin-discovery-queue-link-active" : "")}
+          aria-current={selected === view.id ? "page" : undefined}
+        >
+          {view.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
 function Filters({ params }: { params: Record<string, string | undefined> }) {
   return (
-    <form action="/admin/discovery" method="get">
+    <form action="/admin/discovery" method="get" className="admin-discovery-filter-form">
       <input type="hidden" name="tab" value="resultados" />
       <label>
-        Revisión{" "}
+        Estado de revisión
         <select name="reviewStatus" defaultValue={params.reviewStatus ?? ""}>
-          <option value="">Todas</option>
+          <option value="">Todos</option>
           <option value="PENDING_REVIEW">Pendientes</option>
           <option value="APPROVED">Aprobadas</option>
           <option value="REJECTED">Rechazadas</option>
         </select>
-      </label>{" "}
+      </label>
       <label>
-        Clasificación{" "}
-        <input
-          name="classificationKind"
-          defaultValue={params.classificationKind ?? ""}
-          placeholder="UNSUPPORTED_REVIEWABLE"
-        />
-      </label>{" "}
+        Compatibilidad
+        <select name="classificationKind" defaultValue={params.classificationKind ?? ""}>
+          <option value="">Todas</option>
+          <option value="SUPPORTED_ADAPTER_CANDIDATE">Compatible</option>
+          <option value="UNSUPPORTED_REVIEWABLE">Requiere adaptador</option>
+          <option value="AMBIGUOUS_REVIEW_REQUIRED">Ambigua</option>
+          <option value="KNOWN_SOURCE">Fuente conocida</option>
+          <option value="UNSAFE_OR_INVALID">No apta</option>
+          <option value="NON_SOURCE_RESULT">No es fuente</option>
+        </select>
+      </label>
       <label>
-        Proveedor <input name="providerKey" defaultValue={params.providerKey ?? ""} placeholder="serpapi" />
-      </label>{" "}
+        Proveedor
+        <input name="providerKey" defaultValue={params.providerKey ?? ""} placeholder="serpapi" />
+      </label>
       <label>
-        Consulta UUID <input name="queryId" defaultValue={params.queryId ?? ""} />
-      </label>{" "}
+        Consulta UUID
+        <input name="queryId" defaultValue={params.queryId ?? ""} />
+      </label>
       <label>
-        Ejecución UUID <input name="executionId" defaultValue={params.executionId ?? ""} />
-      </label>{" "}
+        Ejecución UUID
+        <input name="executionId" defaultValue={params.executionId ?? ""} />
+      </label>
       <label>
-        Búsqueda <input name="search" maxLength={200} defaultValue={params.search ?? ""} />
-      </label>{" "}
-      <button type="submit" className="admin-secondary-button">
-        Filtrar
-      </button>{" "}
-      <Link href="/admin/discovery?tab=resultados">Limpiar</Link>
+        Buscar por URL o título
+        <input name="search" maxLength={200} defaultValue={params.search ?? ""} />
+      </label>
+      <div className="admin-discovery-filter-actions">
+        <button type="submit" className="admin-secondary-button">
+          Aplicar filtros
+        </button>
+        <Link href="/admin/discovery?tab=resultados">Limpiar</Link>
+      </div>
     </form>
   );
 }
-
 export function readQueryParams(input: Record<string, string | string[] | undefined>) {
   const keys = [
     "tab",
@@ -180,11 +219,34 @@ export function LiveDiscoveryOverview({
           </Link>
         ))}
       </nav>
-      {tab === "resultados" ? <Filters params={params} /> : null}
+      {tab === "resultados" ? (
+        <section className="admin-discovery-review-queue" aria-label="Cola de revisión de fuentes">
+          <h2>Candidatos a fuentes</h2>
+          <p className="admin-muted-copy">
+            Filtros sobre el motor privado. Los resultados son fuentes por evaluar, no eventos ni publicaciones.
+          </p>
+          <QueueNavigation params={params} />
+          <details
+            className="admin-discovery-advanced"
+            open={Boolean(
+              params.providerKey ||
+              params.queryId ||
+              params.executionId ||
+              params.search ||
+              activeSourceQueueView(params) === null,
+            )}
+          >
+            <summary>Filtros avanzados</summary>
+            <Filters params={params} />
+          </details>
+        </section>
+      ) : null}
       {data.items.length === 0 ? (
         <section className="admin-empty-state">
-          <strong>No hay datos en esta página</strong>
-          <p>Revisa los filtros o vuelve al inicio.</p>
+          <strong>
+            {tab === "resultados" ? "No hay fuentes que coincidan con los filtros" : "No hay datos en esta página"}
+          </strong>
+          <p>Prueba otro filtro o vuelve a la primera página. No se muestran resultados simulados.</p>
         </section>
       ) : (
         <section className="admin-table-card">
@@ -194,28 +256,66 @@ export function LiveDiscoveryOverview({
                 <>
                   <thead>
                     <tr>
-                      <th>Candidato / URL</th>
-                      <th>Proveedor</th>
+                      <th>Fuente candidata</th>
                       <th>Revisión</th>
-                      <th>Clasificación</th>
-                      <th>Observaciones</th>
+                      <th>Compatibilidad</th>
+                      <th>Procedencia</th>
+                      <th>Última observación</th>
+                      <th>Detalle</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {(data.items as DiscoveryCandidate[]).map((c) => (
-                      <tr key={c.id}>
+                    {(data.items as DiscoveryCandidate[]).map((candidate) => (
+                      <tr key={candidate.id}>
                         <td className="admin-table-title">
-                          <Link href={"/admin/discovery/results/" + encodeURIComponent(c.id)}>
-                            {show(c.latestObservation?.title) === "Sin dato"
-                              ? c.canonicalUrl
-                              : c.latestObservation?.title}
+                          <Link href={"/admin/discovery/results/" + encodeURIComponent(candidate.id)}>
+                            {candidate.latestObservation?.title || candidate.canonicalUrl}
                           </Link>
-                          <small>{c.canonicalUrl}</small>
+                          <small>{candidate.canonicalUrl}</small>
+                          {candidate.latestObservation?.snippet ? (
+                            <small className="admin-discovery-snippet">{candidate.latestObservation.snippet}</small>
+                          ) : null}
                         </td>
-                        <td>{show(c.latestObservation?.providerKey)}</td>
-                        <td>{c.reviewStatus}</td>
-                        <td>{show(c.classification?.kind)}</td>
-                        <td>{c.observationCount}</td>
+                        <td>
+                          <span
+                            className={
+                              "admin-discovery-status admin-discovery-status-" +
+                              reviewStatusTone(candidate.reviewStatus)
+                            }
+                          >
+                            {reviewStatusLabel(candidate.reviewStatus)}
+                          </span>
+                        </td>
+                        <td>
+                          <span
+                            className={
+                              "admin-discovery-status admin-discovery-status-" +
+                              classificationTone(candidate.classification?.kind)
+                            }
+                          >
+                            {classificationLabel(candidate.classification?.kind)}
+                          </span>
+                          {candidate.classification?.reason ? (
+                            <small className="admin-discovery-cell-detail">
+                              {classificationReasonLabel(candidate.classification.reason)}
+                            </small>
+                          ) : null}
+                        </td>
+                        <td>
+                          {show(candidate.latestObservation?.providerKey)}
+                          <small className="admin-discovery-cell-detail">
+                            {candidate.observationCount} observación(es)
+                          </small>
+                        </td>
+                        <td>{date(candidate.lastObservedAt)}</td>
+                        <td>
+                          <Link
+                            className="admin-discovery-inspect-link"
+                            href={"/admin/discovery/results/" + encodeURIComponent(candidate.id)}
+                          >
+                            Inspeccionar →
+                          </Link>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -289,6 +389,11 @@ export function LiveDiscoveryOverview({
           </div>
         </section>
       )}
+      {tab === "resultados" ? (
+        <p className="admin-discovery-page-count">
+          Mostrando {data.items.length} candidato(s) en esta página; no es un contador global.
+        </p>
+      ) : null}
       <p className="admin-muted-copy">
         <Link href={liveHref(tab, params)}>Primera página</Link>
         {data.nextCursor ? (
@@ -299,10 +404,8 @@ export function LiveDiscoveryOverview({
         ) : null}
       </p>
       <p className="admin-muted-copy">
-        <button type="button" className="admin-primary-button" disabled>
-          Ejecutar búsqueda
-        </button>{" "}
-        La ejecución y promoción permanecen deshabilitadas.
+        Solo consulta: ejecutar búsquedas, rechazar candidatos y promover fuentes requieren una API de escritura
+        expresamente autorizada.
       </p>
     </main>
   );
@@ -328,7 +431,19 @@ export function LiveCandidateDetail({
       </Link>
       <Header />
       <section className="admin-review-card">
-        <h2>{show(o?.title)}</h2>
+        <p className="admin-discovery-detail-eyebrow">Inspección de fuente candidata · solo lectura</p>
+        <h2>{show(o?.title) === "Sin dato" ? c.canonicalUrl : show(o?.title)}</h2>
+        <div className="admin-discovery-detail-status">
+          <span className={"admin-discovery-status admin-discovery-status-" + reviewStatusTone(c.reviewStatus)}>
+            {reviewStatusLabel(c.reviewStatus)}
+          </span>
+          <span
+            className={"admin-discovery-status admin-discovery-status-" + classificationTone(c.classification?.kind)}
+          >
+            {classificationLabel(c.classification?.kind)}
+          </span>
+        </div>
+        <p className="admin-discovery-guidance">{sourceCandidateGuidance(c)}</p>
         <dl className="admin-definition-list">
           <div>
             <dt>Candidato UUID</dt>
@@ -345,16 +460,32 @@ export function LiveCandidateDetail({
             <dd>{o ? <External url={o.originalUrl} /> : "Sin dato"}</dd>
           </div>
           <div>
+            <dt>Descripción observada</dt>
+            <dd>{show(o?.snippet)}</dd>
+          </div>
+          <div>
+            <dt>Primera observación</dt>
+            <dd>{date(c.firstObservedAt)}</dd>
+          </div>
+          <div>
             <dt>Revisión</dt>
-            <dd>{c.reviewStatus}</dd>
+            <dd>
+              {reviewStatusLabel(c.reviewStatus)} ({c.reviewStatus})
+            </dd>
           </div>
           <div>
             <dt>Clasificación</dt>
-            <dd>{show(c.classification?.kind)}</dd>
+            <dd>
+              {classificationLabel(c.classification?.kind)} ({show(c.classification?.kind)})
+            </dd>
           </div>
           <div>
             <dt>Motivo</dt>
-            <dd>{show(c.classification?.reason)}</dd>
+            <dd>{classificationReasonLabel(c.classification?.reason)}</dd>
+          </div>
+          <div>
+            <dt>Familia de fuente</dt>
+            <dd>{show(c.classification?.sourceFamily)}</dd>
           </div>
           <div>
             <dt>Adaptador propuesto</dt>
@@ -387,14 +518,27 @@ export function LiveCandidateDetail({
             <dd>{show(c.linkedSourceId)} (sin enlace a fixtures)</dd>
           </div>
           <div>
+            <dt>Estado de la fuente B2 vinculada</dt>
+            <dd>{c.source ? c.source.status + " · " + c.source.adapterKey : "Sin fuente vinculada"}</dd>
+          </div>
+          <div>
+            <dt>Última decisión registrada</dt>
+            <dd>
+              {c.latestReview
+                ? c.latestReview.decision + " · " + c.latestReview.reasonCode + " · " + date(c.latestReview.reviewedAt)
+                : "Sin decisiones"}
+            </dd>
+          </div>
+          <div>
             <dt>Promoción auditada</dt>
             <dd>{detail.promotion ? detail.promotion.sourceId : "No consta"}</dd>
           </div>
         </dl>
         <p className="admin-discovery-note">No es un evento, una reserva ni una publicación.</p>
-        <button type="button" className="admin-secondary-button" disabled>
-          Promover a fuente · no disponible
-        </button>
+        <p className="admin-discovery-guidance">
+          Disponible: inspeccionar datos y procedencia. Rechazar, conservar una decisión editorial y promover a B2
+          permanecerán bloqueados hasta contar con endpoints de escritura auditados y autorizados.
+        </p>
       </section>
       <section className="admin-review-card admin-operation-related">
         <h2>Observaciones y procedencia</h2>
@@ -421,7 +565,7 @@ export function LiveCandidateDetail({
           <ul className="admin-operation-notes">
             {reviews.items.map((r) => (
               <li key={r.id}>
-                {r.decision} · {r.reasonCode} · {date(r.reviewedAt)}
+                {r.decision} · {r.reasonCode} · {date(r.reviewedAt)} · actor {r.reviewerRef}
               </li>
             ))}
           </ul>
