@@ -119,10 +119,7 @@ function QueueNavigation({ params }: { params: Record<string, string | undefined
         <Link
           key={view.id}
           href={sourceQueueHref(view.id, params)}
-          className={
-            "admin-discovery-queue-link" +
-            (selected === view.id ? " admin-discovery-queue-link-active" : "")
-          }
+          className={"admin-discovery-queue-link" + (selected === view.id ? " admin-discovery-queue-link-active" : "")}
           aria-current={selected === view.id ? "page" : undefined}
         >
           {view.label}
@@ -229,10 +226,16 @@ export function LiveDiscoveryOverview({
             Filtros sobre el motor privado. Los resultados son fuentes por evaluar, no eventos ni publicaciones.
           </p>
           <QueueNavigation params={params} />
-          <details className="admin-discovery-advanced" open={Boolean(
-            params.providerKey || params.queryId || params.executionId || params.search ||
-              activeSourceQueueView(params) === null
-          )}>
+          <details
+            className="admin-discovery-advanced"
+            open={Boolean(
+              params.providerKey ||
+              params.queryId ||
+              params.executionId ||
+              params.search ||
+              activeSourceQueueView(params) === null,
+            )}
+          >
             <summary>Filtros avanzados</summary>
             <Filters params={params} />
           </details>
@@ -240,7 +243,9 @@ export function LiveDiscoveryOverview({
       ) : null}
       {data.items.length === 0 ? (
         <section className="admin-empty-state">
-          <strong>{tab === "resultados" ? "No hay fuentes que coincidan con los filtros" : "No hay datos en esta página"}</strong>
+          <strong>
+            {tab === "resultados" ? "No hay fuentes que coincidan con los filtros" : "No hay datos en esta página"}
+          </strong>
           <p>Prueba otro filtro o vuelve a la primera página. No se muestran resultados simulados.</p>
         </section>
       ) : (
@@ -432,7 +437,9 @@ export function LiveCandidateDetail({
           <span className={"admin-discovery-status admin-discovery-status-" + reviewStatusTone(c.reviewStatus)}>
             {reviewStatusLabel(c.reviewStatus)}
           </span>
-          <span className={"admin-discovery-status admin-discovery-status-" + classificationTone(c.classification?.kind)}>
+          <span
+            className={"admin-discovery-status admin-discovery-status-" + classificationTone(c.classification?.kind)}
+          >
             {classificationLabel(c.classification?.kind)}
           </span>
         </div>
@@ -462,11 +469,15 @@ export function LiveCandidateDetail({
           </div>
           <div>
             <dt>Revisión</dt>
-            <dd>{reviewStatusLabel(c.reviewStatus)} ({c.reviewStatus})</dd>
+            <dd>
+              {reviewStatusLabel(c.reviewStatus)} ({c.reviewStatus})
+            </dd>
           </div>
           <div>
             <dt>Clasificación</dt>
-            <dd>{classificationLabel(c.classification?.kind)} ({show(c.classification?.kind)})</dd>
+            <dd>
+              {classificationLabel(c.classification?.kind)} ({show(c.classification?.kind)})
+            </dd>
           </div>
           <div>
             <dt>Motivo</dt>
