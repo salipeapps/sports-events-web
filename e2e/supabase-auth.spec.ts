@@ -5,6 +5,26 @@ async function login(page: Page, subject: string, password = "Fixture-password-1
   await page.getByLabel("Contraseña", { exact: true }).fill(password);
   await page.getByRole("button", { name: "Iniciar sesión" }).click();
 }
+
+async function expectCommandsDisabled(page: Page) {
+  for (const operation of ["rejection", "promotion"]) {
+    const result = await page.request.post(
+      `/api/internal/discovery/candidates/ca73b0ff-8001-4000-8000-111111111111/${operation}`,
+      {
+        headers: { Origin: "http://127.0.0.1:3100", "Idempotency-Key": "11a2a2a2-1111-4000-8000-111111111111" },
+        data: { reasonCode: "OUT_OF_SCOPE", reviewerRef: "spoofed" },
+      },
+    );
+    expect(result.status()).toBe(404);
+    expect(result.headers()["cache-control"]).toContain("no-store");
+    const body = await result.json();
+    expect(body).toEqual({ code: "NOT_CONFIGURED", requestId: result.headers()["x-request-id"] });
+  }
+}
+
+test("anonymous direct command URLs fail closed while flags are disabled", async ({ page }) => {
+  await expectCommandsDisabled(page);
+});
 test("admin login persists verified cookies; deactivation takes effect on next request", async ({
   page,
   request,
@@ -12,6 +32,7 @@ test("admin login persists verified cookies; deactivation takes effect on next r
 }) => {
   await login(page, "admin");
   await expect(page).toHaveURL(/\/admin$/);
+  await expectCommandsDisabled(page);
   const authCookies = (await context.cookies()).filter(({ name }) => name.startsWith("sb-"));
   expect(authCookies.length).toBeGreaterThan(0);
   expect(authCookies.every((cookie) => cookie.httpOnly && cookie.sameSite === "Lax")).toBe(true);
@@ -25,6 +46,7 @@ test("admin login persists verified cookies; deactivation takes effect on next r
 test("reviewer stays in the shell on denied routes and retains discovery and logout", async ({ page, context }) => {
   await login(page, "reviewer");
   await expect(page).toHaveURL(/\/admin$/);
+  await expectCommandsDisabled(page);
   await page.goto("/admin/activities");
   await expect(page.getByRole("heading", { name: "Actividades", exact: true })).toBeVisible();
   const cookiesBefore = (await context.cookies()).filter(({ name }) => name.startsWith("sb-"));
