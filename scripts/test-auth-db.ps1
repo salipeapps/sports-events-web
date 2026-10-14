@@ -2,7 +2,7 @@ $ErrorActionPreference = 'Stop'
 $containerName = 'sports-web-auth-test-' + [Guid]::NewGuid().ToString('N').Substring(0, 12)
 $repoRoot = Split-Path -Parent $PSScriptRoot
 function Run-Sql([string]$sql) {
-  $sql | docker exec -i $containerName psql -U postgres -v ON_ERROR_STOP=1
+  $sql | docker exec -i $containerName psql -h 127.0.0.1 -U postgres -v ON_ERROR_STOP=1
   if ($LASTEXITCODE -ne 0) { throw 'Isolated SQL test failed' }
 }
 try {
@@ -10,8 +10,10 @@ try {
   docker run --detach --name $containerName --network none --tmpfs /var/lib/postgresql/data -e POSTGRES_HOST_AUTH_METHOD=trust postgres:17-alpine
   if ($LASTEXITCODE -ne 0) { throw 'Cannot start isolated PostgreSQL' }
   $ready = $false
+  # The image's temporary init server accepts Unix sockets only. Wait for the
+  # final TCP listener inside the container, without exposing any host port.
   for ($attempt = 0; $attempt -lt 30; $attempt++) {
-    docker exec $containerName pg_isready -U postgres *> $null
+    docker exec $containerName pg_isready -h 127.0.0.1 -U postgres *> $null
     if ($LASTEXITCODE -eq 0) { $ready = $true; break }
     Start-Sleep -Seconds 1
   }

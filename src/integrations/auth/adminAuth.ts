@@ -65,7 +65,7 @@ export async function getAdminAccess(): Promise<AdminAccessResult> {
 export async function requireAdminAccess(capability: AdminCapability) {
   const access = await getAdminAccess();
   if (access.status !== "authenticated") redirect(`/admin-access?reason=${access.reason}`);
-  if (!canAdmin(access.session.role, capability)) redirect("/admin-access?reason=unauthorized");
+  if (!canAdmin(access.session.role, capability)) redirect(`/admin/forbidden?capability=${capability}`);
   requireAdminCapability(access.session, capability);
   return access.session;
 }

@@ -152,3 +152,30 @@ output directories to preserve an existing development server. CI runs all three
 The login/recovery UI composes the existing access card, color/type tokens and button system.
 No visual redesign is intended. A fresh Figma comparison is pending a node-specific Foundations
 link; the general file link did not return a selected frame. Existing typography was preserved.
+
+## Authenticated section denial (issue #31)
+
+`requireAdminAccess` sends missing, expired or ineligible administrative sessions to
+`/admin-access`. An authenticated member who lacks a section capability is redirected
+to `/admin/forbidden?capability=...`, inside the existing protected layout. The denial
+page requires `dashboard.view`, retains identity/navigation/logout, and links back to
+Discovery and Summary. Only fixed messages for sources and runs are selected from the
+query; unknown/repeated values use a generic message, and return URLs are ignored.
+
+Sources and Runs remain clickable and display **Solo admin** for reviewers. The server
+checks `sources.manage` / `runs.execute` before constructing the repository on both
+list and detail routes. Client navigation does not grant access. The role matrix,
+Supabase membership/RLS/JWT contracts and Engine are unchanged.
+
+Regressions cover all four denied routes without repository access, admin access,
+reviewer discovery/editorial permissions, login redirects and hostile query input.
+The SSR HTTP fixture browser suite additionally checks navigation, preserved cookies,
+the shell, return links and logout after denial. These local fixtures do not establish
+a real STAGING smoke.
+
+STAGING acceptance after the reviewed change is deployed to the dedicated
+`sports-events-web-staging` Hobby project: sign in with an approved reviewer, click
+Sources/Runs and open all four URLs directly, verify denial in the shell with no
+protected data, return to Discovery, then log out. Repeat the four URLs with admin
+and with no session. Record the deployed commit and result; never use the real PROD
+project. No merge or deployment is performed by this implementation.
