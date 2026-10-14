@@ -258,7 +258,7 @@ describe("full command boundary and mocked private HTTP", () => {
     expect(await result.json()).toEqual(rejected);
     expect(result.headers.get("cache-control")).toContain("no-store");
     expect(result.headers.get("x-request-id")).toBe(requestId);
-    expect(f.getAccess).toHaveBeenCalledTimes(2);
+    expect(f.getAccess).toHaveBeenCalledTimes(3);
     const [url, init] = f.fetcher.mock.calls[0];
     expect(url).toBe(`https://writer.a.run.app/api/admin/v1/discovery/candidates/${id}/rejection`);
     expect(init).toMatchObject({
@@ -307,6 +307,36 @@ describe("full command boundary and mocked private HTTP", () => {
     expect((await f.run()).status).toBe(403);
     expect(f.fetcher).not.toHaveBeenCalled();
     expect((await f.run()).status).toBe(403);
+  });
+  it.each(["rejection", "promotion"] as const)(
+    "denies %s revocation during STS/IAM before engine dispatch",
+    async (operation) => {
+      const f = setup();
+      f.getWorkloadToken.mockImplementation(async () => {
+        f.getAccess.mockResolvedValue({ status: "denied", code: "FORBIDDEN" });
+        return "workload-secret";
+      });
+      const result = await f.run(req(operation === "promotion" ? promotion : rejection), operation);
+      expect(result.status).toBe(403);
+      expect(f.getAccess).toHaveBeenCalledTimes(3);
+      expect(f.getWorkloadToken).toHaveBeenCalledOnce();
+      expect(f.fetcher).not.toHaveBeenCalled();
+    },
+  );
+  it("denies admin downgrade during workload exchange and rejects switched identity", async () => {
+    for (const change of [
+      { subject: actor, role: "reviewer" as const },
+      { subject: key, role: "admin" as const },
+    ]) {
+      const f = setup();
+      f.getWorkloadToken.mockImplementation(async () => {
+        f.getAccess.mockResolvedValue({ status: "authorized", accessToken: "new-user-secret", ...change });
+        return "workload-secret";
+      });
+      const result = await f.run(req(promotion), "promotion");
+      expect(result.status).toBe(change.subject === actor ? 403 : 401);
+      expect(f.fetcher).not.toHaveBeenCalled();
+    }
   });
   it.each<Record<string, string>>([
     { Origin: "https://evil.test" },

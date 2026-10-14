@@ -283,11 +283,17 @@ export class HttpDiscoveryCommandClient {
       )
         fail("NOT_CONFIGURED");
       // No retained user token: current membership and exact signed bearer on every attempt/replay.
+      const preflight = await this.transport.getAccess();
+      if (preflight.status === "denied") fail(preflight.code);
+      const capability = operation === "rejection" ? "discovery.reject" : "discovery.promote";
+      if (!canAdmin(preflight.role, capability)) fail("FORBIDDEN");
+      const workload = await this.transport.getWorkloadToken();
+      // STS/IAM can take seconds: check revocation and roles after the exchange,
+      // immediately before dispatching a mutation with this exact verified bearer.
       const access = await this.transport.getAccess();
       if (access.status === "denied") fail(access.code);
-      if (!canAdmin(access.role, operation === "rejection" ? "discovery.reject" : "discovery.promote"))
-        fail("FORBIDDEN");
-      const workload = await this.transport.getWorkloadToken();
+      if (access.subject !== preflight.subject) fail("UNAUTHENTICATED");
+      if (!canAdmin(access.role, capability)) fail("FORBIDDEN");
       const response = await this.transport.fetcher(
         `${origin.origin}/api/admin/v1/discovery/candidates/${id}/${operation}`,
         {
