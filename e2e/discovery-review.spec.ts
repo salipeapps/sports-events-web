@@ -260,6 +260,33 @@ for (const [code, httpStatus] of [
   });
 }
 
+test("denied replay keeps its key but locks retry until the candidate is reopened", async ({ page }) => {
+  const data = state();
+  const attempts: { key?: string; body: string | null }[] = [];
+  await page.route("**/api/internal/discovery/candidates/**", (route) => {
+    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    if (attempts.length === 1) return route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE", requestId } });
+    if (attempts.length === 2) return route.fulfill({ status: 403, json: { code: "FORBIDDEN", requestId } });
+    return route.fulfill({ json: rejected(data), headers: { "x-request-id": requestId } });
+  });
+  await mount(page, data);
+  await reject(page);
+  await expect(page.getByRole("status").first()).toContainText("No se puede confirmar");
+  await page.getByRole("button", { name: "Reintentar misma decisión" }).click();
+  await page.getByRole("button", { name: "Confirmar rechazo", exact: true }).click();
+  await expect(page.getByRole("status").first()).toContainText("ya no tiene permiso");
+  await expect(page.getByRole("button", { name: "Reintentar misma decisión" })).toBeDisabled();
+  await page.getByRole("button", { name: "Consultar estado actualizado" }).click();
+  await expect(page.getByRole("button", { name: "Reintentar misma decisión" })).toBeDisabled();
+  expect(attempts).toHaveLength(2);
+  await page.getByRole("link", { name: "Abrir de nuevo el candidato" }).click();
+  await page.getByRole("button", { name: "Reintentar misma decisión" }).click();
+  await page.getByRole("button", { name: "Confirmar rechazo", exact: true }).click();
+  await expect(page.getByRole("status").first()).toContainText("Rechazo registrado");
+  expect(attempts).toHaveLength(3);
+  expect(attempts[2]).toEqual(attempts[0]);
+});
+
 test("409 refreshes concurrent state without an automatic retry", async ({ page }) => {
   const data = state();
   let attempts = 0;

@@ -157,7 +157,7 @@ function EnabledReviewActions({ candidate, access }: { candidate: DiscoveryCandi
   }
 
   async function submit() {
-    if (!confirmation || sending.current) return;
+    if (!confirmation || sending.current || conflict || complete) return;
     const intent = confirmation;
     if (
       !(intent.operation === "rejection"
@@ -267,7 +267,7 @@ function EnabledReviewActions({ candidate, access }: { candidate: DiscoveryCandi
           <button
             type="button"
             className="admin-secondary-button"
-            disabled={busy || !replayAllowed}
+            disabled={busy || conflict || !replayAllowed}
             onClick={(event) => {
               trigger.current = event.currentTarget;
               setConfirmation(stored);
