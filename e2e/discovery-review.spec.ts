@@ -147,26 +147,33 @@ test("historical nine unsupported plus one ambiguous never offer promotion", asy
   }
 });
 
-test("whitespace-only source name cannot create an intent or dispatch a promotion", async ({ page }) => {
-  let requests = 0;
-  await page.route("**/api/internal/discovery/candidates/**", (route) => {
-    requests++;
-    return route.abort();
+for (const [name, feedback] of [
+  ["  \u00a0  ", "no puede estar vacío ni contener solo espacios"],
+  ["Studio\u200b", "no puede contener caracteres de control ni caracteres invisibles"],
+] as const) {
+  test(`invalid source name cannot create an intent or dispatch a promotion: ${JSON.stringify(name)}`, async ({
+    page,
+  }) => {
+    let requests = 0;
+    await page.route("**/api/internal/discovery/candidates/**", (route) => {
+      requests++;
+      return route.abort();
+    });
+    await mount(page, state());
+    await page.getByRole("button", { name: "Aprobar y promover a B2" }).click();
+    await page.getByLabel("Nombre de la fuente").fill(name);
+    await page.getByRole("button", { name: "Revisar decisión", exact: true }).click();
+    await expect(page.getByRole("status").first()).toContainText(feedback);
+    await expect(page.getByLabel("Nombre de la fuente")).toBeFocused();
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    expect(
+      await page.evaluate(
+        () => Object.keys(sessionStorage).filter((key) => key.startsWith("discovery-review-v1:")).length,
+      ),
+    ).toBe(0);
+    expect(requests).toBe(0);
   });
-  await mount(page, state());
-  await page.getByRole("button", { name: "Aprobar y promover a B2" }).click();
-  await page.getByLabel("Nombre de la fuente").fill("  \u00a0  ");
-  await page.getByRole("button", { name: "Revisar decisión", exact: true }).click();
-  await expect(page.getByRole("status").first()).toContainText("no puede estar vacío ni contener solo espacios");
-  await expect(page.getByLabel("Nombre de la fuente")).toBeFocused();
-  await expect(page.getByRole("dialog")).not.toBeVisible();
-  expect(
-    await page.evaluate(
-      () => Object.keys(sessionStorage).filter((key) => key.startsWith("discovery-review-v1:")).length,
-    ),
-  ).toBe(0);
-  expect(requests).toBe(0);
-});
+}
 
 test("disabled gates render no operational form and keep inspection/history", async ({ page }) => {
   const data = state();

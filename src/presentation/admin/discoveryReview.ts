@@ -20,6 +20,15 @@ export function reviewReasonLabel(code: string) {
   return Object.hasOwn(rejectionLabels, code) ? rejectionLabels[code as keyof typeof rejectionLabels] : code;
 }
 
+export function sourceNameError(value: string): string | null {
+  const name = value.trim();
+  if (!name) return "El nombre de la fuente no puede estar vacío ni contener solo espacios.";
+  if (/[\p{Cc}\p{Cf}]/u.test(name))
+    return "El nombre de la fuente no puede contener caracteres de control ni caracteres invisibles de formato.";
+  if (name.length > 120) return "El nombre de la fuente no puede superar 120 caracteres.";
+  return null;
+}
+
 export function reviewAvailability(candidate: DiscoveryCandidate, access?: DiscoveryReviewAccess) {
   const pending = candidate.reviewStatus === "PENDING_REVIEW" && !candidate.linkedSourceId;
   return {

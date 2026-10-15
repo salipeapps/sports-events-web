@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { candidate } from "../../../e2e/fixtures/discovery-ui/candidate";
-import { promotionDraft, restoreReviewIntent, reviewAvailability, type DiscoveryReviewAccess } from "./discoveryReview";
+import {
+  promotionDraft,
+  restoreReviewIntent,
+  reviewAvailability,
+  sourceNameError,
+  type DiscoveryReviewAccess,
+} from "./discoveryReview";
 
 const access: DiscoveryReviewAccess = {
   subject: "verified-admin",
@@ -78,5 +84,18 @@ describe("uncertain intent recovery", () => {
     JSON.stringify({ ...intent, body: { reasonCode: "OUT_OF_SCOPE", reviewerRef: "spoofed" } }),
   ])("blocks corrupt retry drafts: %s", (raw) => {
     expect(restoreReviewIntent(raw, access.subject, candidate.id)).toBeNull();
+  });
+});
+
+describe("source name contract before confirmation", () => {
+  it.each(["", "  \u00a0  ", "Studio\u200b", "Studio\u0007", "a".repeat(121)])(
+    "rejects invalid names without a command: %j",
+    (value) => {
+      expect(sourceNameError(value)).toBeTypeOf("string");
+    },
+  );
+  it("accepts trimmed names with accents and the exact length boundary", () => {
+    expect(sourceNameError("  Estudio de Raúl  ")).toBeNull();
+    expect(sourceNameError("a".repeat(120))).toBeNull();
   });
 });
