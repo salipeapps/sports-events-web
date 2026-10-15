@@ -2311,6 +2311,75 @@ h1 {
   line-height: var(--type-small-line);
 }
 
+.admin-discovery-decisions,
+.admin-discovery-confirmation {
+  overflow-wrap: anywhere;
+}
+
+.admin-discovery-decision-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-block: 16px;
+}
+
+.admin-discovery-decision-form {
+  display: grid;
+  gap: 16px;
+  max-width: 560px;
+  margin-block: 24px;
+}
+
+.admin-discovery-decision-form label {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.admin-discovery-decision-form input,
+.admin-discovery-decision-form select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  background: var(--surface-base);
+  color: var(--text-primary);
+}
+
+.admin-discovery-confirmation {
+  width: min(620px, calc(100% - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 24px;
+  border: 1px solid var(--border-default);
+  border-radius: 12px;
+  color: var(--text-primary);
+  background: var(--surface-base);
+}
+
+.admin-discovery-confirmation::backdrop {
+  background: rgb(7 26 59 / 60%);
+}
+
+.admin-discovery-pending {
+  padding: 16px;
+  border: 1px solid var(--status-warning);
+  border-radius: 8px;
+  margin-block: 16px;
+}
+
+.admin-discovery-decisions button:disabled,
+.admin-discovery-confirmation button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.admin-discovery-decisions :focus-visible,
+.admin-discovery-confirmation :focus-visible {
+  outline: 3px solid var(--brand-500);
+  outline-offset: 3px;
+}
+
 .admin-discovery-page .admin-tabs {
   margin-bottom: 22px;
 }
@@ -2331,6 +2400,7 @@ h1 {
 }
 
 .admin-discovery-page .admin-definition-list dd,
+.admin-discovery-page h2,
 .admin-discovery-url {
   overflow-wrap: anywhere;
 }

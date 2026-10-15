@@ -1,6 +1,6 @@
 # Private discovery command BFF v1 (#35)
 
-The server-only BFF implements the Engine [rejection v1](https://github.com/raulacden/sports-events-engine/blob/develop/docs/discovery-rejection-api-v1.md) and [promotion v1](https://github.com/raulacden/sports-events-engine/blob/develop/docs/discovery-promotion-api-v1.md) contracts. It adds no operational buttons. Engine #87 owns writer provisioning, activation approval, shared ingress throttling, bounded live smoke and rollback; web #36 owns confirmation UX. This change does not authorize activation, deployment, remote DB grants or mutations.
+The server-only BFF implements the Engine [rejection v1](https://github.com/raulacden/sports-events-engine/blob/develop/docs/discovery-rejection-api-v1.md) and [promotion v1](https://github.com/raulacden/sports-events-engine/blob/develop/docs/discovery-promotion-api-v1.md) contracts. Its gated [confirmation UX (#36)](discovery-review-ux.md) reuses these boundaries. Engine #87 owns writer provisioning, activation approval, shared ingress throttling, bounded live smoke and rollback. This change does not authorize activation, deployment, remote DB grants or mutations.
 
 ## Boundary
 

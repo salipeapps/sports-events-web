@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { DiscoveryReviewActions } from "./DiscoveryReviewActions";
+import { reviewAvailability, reviewReasonLabel, type DiscoveryReviewAccess } from "./discoveryReview";
 
 import {
   activeSourceQueueView,
@@ -55,12 +57,17 @@ function External({ url }: { url: string }) {
   );
 }
 
-function Header() {
+function Header({ reviewAccess }: { reviewAccess?: DiscoveryReviewAccess }) {
   return (
     <header className="admin-page-header">
       <h1>Descubrimiento</h1>
       <p>Fuentes candidatas y observaciones; no son actividades publicadas.</p>
-      <p className="admin-discovery-note">Datos reales de STAGING · lectura privada · sin acciones de escritura</p>
+      <p className="admin-discovery-note">
+        Datos reales de STAGING ·{" "}
+        {reviewAccess?.rejectionEnabled || reviewAccess?.promotionEnabled
+          ? "decisiones auditadas según permisos"
+          : "lectura privada · sin acciones de escritura"}
+      </p>
     </header>
   );
 }
@@ -199,14 +206,16 @@ export function LiveDiscoveryOverview({
   tab,
   data,
   params,
+  reviewAccess,
 }: {
   tab: LiveDiscoveryTab;
   data: DiscoveryPage<DiscoveryCandidate> | DiscoveryPage<DiscoveryQuery> | DiscoveryPage<DiscoveryProvider>;
   params: Record<string, string | undefined>;
+  reviewAccess?: DiscoveryReviewAccess;
 }) {
   return (
     <main className="admin-page admin-discovery-page">
-      <Header />
+      <Header reviewAccess={reviewAccess} />
       <nav className="admin-tabs" aria-label="Apartados de Descubrimiento">
         {tabs.map((item) => (
           <Link
@@ -285,6 +294,18 @@ export function LiveDiscoveryOverview({
                           >
                             {reviewStatusLabel(candidate.reviewStatus)}
                           </span>
+                          {candidate.linkedSourceId ? (
+                            <small className="admin-discovery-cell-detail">
+                              Vinculada a B2 · {candidate.source?.status ?? "estado desconocido"} ·{" "}
+                              {candidate.source?.enabled === false
+                                ? "deshabilitada"
+                                : candidate.source?.enabled === true
+                                  ? "habilitada"
+                                  : "habilitación desconocida"}
+                            </small>
+                          ) : candidate.reviewStatus === "APPROVED" ? (
+                            <small className="admin-discovery-cell-detail">Sin fuente B2 vinculada</small>
+                          ) : null}
                         </td>
                         <td>
                           <span
@@ -315,6 +336,14 @@ export function LiveDiscoveryOverview({
                           >
                             Inspeccionar →
                           </Link>
+                          {reviewAvailability(candidate, reviewAccess).reject ? (
+                            <small className="admin-discovery-cell-detail">
+                              Rechazo con motivo disponible en el detalle
+                            </small>
+                          ) : null}
+                          {reviewAvailability(candidate, reviewAccess).promote ? (
+                            <small className="admin-discovery-cell-detail">Promoción B2 disponible en el detalle</small>
+                          ) : null}
                         </td>
                       </tr>
                     ))}
@@ -404,8 +433,8 @@ export function LiveDiscoveryOverview({
         ) : null}
       </p>
       <p className="admin-muted-copy">
-        Solo consulta: ejecutar búsquedas, rechazar candidatos y promover fuentes requieren una API de escritura
-        expresamente autorizada.
+        Las decisiones se confirman en el detalle según permisos y habilitación de escritura. Conservar como pendiente
+        no registra una aprobación ni crea una fuente B2.
       </p>
     </main>
   );
@@ -416,11 +445,13 @@ export function LiveCandidateDetail({
   observations,
   reviews,
   cursors,
+  reviewAccess,
 }: {
   detail: DiscoveryCandidateDetail;
   observations: DiscoveryPage<DiscoveryObservation>;
   reviews: DiscoveryPage<DiscoveryReview>;
   cursors: { observationsCursor?: string; reviewsCursor?: string };
+  reviewAccess?: DiscoveryReviewAccess;
 }) {
   const c = detail.candidate;
   const o = c.latestObservation;
@@ -429,9 +460,9 @@ export function LiveCandidateDetail({
       <Link className="admin-back-link" href="/admin/discovery?tab=resultados">
         ← Volver a resultados
       </Link>
-      <Header />
+      <Header reviewAccess={reviewAccess} />
       <section className="admin-review-card">
-        <p className="admin-discovery-detail-eyebrow">Inspección de fuente candidata · solo lectura</p>
+        <p className="admin-discovery-detail-eyebrow">Inspección de fuente candidata</p>
         <h2>{show(o?.title) === "Sin dato" ? c.canonicalUrl : show(o?.title)}</h2>
         <div className="admin-discovery-detail-status">
           <span className={"admin-discovery-status admin-discovery-status-" + reviewStatusTone(c.reviewStatus)}>
@@ -515,17 +546,35 @@ export function LiveCandidateDetail({
           </div>
           <div>
             <dt>Fuente B2 vinculada</dt>
-            <dd>{show(c.linkedSourceId)} (sin enlace a fixtures)</dd>
+            <dd>{c.linkedSourceId ?? "Sin fuente vinculada"}</dd>
           </div>
           <div>
             <dt>Estado de la fuente B2 vinculada</dt>
-            <dd>{c.source ? c.source.status + " · " + c.source.adapterKey : "Sin fuente vinculada"}</dd>
+            <dd>
+              {c.source
+                ? c.source.status +
+                  " · " +
+                  c.source.adapterKey +
+                  " · " +
+                  (c.source.enabled === false
+                    ? "deshabilitada"
+                    : c.source.enabled === true
+                      ? "habilitada"
+                      : "habilitación desconocida")
+                : "Sin fuente vinculada"}
+            </dd>
           </div>
           <div>
             <dt>Última decisión registrada</dt>
             <dd>
               {c.latestReview
-                ? c.latestReview.decision + " · " + c.latestReview.reasonCode + " · " + date(c.latestReview.reviewedAt)
+                ? reviewStatusLabel(c.latestReview.decision) +
+                  " · " +
+                  reviewReasonLabel(c.latestReview.reasonCode) +
+                  " · " +
+                  date(c.latestReview.reviewedAt) +
+                  " · actor " +
+                  c.latestReview.reviewerRef
                 : "Sin decisiones"}
             </dd>
           </div>
@@ -535,11 +584,8 @@ export function LiveCandidateDetail({
           </div>
         </dl>
         <p className="admin-discovery-note">No es un evento, una reserva ni una publicación.</p>
-        <p className="admin-discovery-guidance">
-          Disponible: inspeccionar datos y procedencia. Rechazar, conservar una decisión editorial y promover a B2
-          permanecerán bloqueados hasta contar con endpoints de escritura auditados y autorizados.
-        </p>
       </section>
+      <DiscoveryReviewActions candidate={c} access={reviewAccess} />
       <section className="admin-review-card admin-operation-related">
         <h2>Observaciones y procedencia</h2>
         <ul className="admin-operation-notes">
@@ -565,7 +611,8 @@ export function LiveCandidateDetail({
           <ul className="admin-operation-notes">
             {reviews.items.map((r) => (
               <li key={r.id}>
-                {r.decision} · {r.reasonCode} · {date(r.reviewedAt)} · actor {r.reviewerRef}
+                {reviewStatusLabel(r.decision)} · {reviewReasonLabel(r.reasonCode)} · {date(r.reviewedAt)} · actor{" "}
+                {r.reviewerRef}
               </li>
             ))}
           </ul>

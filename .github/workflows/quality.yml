@@ -76,6 +76,9 @@ jobs:
       - name: Supabase SSR Auth HTTP fixtures
         run: npm run test:e2e -- --config playwright.auth.config.ts
 
+      - name: Discovery decision UX (isolated HTTP fixtures, no writer)
+        run: npm run test:e2e -- --config playwright.discovery.config.ts
+
       - name: Upload browser traces and screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4

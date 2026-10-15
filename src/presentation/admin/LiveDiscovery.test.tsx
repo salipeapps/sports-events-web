@@ -104,7 +104,9 @@ describe("read-only review queue rendering", () => {
     expect(html).toContain("No hay adaptador compatible");
     expect(html).toContain("Conservar para estudiar un adaptador");
     expect(html).toContain("Sin decisiones");
-    expect(html).toContain("bloqueados");
+    expect(html).toContain("Rechazo bloqueado");
+    expect(html).toContain("Promoción bloqueada");
+    expect(html).toContain("No requiere enviar una decisión");
     expect(html).not.toContain("<button");
   });
 

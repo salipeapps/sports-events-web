@@ -3,6 +3,7 @@ import { getDiscoveryRepository } from "@/data/discoveryRepositoryProvider";
 import { DiscoveryOverview, resolveDiscoveryTab } from "@/presentation/admin/DiscoveryOverview";
 import { DiscoveryReadError, getDiscoveryMode, getLiveDiscoveryRepository } from "@/integrations/discovery/readApi";
 import { LiveDiscoveryFailure, LiveDiscoveryOverview, readQueryParams } from "@/presentation/admin/LiveDiscovery";
+import { getDiscoveryReviewAccess } from "@/integrations/discovery/reviewAccess";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -12,7 +13,7 @@ export default async function DiscoveryPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  await requireAdminAccess("discovery.view");
+  const session = await requireAdminAccess("discovery.view");
   const query = readQueryParams(await searchParams);
   const tab = resolveDiscoveryTab(query.tab);
   const mode = getDiscoveryMode();
@@ -45,5 +46,12 @@ export default async function DiscoveryPage({
     }
   })();
   if ("code" in outcome) return <LiveDiscoveryFailure code={outcome.code ?? "READ_UNAVAILABLE"} />;
-  return <LiveDiscoveryOverview tab={tab} data={outcome.data} params={query} />;
+  return (
+    <LiveDiscoveryOverview
+      tab={tab}
+      data={outcome.data}
+      params={query}
+      reviewAccess={getDiscoveryReviewAccess(session)}
+    />
+  );
 }
