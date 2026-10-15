@@ -612,7 +612,7 @@ async function shortPost(url: string, body: string, headers: Record<string, stri
   }
 }
 
-async function workloadToken(config: StageConfig): Promise<string> {
+export async function workloadToken(config: StageConfig): Promise<string> {
   // Only STS verifies this assertion; unverified claims are a fail-closed preflight,
   // never the authority to impersonate a workload.
   const assertion = (await headers()).get("x-vercel-oidc-token");
