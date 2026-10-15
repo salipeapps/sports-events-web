@@ -130,6 +130,11 @@ function EnabledReviewActions({ candidate, access }: { candidate: DiscoveryCandi
       !(operation === "rejection" ? availability.reject : availability.promote)
     )
       return;
+    if (operation === "promotion" && !sourceName.trim()) {
+      setMessage("El nombre de la fuente no puede estar vacío ni contener solo espacios.");
+      form.current?.querySelector<HTMLInputElement>("input")?.focus();
+      return;
+    }
     try {
       const body =
         operation === "rejection"

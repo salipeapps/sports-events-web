@@ -107,7 +107,7 @@ test("admin promotion confirms adapter/domain/version and shows disabled UNTRUST
   });
   await mount(page, data);
   await page.getByRole("button", { name: "Aprobar y promover a B2" }).click();
-  await page.getByLabel("Nombre de la fuente").fill("Offline studio");
+  await page.getByLabel("Nombre de la fuente").fill(" Offline studio ");
   await page.getByRole("button", { name: "Revisar decisión", exact: true }).click();
   await expect(page.getByRole("dialog")).toContainText("momoyoga · www.momoyoga.com");
   await expect(page.getByRole("dialog")).toContainText("solo manual");
@@ -145,6 +145,27 @@ test("historical nine unsupported plus one ambiguous never offer promotion", asy
     await expect(page.getByRole("button", { name: "Aprobar y promover a B2" })).toHaveCount(0);
     await expect(page.getByText("Conservar como pendiente / requiere adaptador.")).toBeVisible();
   }
+});
+
+test("whitespace-only source name cannot create an intent or dispatch a promotion", async ({ page }) => {
+  let requests = 0;
+  await page.route("**/api/internal/discovery/candidates/**", (route) => {
+    requests++;
+    return route.abort();
+  });
+  await mount(page, state());
+  await page.getByRole("button", { name: "Aprobar y promover a B2" }).click();
+  await page.getByLabel("Nombre de la fuente").fill("  \u00a0  ");
+  await page.getByRole("button", { name: "Revisar decisión", exact: true }).click();
+  await expect(page.getByRole("status").first()).toContainText("no puede estar vacío ni contener solo espacios");
+  await expect(page.getByLabel("Nombre de la fuente")).toBeFocused();
+  await expect(page.getByRole("dialog")).not.toBeVisible();
+  expect(
+    await page.evaluate(
+      () => Object.keys(sessionStorage).filter((key) => key.startsWith("discovery-review-v1:")).length,
+    ),
+  ).toBe(0);
+  expect(requests).toBe(0);
 });
 
 test("disabled gates render no operational form and keep inspection/history", async ({ page }) => {
