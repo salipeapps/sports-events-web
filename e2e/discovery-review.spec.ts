@@ -219,6 +219,47 @@ test("503 after commit survives reload and replays exact key/payload despite fre
   expect(attempts[0]).toEqual(attempts[1]);
 });
 
+for (const [code, httpStatus] of [
+  ["NOT_CONFIGURED", 404],
+  ["FORBIDDEN", 403],
+] as const) {
+  test(`uncertain receipt survives ${code}, disabled gates and subsequent reactivation`, async ({ page }) => {
+    const data = state();
+    const attempts: { key?: string; body: string | null }[] = [];
+    await page.route("**/api/internal/discovery/candidates/**", (route) => {
+      attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+      const receipt = rejected(data);
+      if (attempts.length === 1) return route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE", requestId } });
+      if (attempts.length === 2) {
+        data.access!.rejectionEnabled = false;
+        data.access!.promotionEnabled = false;
+        return route.fulfill({ status: httpStatus, json: { code, requestId } });
+      }
+      return route.fulfill({ json: receipt, headers: { "x-request-id": requestId } });
+    });
+    await mount(page, data);
+    await reject(page);
+    await expect(page.getByRole("status").first()).toContainText("No se puede confirmar");
+    await page.getByRole("button", { name: "Reintentar misma decisión" }).click();
+    await page.getByRole("button", { name: "Confirmar rechazo", exact: true }).click();
+    await expect(page.getByText("Modo de solo lectura.", { exact: false })).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => Object.keys(sessionStorage).filter((key) => key.startsWith("discovery-review-v1:")).length,
+      ),
+    ).toBe(1);
+    data.access!.rejectionEnabled = true;
+    data.access!.promotionEnabled = true;
+    await page.reload();
+    await page.getByRole("button", { name: "Reintentar misma decisión" }).click();
+    await page.getByRole("button", { name: "Confirmar rechazo", exact: true }).click();
+    await expect(page.getByRole("status").first()).toContainText("Rechazo registrado");
+    expect(attempts).toHaveLength(3);
+    expect(attempts[1]).toEqual(attempts[0]);
+    expect(attempts[2]).toEqual(attempts[0]);
+  });
+}
+
 test("409 refreshes concurrent state without an automatic retry", async ({ page }) => {
   const data = state();
   let attempts = 0;

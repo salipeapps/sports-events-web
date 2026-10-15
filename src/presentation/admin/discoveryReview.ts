@@ -116,7 +116,8 @@ export const commandErrorMessages: Record<string, string> = {
   UNAUTHENTICATED: "No se ha podido verificar la sesión. Consulta el estado antes de continuar.",
   FORBIDDEN: "Tu cuenta ya no tiene permiso para esta operación o la escritura está deshabilitada.",
   NOT_FOUND: "El candidato ya no está disponible.",
-  NOT_CONFIGURED: "La escritura no está habilitada en este entorno.",
+  NOT_CONFIGURED:
+    "La escritura no está habilitada en este entorno. Se conserva la decisión para comprobar su resultado cuando vuelva a estar disponible.",
   REJECTION_CONFLICT: "Otra decisión o cambio impide este rechazo. Se ha solicitado el estado actualizado.",
   PROMOTION_CONFLICT: "Otra decisión o cambio impide esta promoción. Se ha solicitado el estado actualizado.",
   INVALID_REJECTION_REASON: "El motivo de rechazo no está admitido. Selecciona otro motivo.",

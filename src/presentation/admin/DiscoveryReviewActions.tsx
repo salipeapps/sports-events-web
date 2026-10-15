@@ -229,7 +229,10 @@ function EnabledReviewActions({ candidate, access }: { candidate: DiscoveryCandi
           sessionStorage.removeItem(storageKey);
           router.refresh();
         } else if ([400, 401, 403, 404, 422].includes(response.status)) {
-          sessionStorage.removeItem(storageKey);
+          // A denied replay says nothing about the outcome of the earlier attempt.
+          // In particular NOT_CONFIGURED also uses 404; it is not a missing candidate.
+          if (!stored && !["NOT_CONFIGURED", "WRITE_UNAVAILABLE", "INCOMPATIBLE_CONTRACT"].includes(code))
+            sessionStorage.removeItem(storageKey);
           if (response.status === 401 || response.status === 403) setConflict(true);
           router.refresh();
         }
