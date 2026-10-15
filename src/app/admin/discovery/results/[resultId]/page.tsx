@@ -5,6 +5,7 @@ import { getDiscoveryRepository } from "@/data/discoveryRepositoryProvider";
 import { DiscoveryResultDetail } from "@/presentation/admin/DiscoveryOverview";
 import { DiscoveryReadError, getDiscoveryMode, getLiveDiscoveryRepository } from "@/integrations/discovery/readApi";
 import { LiveCandidateDetail, LiveDiscoveryFailure } from "@/presentation/admin/LiveDiscovery";
+import { getDiscoveryReviewAccess } from "@/integrations/discovery/reviewAccess";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -16,7 +17,7 @@ export default async function DiscoveryResultPage({
   params: Promise<{ resultId: string }>;
   searchParams: Promise<{ observationsCursor?: string; reviewsCursor?: string }>;
 }) {
-  await requireAdminAccess("discovery.view");
+  const session = await requireAdminAccess("discovery.view");
   const { resultId } = await params;
   const mode = getDiscoveryMode();
   if (mode === "demo") {
@@ -47,6 +48,7 @@ export default async function DiscoveryResultPage({
       observations={outcome.observations}
       reviews={outcome.reviews}
       cursors={outcome.cursors}
+      reviewAccess={getDiscoveryReviewAccess(session)}
     />
   );
 }
