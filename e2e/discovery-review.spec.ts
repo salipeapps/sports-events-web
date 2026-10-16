@@ -359,6 +359,38 @@ for (const [status, code] of [
   });
 }
 
+test("uncertain timeout, writer-retained 429 and a changed user never replace the original intent", async ({
+  page,
+}) => {
+  const data = state();
+  const attempts: { key?: string; body: string | null }[] = [];
+  await page.route("**/api/internal/discovery/candidates/**", (route) => {
+    attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+    // 1: timeout with unknown outcome. 2: Engine keeps the uncertain admission slot.
+    // 3: session switched to another user. 4: after reconciliation the replay returns the receipt.
+    if (attempts.length === 1) return route.abort("timedout");
+    if (attempts.length === 2)
+      return route.fulfill({
+        status: 429,
+        json: { code: "RATE_LIMITED", requestId },
+        headers: { "retry-after": "60" },
+      });
+    if (attempts.length === 3) return route.fulfill({ status: 401, json: { code: "UNAUTHENTICATED", requestId } });
+    return route.fulfill({ json: rejected(data), headers: { "x-request-id": requestId } });
+  });
+  await mount(page, data);
+  await reject(page);
+  await expect(page.getByRole("button", { name: "Reintentar misma decisión" })).toBeVisible();
+  for (const text of ["Espera un minuto", "verificar la sesión", "Rechazo registrado"]) {
+    await page.reload();
+    await page.getByRole("button", { name: "Reintentar misma decisión" }).click();
+    await page.getByRole("button", { name: "Confirmar rechazo", exact: true }).click();
+    await expect(page.getByRole("status").first()).toContainText(text);
+  }
+  expect(attempts).toHaveLength(4);
+  for (const attempt of attempts.slice(1)) expect(attempt).toEqual(attempts[0]);
+});
+
 test("double click cannot send twice and a network failure retains the intent", async ({ page }) => {
   let attempts = 0;
   let release!: () => void;

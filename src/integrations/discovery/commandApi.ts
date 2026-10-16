@@ -4,7 +4,6 @@ import { randomUUID } from "node:crypto";
 import { canAdmin } from "@/domain/adminAccess";
 import { getDiscoveryAccessToken, type DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
 import { isApprovedStagingDeployment, parseStageConfig, workloadToken } from "./readApi";
-import { unavailableCommandAdmission, type CommandAdmission, type CommandPermit } from "./commandQuota";
 
 export type CommandOperation = "rejection" | "promotion";
 export const rejectionReasons = ["UNSUITABLE_SOURCE", "OUT_OF_SCOPE", "DUPLICATE_SOURCE", "INVALID_SOURCE"] as const;
@@ -57,6 +56,8 @@ export class DiscoveryCommandError extends Error {
   constructor(
     readonly code: CommandErrorCode,
     readonly requestId: string = randomUUID(),
+    // Delta-seconds hint for RATE_LIMITED, verified from the writer or the local backstop.
+    readonly retryAfter: number = 60,
   ) {
     super(code);
   }
@@ -177,21 +178,36 @@ export function validateCommand(
   return body as unknown as RejectionCommand | PromotionCommand;
 }
 
+// Engine #102 admits exactly one operation (`discovery.reject`) inside the writer and
+// refuses promotion while admission is enabled. Promotion therefore stays closed in
+// the BFF regardless of its flag until Engine ships a reviewed promotion policy.
+export const writerAdmittedOperations: readonly CommandOperation[] = ["rejection"];
+// Pinned identifier of the Engine writer protocol (docs/command-admission-adr.md):
+// authoritative shared admission after JWT/role and before SQL, one acquire per dispatch,
+// 429 RATE_LIMITED + Retry-After, 503 WRITE_UNAVAILABLE, no BFF/browser-issued permits.
+export const writerAdmissionContract = "engine-authoritative-rejection-v1";
+
 export function commandsEnabled(operation: CommandOperation, env: NodeJS.ProcessEnv = process.env): boolean {
   return (
     isApprovedStagingDeployment(env) &&
+    writerAdmittedOperations.includes(operation) &&
     env[operation === "rejection" ? "DISCOVERY_REJECTION_ENABLED" : "DISCOVERY_PROMOTION_ENABLED"] === "enabled"
   );
 }
 
 // #87 must verify and pin a dedicated writer origin/account before activation.
-// Never fall back to the reader URL or reader service account.
+// Never fall back to the reader URL or reader service account. The operator also
+// attests, for that exact origin, that the deployed writer enforces Engine's own
+// authoritative admission. The BFF never reserves quota itself: one admission per
+// dispatch, made by Engine. Without this attestation nothing is dispatched.
 export function commandConfig(env: NodeJS.ProcessEnv = process.env) {
   const origin = env.ENGINE_COMMAND_STAGING_BASE_URL;
   const account = env.GCP_COMMAND_INVOKER_SERVICE_ACCOUNT_EMAIL;
   if (
     !origin ||
     origin !== env.ENGINE_COMMAND_STAGING_VERIFIED_ORIGIN ||
+    env.ENGINE_COMMAND_ADMISSION_CONTRACT !== writerAdmissionContract ||
+    origin !== env.ENGINE_COMMAND_ADMISSION_VERIFIED_ORIGIN ||
     origin === env.ENGINE_STAGING_BASE_URL ||
     !account ||
     account === env.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL
@@ -216,7 +232,6 @@ export function commandConfig(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export interface CommandTransport {
-  admission?: CommandAdmission;
   fetcher: typeof fetch;
   getAccess(): Promise<DiscoveryTokenResult>;
   getWorkloadToken(): Promise<string>;
@@ -275,9 +290,6 @@ export class HttpDiscoveryCommandClient {
   async execute(operation: CommandOperation, id: string, key: string, input: unknown) {
     if (!commandsEnabled(operation, this.env)) fail("NOT_CONFIGURED");
     const payload = JSON.stringify(validateCommand(operation, id, key, input));
-    let permit: CommandPermit | undefined;
-    let dispatched = false;
-    let settled = false;
     try {
       const origin = new URL(this.transport.origin);
       if (
@@ -293,19 +305,16 @@ export class HttpDiscoveryCommandClient {
       const capability = operation === "rejection" ? "discovery.reject" : "discovery.promote";
       if (!canAdmin(preflight.role, capability)) fail("FORBIDDEN");
       const workload = await this.transport.getWorkloadToken();
-      // STS/IAM can take seconds: check revocation and roles after the exchange,
-      // immediately before dispatching a mutation with this exact verified bearer.
+      // STS/IAM can take seconds: check revocation, roles and the exact subject after the
+      // exchange, immediately before dispatching a mutation with this verified bearer.
+      // The writer charges its shared quota to this same identity (no BFF reservation).
       const access = await this.transport.getAccess();
       if (access.status === "denied") fail(access.code);
       if (access.subject !== preflight.subject) fail("UNAUTHENTICATED");
       if (!canAdmin(access.role, capability)) fail("FORBIDDEN");
-      permit = await (this.transport.admission ?? unavailableCommandAdmission).acquire(access.subject, operation);
-      // Quota backend may be slow too: pin the charged identity to the final bearer.
-      const dispatchAccess = await this.transport.getAccess();
-      if (dispatchAccess.status === "denied") fail(dispatchAccess.code);
-      if (dispatchAccess.subject !== access.subject) fail("UNAUTHENTICATED");
-      if (!canAdmin(dispatchAccess.role, capability)) fail("FORBIDDEN");
-      dispatched = true;
+      // Re-read the gates after the async work: a flag closed meanwhile dispatches nothing.
+      if (!commandsEnabled(operation, this.env) || commandConfig(this.env).origin !== origin.origin)
+        fail("NOT_CONFIGURED");
       const response = await this.transport.fetcher(
         `${origin.origin}/api/admin/v1/discovery/candidates/${id}/${operation}`,
         {
@@ -313,7 +322,7 @@ export class HttpDiscoveryCommandClient {
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",
-            Authorization: `Bearer ${dispatchAccess.accessToken}`,
+            Authorization: `Bearer ${access.accessToken}`,
             "X-Serverless-Authorization": `Bearer ${workload}`,
             "Idempotency-Key": key,
           },
@@ -357,7 +366,13 @@ export class HttpDiscoveryCommandClient {
         const code = body.code as CommandErrorCode;
         if (!allowed.includes(code) || commandStatus[code] !== response.status || body.requestId !== requestId)
           throw new DiscoveryCommandError("INCOMPATIBLE_CONTRACT", requestId);
-        settled = response.status !== 503;
+        if (code === "RATE_LIMITED") {
+          // Engine's authoritative denial always carries a delta-seconds hint.
+          const retryAfter = response.headers.get("retry-after") ?? "";
+          if (!/^[1-9][0-9]{0,4}$/.test(retryAfter) || Number(retryAfter) > 86400)
+            throw new DiscoveryCommandError("INCOMPATIBLE_CONTRACT", requestId);
+          throw new DiscoveryCommandError(code, requestId, Number(retryAfter));
+        }
         throw new DiscoveryCommandError(code, requestId);
       }
       const invalid = () => {
@@ -378,7 +393,6 @@ export class HttpDiscoveryCommandClient {
           body.reviewerRef !== access.subject
         )
           invalid();
-        settled = true;
         return {
           requestId,
           receipt: {
@@ -392,7 +406,6 @@ export class HttpDiscoveryCommandClient {
         };
       }
       if (!isUuid(body.sourceId) || typeof body.reusedSource !== "boolean") invalid();
-      settled = true;
       return {
         requestId,
         receipt: {
@@ -404,17 +417,10 @@ export class HttpDiscoveryCommandClient {
         },
       };
     } catch (error) {
+      // Timeout/transport loss is an uncertain outcome: never retried here. The writer
+      // retains its admission slot; the browser keeps the exact key/payload for replay.
       if (error instanceof DiscoveryCommandError) throw error;
       throw new DiscoveryCommandError("WRITE_UNAVAILABLE");
-    } finally {
-      if (permit && (!dispatched || settled)) {
-        // Failure to release is conservative: retain the slot, never replay a write.
-        try {
-          await permit.complete();
-        } catch {
-          /* reconciliation required */
-        }
-      }
     }
   }
 }

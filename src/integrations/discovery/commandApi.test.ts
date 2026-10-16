@@ -10,12 +10,10 @@ import {
   commandStatus,
   HttpDiscoveryCommandClient,
   validateCommand,
-  type CommandOperation,
+  writerAdmissionContract,
   type PromotionCommand,
 } from "./commandApi";
 import { ActorCommandBudget, handleDiscoveryCommand } from "./commandBoundary";
-import { SharedCommandAdmission, unavailableCommandAdmission } from "./commandQuota";
-import { OfflineCommandQuotaStore } from "./commandQuota.fixture";
 import { POST } from "@/app/api/internal/discovery/candidates/[id]/[operation]/route";
 
 vi.mock("server-only", () => ({}));
@@ -46,6 +44,8 @@ const env: NodeJS.ProcessEnv = {
   ENGINE_COMMAND_STAGING_VERIFIED_ORIGIN: "https://writer.a.run.app",
   ENGINE_COMMAND_STAGING_ID_TOKEN_AUDIENCE: "https://writer.a.run.app",
   GCP_COMMAND_INVOKER_SERVICE_ACCOUNT_EMAIL: "writer@offline.iam.gserviceaccount.com",
+  ENGINE_COMMAND_ADMISSION_CONTRACT: "engine-authoritative-rejection-v1",
+  ENGINE_COMMAND_ADMISSION_VERIFIED_ORIGIN: "https://writer.a.run.app",
   GCP_WORKLOAD_PROVIDER_AUDIENCE:
     "//iam.googleapis.com/projects/123/locations/global/workloadIdentityPools/offline/providers/vercel",
   VERCEL_EXPECTED_OIDC_ISSUER: "https://oidc.vercel.com/raulsp",
@@ -83,15 +83,13 @@ function setup(role: "admin" | "reviewer" = "admin", deployment = { ...env }) {
     .mockResolvedValue({ status: "authorized", accessToken: "user-secret", subject: actor, role });
   const getWorkloadToken = vi.fn(async () => "workload-secret");
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => response());
-  const store = new OfflineCommandQuotaStore();
-  const admission = new SharedCommandAdmission(store, "offline-identity-secret-32-bytes-minimum");
-  const transport = { origin: "https://writer.a.run.app", fetcher, getAccess, getWorkloadToken, admission };
+  const transport = { origin: "https://writer.a.run.app", fetcher, getAccess, getWorkloadToken };
   const client = new HttpDiscoveryCommandClient(transport, deployment);
   const createClient = vi.fn(() => client);
   const deps = { env: deployment, getAccess, createClient, budget: new ActorCommandBudget() };
   const run = (request: Request = req(), operation: string = "rejection", candidateId = id) =>
     handleDiscoveryCommand(request, candidateId, operation, deps);
-  return { client, getAccess, getWorkloadToken, fetcher, createClient, deps, run, store, transport };
+  return { client, getAccess, getWorkloadToken, fetcher, createClient, deps, run, transport };
 }
 function req(
   body: unknown = rejection,
@@ -128,6 +126,8 @@ describe("command deployment gates", () => {
       expect(commandsEnabled("promotion", disabled)).toBe(false);
       expect(commandsEnabled("rejection", { ...disabled, DISCOVERY_REJECTION_ENABLED: "enabled" })).toBe(true);
       expect(commandsEnabled("promotion", { ...disabled, DISCOVERY_REJECTION_ENABLED: "enabled" })).toBe(false);
+      // Engine admits only discovery.reject: promotion stays closed even with its own flag.
+      expect(commandsEnabled("promotion", { ...disabled, DISCOVERY_PROMOTION_ENABLED: "enabled" })).toBe(false);
     }
   });
   it.each([
@@ -168,8 +168,17 @@ describe("command deployment gates", () => {
       "ENGINE_COMMAND_STAGING_ID_TOKEN_AUDIENCE",
       "GCP_COMMAND_INVOKER_SERVICE_ACCOUNT_EMAIL",
       "GCP_WORKLOAD_PROVIDER_AUDIENCE",
+      "ENGINE_COMMAND_ADMISSION_CONTRACT",
+      "ENGINE_COMMAND_ADMISSION_VERIFIED_ORIGIN",
     ])
       expect(() => commandConfig({ ...env, [field]: undefined })).toThrow("NOT_CONFIGURED");
+    expect(writerAdmissionContract).toBe("engine-authoritative-rejection-v1");
+    for (const contract of ["engine-authoritative-rejection-v0", "bff-local", "ENGINE-AUTHORITATIVE-REJECTION-V1", " "])
+      expect(() => commandConfig({ ...env, ENGINE_COMMAND_ADMISSION_CONTRACT: contract })).toThrow("NOT_CONFIGURED");
+    // The attestation is bound to the exact writer origin it was verified for.
+    expect(() =>
+      commandConfig({ ...env, ENGINE_COMMAND_ADMISSION_VERIFIED_ORIGIN: "https://old-writer.a.run.app" }),
+    ).toThrow("NOT_CONFIGURED");
     for (const url of [
       "https://evil.test",
       "http://writer.a.run.app",
@@ -195,46 +204,102 @@ describe("command deployment gates", () => {
 });
 
 describe("full command boundary and mocked private HTTP", () => {
-  it("fails closed before writer dispatch when shared store is missing or unavailable", async () => {
-    for (const missing of [false, true]) {
-      const f = setup();
-      if (missing) Object.assign(f.transport, { admission: undefined });
-      else f.store.available = false;
+  it("never dispatches without a writer attested to enforce Engine admission", async () => {
+    for (const missing of [
+      { ENGINE_COMMAND_ADMISSION_CONTRACT: undefined },
+      { ENGINE_COMMAND_ADMISSION_CONTRACT: "bff-shared-quota-v1" },
+      { ENGINE_COMMAND_ADMISSION_VERIFIED_ORIGIN: undefined },
+      { ENGINE_COMMAND_ADMISSION_VERIFIED_ORIGIN: "https://other.a.run.app" },
+    ]) {
+      const f = setup("admin", { ...env, ...missing });
       const result = await f.run();
-      expect(result.status).toBe(503);
-      expect(await result.json()).toMatchObject({ code: "WRITE_UNAVAILABLE" });
+      expect(result.status).toBe(404);
+      expect(await result.json()).toMatchObject({ code: "NOT_CONFIGURED" });
+      expect(f.getWorkloadToken).not.toHaveBeenCalled();
       expect(f.fetcher).not.toHaveBeenCalled();
     }
-    await expect(unavailableCommandAdmission.acquire(actor, "rejection")).rejects.toThrow("WRITE_UNAVAILABLE");
   });
-  it("returns 429 with Retry-After from shared quota despite fresh local budgets", async () => {
+  it("delegates admission to Engine once per dispatch and maps its 429 Retry-After", async () => {
     const f = setup();
-    for (let i = 0; i < 20; i++) expect((await f.run()).status).toBe(200);
-    f.deps.budget = new ActorCommandBudget();
+    f.fetcher.mockImplementation(async () =>
+      response({ code: "RATE_LIMITED", requestId }, 429, { "Retry-After": "37" }),
+    );
     const limited = await f.run();
     expect(limited.status).toBe(429);
-    expect(limited.headers.get("retry-after")).toBe("60");
-    expect(f.fetcher).toHaveBeenCalledTimes(20);
-  });
-  it("retains uncertain slots on timeout and releases only confirmed completions", async () => {
-    const f = setup();
-    f.fetcher.mockRejectedValueOnce(new Error("timeout"));
-    expect((await f.run()).status).toBe(503);
-    expect(Object.keys(f.store.state.active)).toHaveLength(1);
-    expect((await f.run()).status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBe("37");
+    expect(await limited.json()).toEqual({ code: "RATE_LIMITED", requestId });
+    // No BFF reservation, retry or second admission: the writer saw exactly one request.
     expect(f.fetcher).toHaveBeenCalledOnce();
+    const headers = f.fetcher.mock.calls[0][1]?.headers as Record<string, string>;
+    expect(Object.keys(headers).sort()).toEqual(
+      ["Accept", "Authorization", "Content-Type", "Idempotency-Key", "X-Serverless-Authorization"].sort(),
+    );
   });
-  it("rechecks charged identity after quota latency and releases without dispatch on revocation", async () => {
+  it.each([undefined, "", "0", "-1", "1.5", "60, 60", "Wed, 21 Oct 2026 07:28:00 GMT", "86401"])(
+    "fails closed on Engine 429 without a valid Retry-After %s",
+    async (retryAfter) => {
+      const f = setup();
+      f.fetcher.mockImplementation(async () =>
+        response(
+          { code: "RATE_LIMITED", requestId },
+          429,
+          retryAfter === undefined ? {} : { "Retry-After": retryAfter },
+        ),
+      );
+      const result = await f.run();
+      expect(result.status).toBe(503);
+      expect((await result.json()).code).toBe("INCOMPATIBLE_CONTRACT");
+      expect(result.headers.get("retry-after")).toBeNull();
+    },
+  );
+  it("timeout is uncertain: the writer keeps its permit and the exact retry is replayed", async () => {
     const f = setup();
-    const acquire = f.transport.admission.acquire.bind(f.transport.admission);
-    f.transport.admission.acquire = async (...args) => {
-      const permit = await acquire(...args);
-      f.getAccess.mockResolvedValue({ status: "denied", code: "FORBIDDEN" });
-      return permit;
-    };
-    expect((await f.run()).status).toBe(403);
+    f.fetcher
+      .mockRejectedValueOnce(new DOMException("The operation was aborted due to timeout", "TimeoutError"))
+      .mockResolvedValueOnce(response({ code: "RATE_LIMITED", requestId }, 429, { "Retry-After": "60" }))
+      .mockResolvedValueOnce(response());
+    const timeout = await f.run();
+    expect(timeout.status).toBe(503);
+    expect((await timeout.json()).code).toBe("WRITE_UNAVAILABLE");
+    // Engine retains the uncertain slot until operator reconciliation.
+    expect((await f.run()).status).toBe(429);
+    const replay = await f.run();
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual(rejected);
+    const sent = f.fetcher.mock.calls.map(([, init]) => [
+      init?.body,
+      (init?.headers as Record<string, string>)["Idempotency-Key"],
+    ]);
+    expect(sent).toEqual([
+      [JSON.stringify(rejection), key],
+      [JSON.stringify(rejection), key],
+      [JSON.stringify(rejection), key],
+    ]);
+  });
+  it("a gate closed during workload exchange dispatches nothing", async () => {
+    const deployment = { ...env };
+    const f = setup("admin", deployment);
+    f.getWorkloadToken.mockImplementation(async () => {
+      deployment.DISCOVERY_REJECTION_ENABLED = "disabled";
+      return "workload-secret";
+    });
+    const result = await f.run();
+    expect(result.status).toBe(404);
     expect(f.fetcher).not.toHaveBeenCalled();
-    expect(Object.keys(f.store.state.active)).toHaveLength(0);
+  });
+  it("private writer unavailable or IAM denied stays 503 without retry or detail", async () => {
+    for (const failure of [
+      () => Promise.reject(new TypeError("fetch failed ECONNREFUSED writer.a.run.app")),
+      () => Promise.resolve(new Response("<html>403 IAM denied</html>", { status: 403 })),
+      () => Promise.resolve(response({ code: "WRITE_UNAVAILABLE", requestId }, 503)),
+    ]) {
+      const f = setup();
+      f.fetcher.mockImplementation(failure);
+      const result = await f.run();
+      expect(result.status).toBe(503);
+      expect(await result.text()).not.toMatch(/IAM|ECONNREFUSED|writer\.a\.run\.app/);
+      expect(f.fetcher).toHaveBeenCalledOnce();
+    }
   });
   it("checks real RSA signature, signed role and fresh membership through the whole boundary", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
@@ -272,7 +337,7 @@ describe("full command boundary and mocked private HTTP", () => {
     const f = setup("reviewer");
     f.getAccess.mockImplementation(() => verifyDiscoveryAccessToken(authClient, claims.iss));
     expect((await f.run()).status).toBe(200);
-    expect((await f.run(req(promotion), "promotion")).status).toBe(403);
+    expect((await f.run(req(promotion), "promotion")).status).toBe(404);
     active = false;
     expect((await f.run()).status).toBe(403);
     active = true;
@@ -301,7 +366,7 @@ describe("full command boundary and mocked private HTTP", () => {
     expect(await result.json()).toEqual(rejected);
     expect(result.headers.get("cache-control")).toContain("no-store");
     expect(result.headers.get("x-request-id")).toBe(requestId);
-    expect(f.getAccess).toHaveBeenCalledTimes(4);
+    expect(f.getAccess).toHaveBeenCalledTimes(3);
     const [url, init] = f.fetcher.mock.calls[0];
     expect(url).toBe(`https://writer.a.run.app/api/admin/v1/discovery/candidates/${id}/rejection`);
     expect(init).toMatchObject({
@@ -317,20 +382,15 @@ describe("full command boundary and mocked private HTTP", () => {
     });
     expect(JSON.stringify(init)).not.toContain("attacker");
   });
-  it("promotion is exclusively admin and forwards only the v1 DTO", async () => {
+  it("promotion stays closed without Engine admission even for admins with its flag enabled", async () => {
     expect(canAdmin("reviewer", "discovery.reject")).toBe(true);
     expect(canAdmin("reviewer", "discovery.promote")).toBe(false);
-    const reviewer = setup("reviewer");
-    expect((await reviewer.run(req(promotion), "promotion")).status).toBe(403);
-    expect(reviewer.createClient).not.toHaveBeenCalled();
-    await expect(reviewer.client.execute("promotion", id, key, promotion)).rejects.toMatchObject({ code: "FORBIDDEN" });
-    expect(reviewer.getWorkloadToken).not.toHaveBeenCalled();
     const f = setup();
-    f.fetcher.mockImplementation(async () => response(promoted));
-    const result = await f.run(req(promotion), "promotion");
-    expect(result.status).toBe(200);
-    expect(await result.json()).toEqual(promoted);
-    expect(f.fetcher.mock.calls[0][1]?.body).toBe(JSON.stringify(promotion));
+    expect((await f.run(req(promotion), "promotion")).status).toBe(404);
+    await expect(f.client.execute("promotion", id, key, promotion)).rejects.toMatchObject({ code: "NOT_CONFIGURED" });
+    expect(f.getAccess).not.toHaveBeenCalled();
+    expect(f.getWorkloadToken).not.toHaveBeenCalled();
+    expect(f.fetcher).not.toHaveBeenCalled();
   });
   it.each(["UNAUTHENTICATED", "FORBIDDEN"] as const)(
     "denies missing/revoked/claim-mismatched access: %s",
@@ -351,35 +411,31 @@ describe("full command boundary and mocked private HTTP", () => {
     expect(f.fetcher).not.toHaveBeenCalled();
     expect((await f.run()).status).toBe(403);
   });
-  it.each(["rejection", "promotion"] as const)(
-    "denies %s revocation during STS/IAM before engine dispatch",
-    async (operation) => {
-      const f = setup();
-      f.getWorkloadToken.mockImplementation(async () => {
-        f.getAccess.mockResolvedValue({ status: "denied", code: "FORBIDDEN" });
-        return "workload-secret";
+  it("denies revocation during STS/IAM before engine dispatch", async () => {
+    const f = setup();
+    f.getWorkloadToken.mockImplementation(async () => {
+      f.getAccess.mockResolvedValue({ status: "denied", code: "FORBIDDEN" });
+      return "workload-secret";
+    });
+    const result = await f.run();
+    expect(result.status).toBe(403);
+    expect(f.getAccess).toHaveBeenCalledTimes(3);
+    expect(f.getWorkloadToken).toHaveBeenCalledOnce();
+    expect(f.fetcher).not.toHaveBeenCalled();
+  });
+  it("rejects a switched user identity after async work and before dispatch", async () => {
+    const f = setup();
+    f.getWorkloadToken.mockImplementation(async () => {
+      f.getAccess.mockResolvedValue({
+        status: "authorized",
+        accessToken: "new-user-secret",
+        subject: key,
+        role: "admin",
       });
-      const result = await f.run(req(operation === "promotion" ? promotion : rejection), operation);
-      expect(result.status).toBe(403);
-      expect(f.getAccess).toHaveBeenCalledTimes(3);
-      expect(f.getWorkloadToken).toHaveBeenCalledOnce();
-      expect(f.fetcher).not.toHaveBeenCalled();
-    },
-  );
-  it("denies admin downgrade during workload exchange and rejects switched identity", async () => {
-    for (const change of [
-      { subject: actor, role: "reviewer" as const },
-      { subject: key, role: "admin" as const },
-    ]) {
-      const f = setup();
-      f.getWorkloadToken.mockImplementation(async () => {
-        f.getAccess.mockResolvedValue({ status: "authorized", accessToken: "new-user-secret", ...change });
-        return "workload-secret";
-      });
-      const result = await f.run(req(promotion), "promotion");
-      expect(result.status).toBe(change.subject === actor ? 403 : 401);
-      expect(f.fetcher).not.toHaveBeenCalled();
-    }
+      return "workload-secret";
+    });
+    expect((await f.run()).status).toBe(401);
+    expect(f.fetcher).not.toHaveBeenCalled();
   });
   it.each<Record<string, string>>([
     { Origin: "https://evil.test" },
@@ -495,29 +551,17 @@ describe("upstream contract, redaction and uncertain outcomes", () => {
     "NOT_FOUND",
     "REJECTION_CONFLICT",
     "INVALID_REJECTION_REASON",
-    "PROMOTION_CONFLICT",
-    "CLASSIFICATION_NOT_SUPPORTED",
-    "ADAPTER_NOT_REGISTERED",
-    "INVALID_ALLOWED_DOMAINS",
-    "INVALID_REQUEST_BUDGET",
     "RATE_LIMITED",
     "WRITE_UNAVAILABLE",
   ] as const;
   it.each(errors)("preserves typed %s and correlation but strips error details", async (code) => {
     const f = setup();
-    const operation: CommandOperation = [
-      "PROMOTION_CONFLICT",
-      "CLASSIFICATION_NOT_SUPPORTED",
-      "ADAPTER_NOT_REGISTERED",
-      "INVALID_ALLOWED_DOMAINS",
-      "INVALID_REQUEST_BUDGET",
-    ].includes(code)
-      ? "promotion"
-      : "rejection";
     f.fetcher.mockImplementation(async () =>
-      response({ code, requestId, detail: "SQL user-secret workload-secret" }, commandStatus[code]),
+      response({ code, requestId, detail: "SQL user-secret workload-secret" }, commandStatus[code], {
+        "Retry-After": "60",
+      }),
     );
-    const result = await f.run(req(operation === "promotion" ? promotion : rejection), operation);
+    const result = await f.run();
     expect(result.status).toBe(commandStatus[code]);
     expect(await result.json()).toEqual({ code, requestId });
     expect(result.headers.get("x-request-id")).toBe(requestId);
@@ -536,6 +580,7 @@ describe("upstream contract, redaction and uncertain outcomes", () => {
     () => response({ code: "SQL_SECRET", requestId }, 503),
     () => response({ code: "FORBIDDEN", requestId: key }, 403),
     () => response({ code: "FORBIDDEN", requestId }, 409),
+    () => response({ code: "PROMOTION_CONFLICT", requestId }, 409),
     () => response("x".repeat(9000)),
     () => new Response("{malformed", { headers: response().headers }),
     () => response([], 200),
@@ -546,13 +591,6 @@ describe("upstream contract, redaction and uncertain outcomes", () => {
     expect(result.status).toBe(503);
     expect((await result.json()).code).toBe("INCOMPATIBLE_CONTRACT");
   });
-  it("validates promotion receipts", async () => {
-    for (const patch of [{ sourceId: "bad" }, { reusedSource: "false" }, { promotedAt: null }]) {
-      const f = setup();
-      f.fetcher.mockImplementation(async () => response({ ...promoted, ...patch }));
-      expect((await f.run(req(promotion), "promotion")).status).toBe(503);
-    }
-  });
   it("never automatically retries timeout/503; manual retries preserve the exact key and payload", async () => {
     const f = setup();
     f.fetcher
@@ -562,9 +600,6 @@ describe("upstream contract, redaction and uncertain outcomes", () => {
     expect(result.status).toBe(503);
     expect(await result.text()).not.toContain("secret");
     expect(f.fetcher).toHaveBeenCalledTimes(1);
-    // Offline reconciliation proves the previous writer stopped before release.
-    // A timer or retry must never free uncertain work automatically.
-    f.store.state.active = {};
     result = await f.run();
     expect(result.status).toBe(503);
     expect(f.fetcher).toHaveBeenCalledTimes(2);
@@ -573,17 +608,22 @@ describe("upstream contract, redaction and uncertain outcomes", () => {
       f.fetcher.mock.calls.map(([, init]) => (init?.headers as Record<string, string>)["Idempotency-Key"]),
     ).toEqual([key, key]);
   });
-  it("denies concurrent duplicate dispatch; sequential replay retains intent and competing conflict", async () => {
+  it("concurrent duplicates reach the writer, whose single admission arbitrates them", async () => {
     const f = setup();
+    let calls = 0;
+    f.fetcher.mockImplementation(async () =>
+      ++calls === 1 ? response() : response({ code: "RATE_LIMITED", requestId }, 429, { "Retry-After": "60" }),
+    );
     const results = await Promise.all([f.run(), f.run()]);
     expect(results.map((result) => result.status).sort()).toEqual([200, 429]);
+    expect(f.fetcher).toHaveBeenCalledTimes(2);
+    f.fetcher.mockImplementation(async () => response());
     const replay = await f.run();
     expect(await replay.json()).toEqual(rejected);
-    expect(f.fetcher).toHaveBeenCalledTimes(2);
     f.fetcher.mockImplementation(async () => response({ code: "REJECTION_CONFLICT", requestId }, 409));
     const conflict = await f.run(req(rejection, { "Idempotency-Key": reviewId }));
     expect(conflict.status).toBe(409);
-    expect(f.fetcher).toHaveBeenCalledTimes(3);
+    expect(f.fetcher).toHaveBeenCalledTimes(4);
   });
   it("safe workload and unknown auth failures never reach engine or expose exceptions", async () => {
     const f = setup();
