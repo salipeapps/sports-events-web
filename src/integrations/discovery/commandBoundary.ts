@@ -48,7 +48,8 @@ export function parseCommandJson(text: string): Record<string, unknown> {
   return result;
 }
 
-// Bounded per-instance backstop. Shared ingress rate limiting is required by #87.
+// Bounded per-instance abuse backstop, never a quota authority and never a fallback:
+// the only shared admission is Engine's, inside the writer (#41 / Engine #102).
 export class ActorCommandBudget {
   private readonly actors = new Map<string, { until: number; count: number }>();
   constructor(private readonly now = Date.now) {}
@@ -84,7 +85,7 @@ export async function handleDiscoveryCommand(
   operation: string,
   deps: BoundaryDependencies = defaults,
 ): Promise<Response> {
-  function output(body: unknown, status: number, requestId: string = randomUUID()) {
+  function output(body: unknown, status: number, requestId: string = randomUUID(), retryAfter = 60) {
     return Response.json(body, {
       status,
       headers: {
@@ -92,7 +93,7 @@ export async function handleDiscoveryCommand(
         "X-Request-ID": requestId,
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "no-referrer",
-        ...(status === 429 ? { "Retry-After": "60" } : {}),
+        ...(status === 429 ? { "Retry-After": String(retryAfter) } : {}),
         ...(status === 401 ? { "WWW-Authenticate": "Bearer" } : {}),
       },
     });
@@ -133,6 +134,11 @@ export async function handleDiscoveryCommand(
     return output(result.receipt, 200, result.requestId);
   } catch (error) {
     const safe = error instanceof DiscoveryCommandError ? error : new DiscoveryCommandError("WRITE_UNAVAILABLE");
-    return output({ code: safe.code, requestId: safe.requestId }, commandStatus[safe.code], safe.requestId);
+    return output(
+      { code: safe.code, requestId: safe.requestId },
+      commandStatus[safe.code],
+      safe.requestId,
+      safe.retryAfter,
+    );
   }
 }
