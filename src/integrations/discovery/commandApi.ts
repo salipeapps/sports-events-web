@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { canAdmin } from "@/domain/adminAccess";
 import { getDiscoveryAccessToken, type DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
 import { isApprovedStagingDeployment, parseStageConfig, workloadToken } from "./readApi";
+import { unavailableCommandAdmission, type CommandAdmission, type CommandPermit } from "./commandQuota";
 
 export type CommandOperation = "rejection" | "promotion";
 export const rejectionReasons = ["UNSUITABLE_SOURCE", "OUT_OF_SCOPE", "DUPLICATE_SOURCE", "INVALID_SOURCE"] as const;
@@ -215,6 +216,7 @@ export function commandConfig(env: NodeJS.ProcessEnv = process.env) {
 }
 
 export interface CommandTransport {
+  admission?: CommandAdmission;
   fetcher: typeof fetch;
   getAccess(): Promise<DiscoveryTokenResult>;
   getWorkloadToken(): Promise<string>;
@@ -273,6 +275,9 @@ export class HttpDiscoveryCommandClient {
   async execute(operation: CommandOperation, id: string, key: string, input: unknown) {
     if (!commandsEnabled(operation, this.env)) fail("NOT_CONFIGURED");
     const payload = JSON.stringify(validateCommand(operation, id, key, input));
+    let permit: CommandPermit | undefined;
+    let dispatched = false;
+    let settled = false;
     try {
       const origin = new URL(this.transport.origin);
       if (
@@ -294,6 +299,13 @@ export class HttpDiscoveryCommandClient {
       if (access.status === "denied") fail(access.code);
       if (access.subject !== preflight.subject) fail("UNAUTHENTICATED");
       if (!canAdmin(access.role, capability)) fail("FORBIDDEN");
+      permit = await (this.transport.admission ?? unavailableCommandAdmission).acquire(access.subject, operation);
+      // Quota backend may be slow too: pin the charged identity to the final bearer.
+      const dispatchAccess = await this.transport.getAccess();
+      if (dispatchAccess.status === "denied") fail(dispatchAccess.code);
+      if (dispatchAccess.subject !== access.subject) fail("UNAUTHENTICATED");
+      if (!canAdmin(dispatchAccess.role, capability)) fail("FORBIDDEN");
+      dispatched = true;
       const response = await this.transport.fetcher(
         `${origin.origin}/api/admin/v1/discovery/candidates/${id}/${operation}`,
         {
@@ -301,7 +313,7 @@ export class HttpDiscoveryCommandClient {
           headers: {
             Accept: "application/json",
             "Content-Type": "application/json",
-            Authorization: `Bearer ${access.accessToken}`,
+            Authorization: `Bearer ${dispatchAccess.accessToken}`,
             "X-Serverless-Authorization": `Bearer ${workload}`,
             "Idempotency-Key": key,
           },
@@ -345,6 +357,7 @@ export class HttpDiscoveryCommandClient {
         const code = body.code as CommandErrorCode;
         if (!allowed.includes(code) || commandStatus[code] !== response.status || body.requestId !== requestId)
           throw new DiscoveryCommandError("INCOMPATIBLE_CONTRACT", requestId);
+        settled = response.status !== 503;
         throw new DiscoveryCommandError(code, requestId);
       }
       const invalid = () => {
@@ -365,6 +378,7 @@ export class HttpDiscoveryCommandClient {
           body.reviewerRef !== access.subject
         )
           invalid();
+        settled = true;
         return {
           requestId,
           receipt: {
@@ -378,6 +392,7 @@ export class HttpDiscoveryCommandClient {
         };
       }
       if (!isUuid(body.sourceId) || typeof body.reusedSource !== "boolean") invalid();
+      settled = true;
       return {
         requestId,
         receipt: {
@@ -391,6 +406,15 @@ export class HttpDiscoveryCommandClient {
     } catch (error) {
       if (error instanceof DiscoveryCommandError) throw error;
       throw new DiscoveryCommandError("WRITE_UNAVAILABLE");
+    } finally {
+      if (permit && (!dispatched || settled)) {
+        // Failure to release is conservative: retain the slot, never replay a write.
+        try {
+          await permit.complete();
+        } catch {
+          /* reconciliation required */
+        }
+      }
     }
   }
 }

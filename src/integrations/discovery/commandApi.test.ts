@@ -14,6 +14,8 @@ import {
   type PromotionCommand,
 } from "./commandApi";
 import { ActorCommandBudget, handleDiscoveryCommand } from "./commandBoundary";
+import { SharedCommandAdmission, unavailableCommandAdmission } from "./commandQuota";
+import { OfflineCommandQuotaStore } from "./commandQuota.fixture";
 import { POST } from "@/app/api/internal/discovery/candidates/[id]/[operation]/route";
 
 vi.mock("server-only", () => ({}));
@@ -81,15 +83,15 @@ function setup(role: "admin" | "reviewer" = "admin", deployment = { ...env }) {
     .mockResolvedValue({ status: "authorized", accessToken: "user-secret", subject: actor, role });
   const getWorkloadToken = vi.fn(async () => "workload-secret");
   const fetcher = vi.fn<typeof fetch>().mockImplementation(async () => response());
-  const client = new HttpDiscoveryCommandClient(
-    { origin: "https://writer.a.run.app", fetcher, getAccess, getWorkloadToken },
-    deployment,
-  );
+  const store = new OfflineCommandQuotaStore();
+  const admission = new SharedCommandAdmission(store, "offline-identity-secret-32-bytes-minimum");
+  const transport = { origin: "https://writer.a.run.app", fetcher, getAccess, getWorkloadToken, admission };
+  const client = new HttpDiscoveryCommandClient(transport, deployment);
   const createClient = vi.fn(() => client);
   const deps = { env: deployment, getAccess, createClient, budget: new ActorCommandBudget() };
   const run = (request: Request = req(), operation: string = "rejection", candidateId = id) =>
     handleDiscoveryCommand(request, candidateId, operation, deps);
-  return { client, getAccess, getWorkloadToken, fetcher, createClient, deps, run };
+  return { client, getAccess, getWorkloadToken, fetcher, createClient, deps, run, store, transport };
 }
 function req(
   body: unknown = rejection,
@@ -193,6 +195,47 @@ describe("command deployment gates", () => {
 });
 
 describe("full command boundary and mocked private HTTP", () => {
+  it("fails closed before writer dispatch when shared store is missing or unavailable", async () => {
+    for (const missing of [false, true]) {
+      const f = setup();
+      if (missing) Object.assign(f.transport, { admission: undefined });
+      else f.store.available = false;
+      const result = await f.run();
+      expect(result.status).toBe(503);
+      expect(await result.json()).toMatchObject({ code: "WRITE_UNAVAILABLE" });
+      expect(f.fetcher).not.toHaveBeenCalled();
+    }
+    await expect(unavailableCommandAdmission.acquire(actor, "rejection")).rejects.toThrow("WRITE_UNAVAILABLE");
+  });
+  it("returns 429 with Retry-After from shared quota despite fresh local budgets", async () => {
+    const f = setup();
+    for (let i = 0; i < 20; i++) expect((await f.run()).status).toBe(200);
+    f.deps.budget = new ActorCommandBudget();
+    const limited = await f.run();
+    expect(limited.status).toBe(429);
+    expect(limited.headers.get("retry-after")).toBe("60");
+    expect(f.fetcher).toHaveBeenCalledTimes(20);
+  });
+  it("retains uncertain slots on timeout and releases only confirmed completions", async () => {
+    const f = setup();
+    f.fetcher.mockRejectedValueOnce(new Error("timeout"));
+    expect((await f.run()).status).toBe(503);
+    expect(Object.keys(f.store.state.active)).toHaveLength(1);
+    expect((await f.run()).status).toBe(429);
+    expect(f.fetcher).toHaveBeenCalledOnce();
+  });
+  it("rechecks charged identity after quota latency and releases without dispatch on revocation", async () => {
+    const f = setup();
+    const acquire = f.transport.admission.acquire.bind(f.transport.admission);
+    f.transport.admission.acquire = async (...args) => {
+      const permit = await acquire(...args);
+      f.getAccess.mockResolvedValue({ status: "denied", code: "FORBIDDEN" });
+      return permit;
+    };
+    expect((await f.run()).status).toBe(403);
+    expect(f.fetcher).not.toHaveBeenCalled();
+    expect(Object.keys(f.store.state.active)).toHaveLength(0);
+  });
   it("checks real RSA signature, signed role and fresh membership through the whole boundary", async () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
     const jwk = { ...publicKey.export({ format: "jwk" }), kid: "command-offline", alg: "RS256", use: "sig" };
@@ -258,7 +301,7 @@ describe("full command boundary and mocked private HTTP", () => {
     expect(await result.json()).toEqual(rejected);
     expect(result.headers.get("cache-control")).toContain("no-store");
     expect(result.headers.get("x-request-id")).toBe(requestId);
-    expect(f.getAccess).toHaveBeenCalledTimes(3);
+    expect(f.getAccess).toHaveBeenCalledTimes(4);
     const [url, init] = f.fetcher.mock.calls[0];
     expect(url).toBe(`https://writer.a.run.app/api/admin/v1/discovery/candidates/${id}/rejection`);
     expect(init).toMatchObject({
@@ -519,6 +562,9 @@ describe("upstream contract, redaction and uncertain outcomes", () => {
     expect(result.status).toBe(503);
     expect(await result.text()).not.toContain("secret");
     expect(f.fetcher).toHaveBeenCalledTimes(1);
+    // Offline reconciliation proves the previous writer stopped before release.
+    // A timer or retry must never free uncertain work automatically.
+    f.store.state.active = {};
     result = await f.run();
     expect(result.status).toBe(503);
     expect(f.fetcher).toHaveBeenCalledTimes(2);
@@ -527,10 +573,12 @@ describe("upstream contract, redaction and uncertain outcomes", () => {
       f.fetcher.mock.calls.map(([, init]) => (init?.headers as Record<string, string>)["Idempotency-Key"]),
     ).toEqual([key, key]);
   });
-  it("passes simultaneous identical intent through to engine receipts; surfaces competing conflict without retry", async () => {
+  it("denies concurrent duplicate dispatch; sequential replay retains intent and competing conflict", async () => {
     const f = setup();
     const results = await Promise.all([f.run(), f.run()]);
-    expect(await results[0].json()).toEqual(await results[1].json());
+    expect(results.map((result) => result.status).sort()).toEqual([200, 429]);
+    const replay = await f.run();
+    expect(await replay.json()).toEqual(rejected);
     expect(f.fetcher).toHaveBeenCalledTimes(2);
     f.fetcher.mockImplementation(async () => response({ code: "REJECTION_CONFLICT", requestId }, 409));
     const conflict = await f.run(req(rejection, { "Idempotency-Key": reviewId }));

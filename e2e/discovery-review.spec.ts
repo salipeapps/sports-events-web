@@ -331,6 +331,34 @@ for (const [code, status, text] of [
   });
 }
 
+for (const [status, code] of [
+  [429, "RATE_LIMITED"],
+  [503, "WRITE_UNAVAILABLE"],
+] as const) {
+  test(`shared quota ${status} preserves exact intent across reload and explicit retry`, async ({ page }) => {
+    const data = state();
+    const attempts: { key?: string; body: string | null }[] = [];
+    await page.route("**/api/internal/discovery/candidates/**", (route) => {
+      attempts.push({ key: route.request().headers()["idempotency-key"], body: route.request().postData() });
+      if (attempts.length === 1)
+        return route.fulfill({ status, json: { code, requestId }, headers: { "retry-after": "60" } });
+      return route.fulfill({ json: rejected(data), headers: { "x-request-id": requestId } });
+    });
+    await mount(page, data);
+    await reject(page);
+    await expect(page.getByRole("status").first()).toContainText(
+      status === 429 ? "Espera un minuto" : "No se puede confirmar",
+    );
+    expect(attempts).toHaveLength(1);
+    await page.reload();
+    await page.getByRole("button", { name: "Reintentar misma decisión" }).click();
+    await page.getByRole("button", { name: "Confirmar rechazo", exact: true }).click();
+    await expect(page.getByRole("status").first()).toContainText("Rechazo registrado");
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]).toEqual(attempts[1]);
+  });
+}
+
 test("double click cannot send twice and a network failure retains the intent", async ({ page }) => {
   let attempts = 0;
   let release!: () => void;
