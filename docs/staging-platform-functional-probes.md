@@ -55,7 +55,7 @@ session, approval and invocation gates against synthetic values only.
 
 Populate these values securely in the process environment immediately before
 running; **do not** commit a populated `.env`, shell `export` lines or the
-report. Use the *same fixtures* before and after. Names here are a contract,
+report. Use the _same fixtures_ before and after. Names here are a contract,
 not evidence that the fixtures currently exist:
 
 ```text
@@ -92,25 +92,25 @@ node scripts/staging-platform-probes.mjs --execute --phase=after --refresh --poo
 The report is restricted to test name and `PASS` / `FAIL` /
 `BLOCKED` / `NOT_RUN`; details, user ids, tokens, rows, passwords and
 bucket names are suppressed. The final verdict is always
-`PARTIAL_NOT_GO` until *the separate private-reader and storage-write
-tests* and the approval matrix are verified. A failure aborts the next
+`PARTIAL_NOT_GO` until _the separate private-reader and storage-write
+tests_ and the approval matrix are verified. A failure aborts the next
 **operational phase**; do not retry the ACL change automatically.
 
 ### Exact checks and required evidence
 
-| Test | Before | After | Expected result / fail-closed rule |
-| --- | --- | --- | --- |
-| Auth | sign-in + `getUser` + `--refresh` | repeat fresh session | Both successful; same approved subject, no lost Auth service |
-| Data API | authenticated `admin_memberships` own-row SELECT | repeat | Own active role equals expected; second *known existing* user's UUID returns zero rows under RLS |
-| Anonymous Data API | unauthenticated `admin_memberships` SELECT | repeat | Denied or empty; any row = FAIL |
-| Storage | list one approved object and download | repeat | Both pass with authorized test account; no object body in report |
-| Storage write (if in use) | one unique tiny upload/readback/delete | repeat | Requires **additional** `STAGING_STORAGE_WRITE_APPROVED=yes` plus `--storage-write` and approved disposable prefix; failures or cleanup errors = FAIL |
-| Realtime | subscribe to a random ephemeral broadcast topic; send and receive own nonce | repeat | Received one own message, no timeout; session is authenticated |
-| Supavisor (Session Pooler) | read-only SQL via `psql` | repeat | `current_user=session_user=engine_discovery_reader`, DB `postgres`, `CREATE=false`, `TEMP=true` before and `TEMP=false` after |
-| Private Engine reader | Admin + reviewer authenticated GET from **approved Vercel STAGING** | repeat | Fixed known Valencia execution; genuine Vercel OIDC -> Google IAM -> Cloud Run -> Postgres reader, no writes; see below |
+| Test                       | Before                                                                      | After                | Expected result / fail-closed rule                                                                                                                    |
+| -------------------------- | --------------------------------------------------------------------------- | -------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Auth                       | sign-in + `getUser` + `--refresh`                                           | repeat fresh session | Both successful; same approved subject, no lost Auth service                                                                                          |
+| Data API                   | authenticated `admin_memberships` own-row SELECT                            | repeat               | Own active role equals expected; second _known existing_ user's UUID returns zero rows under RLS                                                      |
+| Anonymous Data API         | unauthenticated `admin_memberships` SELECT                                  | repeat               | Denied or empty; any row = FAIL                                                                                                                       |
+| Storage                    | list one approved object and download                                       | repeat               | Both pass with authorized test account; no object body in report                                                                                      |
+| Storage write (if in use)  | one unique tiny upload/readback/delete                                      | repeat               | Requires **additional** `STAGING_STORAGE_WRITE_APPROVED=yes` plus `--storage-write` and approved disposable prefix; failures or cleanup errors = FAIL |
+| Realtime                   | subscribe to a random ephemeral broadcast topic; send and receive own nonce | repeat               | Received one own message, no timeout; session is authenticated                                                                                        |
+| Supavisor (Session Pooler) | read-only SQL via `psql`                                                    | repeat               | `current_user=session_user=engine_discovery_reader`, DB `postgres`, `CREATE=false`, `TEMP=true` before and `TEMP=false` after                         |
+| Private Engine reader      | Admin + reviewer authenticated GET from **approved Vercel STAGING**         | repeat               | Fixed known Valencia execution; genuine Vercel OIDC -> Google IAM -> Cloud Run -> Postgres reader, no writes; see below                               |
 
 **Storage write is not included by default.** Following a separate
-fixture-write approval, use `--storage-write` in *each* phase and require
+fixture-write approval, use `--storage-write` in _each_ phase and require
 cleanup; it only writes to `__staging-acl-smoke__/<random>.txt` in the
 approved bucket. A project that cannot safely provision such a bucket
 and policies cannot claim a Storage write PASS. If Storage is not used,
@@ -154,7 +154,7 @@ In `sports-events-engine`, versioned
 `scripts/staging-public-temp-acl-evidence.sql` captures a READ ONLY JSON
 catalog snapshot (database ACL with grantors/grant options, 13 platform
 roles, memberships and unknown TEMP consumers). Before and after snapshots
-are sensitive operational metadata: store *only* on a secure workstation
+are sensitive operational metadata: store _only_ on a secure workstation
 with `umask 077`; do not attach raw files to GitHub, CI or chat.
 
 Use a separately verified **direct owner/operator** SQL connection for
