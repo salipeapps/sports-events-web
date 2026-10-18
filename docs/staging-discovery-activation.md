@@ -160,48 +160,6 @@ are committed. The API remains disabled in all existing deployments.
    Only after passing all real checks consider closing web #26 and
    engine #80. PROD remains disabled.
 
-## Diagnóstico de READ_UNAVAILABLE en el lector privado (STAGING)
-
-Si `/admin/discovery` muestra `READ_UNAVAILABLE`, **no** implica que Supabase
-Auth, Storage, Realtime o Session Pooler hayan fallado. Este código agrupa
-errores de Google STS, Google IAM, red/HTTP de Cloud Run y respuestas que no
-cumplen el contrato del lector. La vista sigue ocultando los detalles.
-
-El BFF de STAGING añade una única señal **server-side** con este formato
-cerrado, solo en el despliegue STAGING aprobado (lectura normal o smoke temporal):
-
-```text
-MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=google_sts reason=http_error http_class=4xx
-```
-
-Las etapas posibles son `user_auth`, `oidc_exchange`, `google_sts`,
-`google_iam`, `engine_fetch` y `engine_response`. Los motivos y
-clases HTTP son enumerados, no textos libres. **No se emiten** valores
-de variables de entorno, URLs del upstream, JWT, cookies, contraseñas,
-IDs personales, detalles de excepciones, cabeceras ni cuerpos de respuesta.
-
-Tras aprobar, integrar y desplegar el cambio de diagnóstico en el
-proyecto **sports-events-web-staging** exclusivamente, reproducir una
-sola petición autenticada y consultar *Vercel Runtime Logs*, filtrando
-`MOUMEET_STAGING_PRIVATE_READ_FAILURE` en una ventana de tiempo reciente.
-Los registros históricos anteriores a este cambio no contendrán estas señales.
-
-- `google_sts`: inspeccionar identidad federada, provider audience y
-  condición exacta de workload identity federation en GCP.
-- `google_iam`: inspeccionar impersonation y permisos
-  `roles/iam.serviceAccountTokenCreator` o autorización equivalente
-  de generación de tokens.
-- `engine_fetch`: confirmar Cloud Run privado, IAM invoker,
-  ingress, audiencia y revisión activa; sin habilitar acceso público.
-- `engine_response`: correlacionar clase HTTP con registros
-  de Cloud Run y el contrato de respuesta; no devolver cuerpo a la UI.
-- `oidc_exchange` / `user_auth`: inspeccionar las
-  fronteras de autenticación sin sacar tokens del servidor.
-
-Un indicador no acredita por sí solo que la petición llegó a Cloud Run.
-No modificar flags ni Cloud Run sin la aprobación operativa correspondiente,
-y mantener `PUBLIC TEMP` sin cambios durante este diagnóstico.
-
 ## Rollback
 
 Set `DISCOVERY_READ_MODE=disabled` and
