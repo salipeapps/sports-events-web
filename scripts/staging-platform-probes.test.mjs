@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { blockedAuthenticatedProbes, parseArgs, run, STAGING_URL, validatePooler, validateTarget } from "./staging-platform-probes.mjs";
+import {
+  blockedAuthenticatedProbes,
+  parseArgs,
+  run,
+  STAGING_URL,
+  validatePooler,
+  validateTarget,
+} from "./staging-platform-probes.mjs";
 
 test("default invocation is offline and never connects to Supabase", async () => {
   const report = await run([], {});
