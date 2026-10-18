@@ -18,7 +18,8 @@ shell history, screenshot, chat or shared CI output.
   Realtime broadcast, Storage reads, pooler read-only SQL), separate from
   approval for a subsequent database ACL change. An approved **invited STAGING
   account** with a known active `admin_memberships` row (admin or reviewer),
-  its password kept in a secret channel, and **a second existing eligible
+  its password kept in a secret channel, **its pinned Auth user UUID**
+  independently confirmed beforehand, and **a second existing eligible
   membership UUID** confirmed by trusted catalog read to test own-row RLS.
   Do not create Auth accounts or memberships solely to make the suite pass
   without a separate fixture-provisioning approval.
@@ -65,6 +66,7 @@ STAGING_PLATFORM_PROBE_APPROVED=yes
 STAGING_PLATFORM_PROBE_TICKET=<actual approved ticket>
 STAGING_PROBE_EMAIL=<invited staging test user>
 STAGING_PROBE_PASSWORD=<secret>
+STAGING_PROBE_EXPECTED_USER_UUID=<exact previously approved Auth UUID>
 STAGING_PROBE_EXPECTED_ROLE=reviewer
 STAGING_RLS_OTHER_USER_UUID=<separate existing membership user UUID>
 STAGING_STORAGE_BUCKET=<approved bucket>
@@ -89,6 +91,13 @@ node scripts/staging-platform-probes.mjs --execute --phase=before --refresh --po
 node scripts/staging-platform-probes.mjs --execute --phase=after --refresh --pooler
 ```
 
+Auth binds to `STAGING_PROBE_EXPECTED_USER_UUID` in each run; a different
+account or recreated Auth user must fail even if its membership is valid.
+Storage listing uses server-side search and bounded pagination; directory
+results beyond the bound require a narrower approved fixture prefix.
+Anonymous PostgREST checks accept only HTTP 401/403 or 200 with an empty array:
+any unexpected response, 5xx or timeout fails.
+
 The report is restricted to test name and `PASS` / `FAIL` /
 `BLOCKED` / `NOT_RUN`; details, user ids, tokens, rows, passwords and
 bucket names are suppressed. The final verdict is always
@@ -111,7 +120,8 @@ tests_ and the approval matrix are verified. A failure aborts the next
 
 **Storage write is not included by default.** Following a separate
 fixture-write approval, use `--storage-write` in _each_ phase and require
-cleanup; it only writes to `__staging-acl-smoke__/<random>.txt` in the
+cleanup; it attempts deletion even when the upload response was lost, and
+only writes to `__staging-acl-smoke__/<random>.txt` in the
 approved bucket. A project that cannot safely provision such a bucket
 and policies cannot claim a Storage write PASS. If Storage is not used,
 record N/A with an independently verified service owner decision.
