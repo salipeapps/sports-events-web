@@ -18,7 +18,13 @@ export function parseArgs(argv) {
   assert(!execute || phase, "PHASE_REQUIRED");
   assert(!argv.includes("--storage-write") || execute, "LIVE_REQUIRED_FOR_STORAGE");
   assert(!argv.includes("--pooler") || execute, "LIVE_REQUIRED_FOR_POOLER");
-  return { execute, phase, refresh: argv.includes("--refresh"), storageWrite: argv.includes("--storage-write"), pooler: argv.includes("--pooler") };
+  return {
+    execute,
+    phase,
+    refresh: argv.includes("--refresh"),
+    storageWrite: argv.includes("--storage-write"),
+    pooler: argv.includes("--pooler"),
+  };
 }
 
 export function validateTarget(env) {
@@ -48,9 +54,12 @@ function clientFor(url, key) {
 async function timebox(task, ms = 14000) {
   let timer;
   try {
-    return await Promise.race([task, new Promise((_, reject) => {
-      timer = setTimeout(() => reject(new Error("TEST_TIMEOUT")), ms);
-    })]);
+    return await Promise.race([
+      task,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error("TEST_TIMEOUT")), ms);
+      }),
+    ]);
   } finally {
     clearTimeout(timer);
   }
@@ -61,19 +70,29 @@ async function realtimeBroadcast(client, token, runId) {
   const topic = `staging-acl-smoke-${runId}`;
   const event = "temp_acl_probe";
   let received;
-  const incoming = new Promise((resolve) => { received = resolve; });
-  const channel = client.channel(topic, { config: { broadcast: { self: true, ack: true } } })
+  const incoming = new Promise((resolve) => {
+    received = resolve;
+  });
+  const channel = client
+    .channel(topic, { config: { broadcast: { self: true, ack: true } } })
     .on("broadcast", { event }, ({ payload }) => {
       if (payload?.nonce === runId) received(true);
     });
   try {
-    await timebox(new Promise((resolve, reject) => {
-      channel.subscribe((status) => {
-        if (status === "SUBSCRIBED") resolve();
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED") reject(new Error("REALTIME_SUBSCRIBE_FAILED"));
-      });
-    }));
-    assert.equal(await timebox(channel.send({ type: "broadcast", event, payload: { nonce: runId } })), "ok", "REALTIME_SEND_FAILED");
+    await timebox(
+      new Promise((resolve, reject) => {
+        channel.subscribe((status) => {
+          if (status === "SUBSCRIBED") resolve();
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT" || status === "CLOSED")
+            reject(new Error("REALTIME_SUBSCRIBE_FAILED"));
+        });
+      }),
+    );
+    assert.equal(
+      await timebox(channel.send({ type: "broadcast", event, payload: { nonce: runId } })),
+      "ok",
+      "REALTIME_SEND_FAILED",
+    );
     assert.equal(await timebox(incoming), true, "REALTIME_RECEIVE_FAILED");
   } finally {
     await timebox(client.removeChannel(channel), 4000).catch(() => {});
@@ -90,7 +109,10 @@ async function readStorage(client, env) {
   const name = object.slice(lastSlash + 1);
   const { data: list, error: listError } = await client.storage.from(bucket).list(prefix, { limit: 100 });
   assert.ifError(listError);
-  assert.ok(list?.some((entry) => entry.name === name), "STORAGE_FIXTURE_NOT_LISTED");
+  assert.ok(
+    list?.some((entry) => entry.name === name),
+    "STORAGE_FIXTURE_NOT_LISTED",
+  );
   const { data, error } = await client.storage.from(bucket).download(object);
   assert.ifError(error);
   assert.ok(data && data.size > 0, "STORAGE_FIXTURE_EMPTY");
@@ -105,7 +127,8 @@ async function writeStorageFixture(client, env, runId) {
   let cleanupOk = false;
   try {
     const { error } = await client.storage.from(bucket).upload(name, new TextEncoder().encode("staging-ACL-smoke\n"), {
-      contentType: "text/plain", upsert: false,
+      contentType: "text/plain",
+      upsert: false,
     });
     assert.ifError(error);
     uploaded = true;
@@ -123,43 +146,71 @@ async function writeStorageFixture(client, env, runId) {
 
 async function checkPooler(env, phase) {
   validatePooler(env);
-  const sql = "BEGIN TRANSACTION READ ONLY; SELECT current_database(),current_user,session_user,has_database_privilege(current_user,current_database(),'TEMPORARY'),has_database_privilege(current_user,current_database(),'CREATE'); ROLLBACK;";
+  const sql =
+    "BEGIN TRANSACTION READ ONLY; SELECT current_database(),current_user,session_user,has_database_privilege(current_user,current_database(),'TEMPORARY'),has_database_privilege(current_user,current_database(),'CREATE'); ROLLBACK;";
   const settings = {
-    ...process.env, PGHOST: env.STAGING_POOLER_HOST, PGPORT: "5432", PGDATABASE: "postgres",
-    PGUSER: env.STAGING_POOLER_USER, PGPASSWORD: env.STAGING_POOLER_PASSWORD,
-    PGSSLMODE: "verify-full", PGSSLROOTCERT: env.STAGING_POOLER_CA, PGCONNECT_TIMEOUT: "5",
+    ...process.env,
+    PGHOST: env.STAGING_POOLER_HOST,
+    PGPORT: "5432",
+    PGDATABASE: "postgres",
+    PGUSER: env.STAGING_POOLER_USER,
+    PGPASSWORD: env.STAGING_POOLER_PASSWORD,
+    PGSSLMODE: "verify-full",
+    PGSSLROOTCERT: env.STAGING_POOLER_CA,
+    PGCONNECT_TIMEOUT: "5",
   };
-  const out = await timebox(new Promise((resolve, reject) => {
-    const child = spawn("psql", ["-X", "-w", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", sql], {
-      env: settings, stdio: ["ignore", "pipe", "pipe"],
-    });
-    let output = "";
-    child.stdout.on("data", (chunk) => { output += chunk.toString().slice(0, 512); });
-    child.stderr.on("data", () => {}); // Never show libpq/connection diagnostics or secrets.
-    child.on("error", () => reject(new Error("PSQL_UNAVAILABLE")));
-    child.on("close", (code) => code === 0 ? resolve(output) : reject(new Error("POOLER_CONNECTION_FAILED")));
-  }), 12000);
+  const out = await timebox(
+    new Promise((resolve, reject) => {
+      const child = spawn("psql", ["-X", "-w", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", sql], {
+        env: settings,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let output = "";
+      child.stdout.on("data", (chunk) => {
+        output += chunk.toString().slice(0, 512);
+      });
+      child.stderr.on("data", () => {}); // Never show libpq/connection diagnostics or secrets.
+      child.on("error", () => reject(new Error("PSQL_UNAVAILABLE")));
+      child.on("close", (code) => (code === 0 ? resolve(output) : reject(new Error("POOLER_CONNECTION_FAILED"))));
+    }),
+    12000,
+  );
   const record = out.split(/\r?\n/).find((line) => line.startsWith("postgres|"));
-  assert.equal(record, `postgres|engine_discovery_reader|engine_discovery_reader|${phase === "before" ? "t" : "f"}|f`, "POOLER_ROLE_OR_PRIVILEGE_MISMATCH");
+  assert.equal(
+    record,
+    `postgres|engine_discovery_reader|engine_discovery_reader|${phase === "before" ? "t" : "f"}|f`,
+    "POOLER_ROLE_OR_PRIVILEGE_MISMATCH",
+  );
 }
 
 export async function run(argv, env = process.env) {
   const args = parseArgs(argv);
-  if (!args.execute) return { mode: "OFFLINE", tests: ["Auth", "Data API/RLS", "Storage read", "Realtime", "Supavisor", "private reader via Vercel"], result: "NOT_RUN" };
+  if (!args.execute)
+    return {
+      mode: "OFFLINE",
+      tests: ["Auth", "Data API/RLS", "Storage read", "Realtime", "Supavisor", "private reader via Vercel"],
+      result: "NOT_RUN",
+    };
   validateTarget(env);
   if (args.storageWrite) assert.equal(env.STAGING_STORAGE_WRITE_APPROVED, "yes", "STORAGE_WRITE_APPROVAL_REQUIRED");
   if (args.pooler) validatePooler(env);
   const client = clientFor(STAGING_URL, env.STAGING_PROBE_PUBLISHABLE_KEY);
   const results = [];
   const check = async (name, fn) => {
-    try { await fn(); results.push({ name, status: "PASS" }); }
-    catch { results.push({ name, status: "FAIL" }); }
+    try {
+      await fn();
+      results.push({ name, status: "PASS" });
+    } catch {
+      results.push({ name, status: "FAIL" });
+    }
   };
   let session;
   let userId;
   let role;
   await check("Auth login and getUser", async () => {
-    const login = await timebox(client.auth.signInWithPassword({ email: env.STAGING_PROBE_EMAIL, password: env.STAGING_PROBE_PASSWORD }));
+    const login = await timebox(
+      client.auth.signInWithPassword({ email: env.STAGING_PROBE_EMAIL, password: env.STAGING_PROBE_PASSWORD }),
+    );
     assert.ifError(login.error);
     assert.ok(login.data.session?.access_token && login.data.user?.id, "AUTH_SESSION_MISSING");
     session = login.data.session;
@@ -168,19 +219,22 @@ export async function run(argv, env = process.env) {
     assert.equal(verified.data.user?.id, login.data.user.id, "AUTH_USER_MISMATCH");
     userId = login.data.user.id;
   });
-  if (args.refresh) await check("Auth refresh", async () => {
-    assert.ok(session?.refresh_token, "REFRESH_TOKEN_REQUIRED");
-    const renewed = await timebox(client.auth.refreshSession({ refresh_token: session.refresh_token }));
-    assert.ifError(renewed.error);
-    assert.ok(renewed.data.session?.access_token, "REFRESH_FAILED");
-    session = renewed.data.session;
-    const verified = await client.auth.getUser();
-    assert.ifError(verified.error);
-    assert.equal(verified.data.user.id, userId);
-  });
+  if (args.refresh)
+    await check("Auth refresh", async () => {
+      assert.ok(session?.refresh_token, "REFRESH_TOKEN_REQUIRED");
+      const renewed = await timebox(client.auth.refreshSession({ refresh_token: session.refresh_token }));
+      assert.ifError(renewed.error);
+      assert.ok(renewed.data.session?.access_token, "REFRESH_FAILED");
+      session = renewed.data.session;
+      const verified = await client.auth.getUser();
+      assert.ifError(verified.error);
+      assert.equal(verified.data.user.id, userId);
+    });
   if (userId) {
     await check("Data API own-row RLS", async () => {
-      const { data, error } = await timebox(client.from("admin_memberships").select("user_id,role,is_active").eq("user_id", userId).single());
+      const { data, error } = await timebox(
+        client.from("admin_memberships").select("user_id,role,is_active").eq("user_id", userId).single(),
+      );
       assert.ifError(error);
       assert.equal(data?.user_id, userId);
       assert.equal(data?.is_active, true);
@@ -188,15 +242,27 @@ export async function run(argv, env = process.env) {
       role = data.role;
       assert.equal(role, env.STAGING_PROBE_EXPECTED_ROLE, "MEMBERSHIP_ROLE_MISMATCH");
       const other = env.STAGING_RLS_OTHER_USER_UUID;
-      assert.match(other ?? "", /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "SECOND_EXISTING_MEMBER_FIXTURE_REQUIRED");
+      assert.match(
+        other ?? "",
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+        "SECOND_EXISTING_MEMBER_FIXTURE_REQUIRED",
+      );
       assert.notEqual(other, userId);
-      const { data: others, error: err } = await client.from("admin_memberships").select("user_id").eq("user_id", other);
+      const { data: others, error: err } = await client
+        .from("admin_memberships")
+        .select("user_id")
+        .eq("user_id", other);
       assert.ifError(err);
       assert.deepEqual(others, []);
     });
     await check("Storage list and download", () => timebox(readStorage(client, env)));
-    if (args.storageWrite) await check("Storage approved upload/download/delete", () => timebox(writeStorageFixture(client, env, crypto.randomUUID()), 25000));
-    await check("Realtime subscribe and self-broadcast", () => realtimeBroadcast(client, session.access_token, crypto.randomUUID()));
+    if (args.storageWrite)
+      await check("Storage approved upload/download/delete", () =>
+        timebox(writeStorageFixture(client, env, crypto.randomUUID()), 25000),
+      );
+    await check("Realtime subscribe and self-broadcast", () =>
+      realtimeBroadcast(client, session.access_token, crypto.randomUUID()),
+    );
   } else {
     for (const name of ["Data API own-row RLS", "Storage list and download", "Realtime subscribe and self-broadcast"])
       results.push({ name, status: "BLOCKED" });
@@ -210,11 +276,24 @@ export async function run(argv, env = process.env) {
   else results.push({ name: "Session Pooler", status: "NOT_RUN" });
   results.push({ name: "Private reader via Vercel OIDC (browser runbook)", status: "NOT_RUN" });
   // Neither output nor exceptions contain tokens, passwords, data rows, or object bodies.
-  return { phase: args.phase, target: STAGING_REF, tests: results, result: results.some((r) => r.status === "FAIL") ? "FAIL" : "PARTIAL_NOT_GO" };
+  return {
+    phase: args.phase,
+    target: STAGING_REF,
+    tests: results,
+    result: results.some((r) => r.status === "FAIL") ? "FAIL" : "PARTIAL_NOT_GO",
+  };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   run(process.argv.slice(2))
-    .then((report) => { console.log(JSON.stringify(report, null, 2)); if (report.result === "FAIL") process.exitCode = 1; })
-    .catch(() => { console.error("STAGING_PLATFORM_PROBES_FAIL_CLOSED: check approved target, fixture and authorization; no secrets logged"); process.exitCode = 1; });
+    .then((report) => {
+      console.log(JSON.stringify(report, null, 2));
+      if (report.result === "FAIL") process.exitCode = 1;
+    })
+    .catch(() => {
+      console.error(
+        "STAGING_PLATFORM_PROBES_FAIL_CLOSED: check approved target, fixture and authorization; no secrets logged",
+      );
+      process.exitCode = 1;
+    });
 }
