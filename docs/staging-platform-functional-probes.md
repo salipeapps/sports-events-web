@@ -130,6 +130,24 @@ approved bucket. A project that cannot safely provision such a bucket
 and policies cannot claim a Storage write PASS. If Storage is not used,
 record N/A with an independently verified service owner decision.
 
+## Supavisor Windows diagnostics (#94)
+
+The read-only runner now mirrors the standalone operator-verified `psql`
+probe: `PGGSSENCMODE=disable`, `PGSERVICEFILE` cleared, Session Pooler
+port `5432`, `PGSSLMODE=verify-full`, pinned PEM CA, read-only `PGOPTIONS`
+and dedicated reader role. Disabling GSSAPI negotiation **does not** disable
+TLS certificate verification.
+
+If only the pooler fails, the JSON test may include a fixed
+`failure_code` (e.g. `POOLER_USER_OR_TENANT`,
+`POOLER_AUTH_REJECTED`, `POOLER_TLS_ERROR`,
+`POOLER_ROLE_OR_PRIVILEGE_MISMATCH`, or `PSQL_UNAVAILABLE`).
+These are allowlisted categories, never the original stderr, connection
+string, database row, JWT or secret. Do not publish raw
+`psql` diagnostics. The standalone validated read-only operator probe and
+a successful portal catalog lookup are useful investigation evidence but
+do **not** substitute for a full before/after suite PASS.
+
 ## Private reader: do not bypass Vercel OIDC
 
 The local Node script deliberately reports this test as **NOT_RUN**.
