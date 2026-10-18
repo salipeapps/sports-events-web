@@ -306,19 +306,22 @@ describe("private discovery read adapter (offline)", () => {
     try {
       const approved = { ...approvedHobbyStaging, DISCOVERY_READ_MODE: "staging" };
       recordStagingPrivateReadFailure("google_sts", "http_error", 403, approved);
-      expect(spy).toHaveBeenCalledExactlyOnceWith(
+      expect(spy).toHaveBeenCalledWith(
         "MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=google_sts reason=http_error http_class=4xx",
       );
+      expect(spy).toHaveBeenCalledTimes(1);
       spy.mockClear();
       recordStagingPrivateReadFailure("engine_response", "non_json_response", 503, approved);
-      expect(spy).toHaveBeenCalledExactlyOnceWith(
+      expect(spy).toHaveBeenCalledWith(
         "MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=engine_response reason=non_json_response http_class=5xx",
       );
+      expect(spy).toHaveBeenCalledTimes(1);
       spy.mockClear();
       recordStagingPrivateReadFailure("google_iam", "network_error", undefined, approved);
-      expect(spy).toHaveBeenCalledExactlyOnceWith(
+      expect(spy).toHaveBeenCalledWith(
         "MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=google_iam reason=network_error http_class=none",
       );
+      expect(spy).toHaveBeenCalledTimes(1);
       spy.mockClear();
       recordStagingPrivateReadFailure("google_iam", "http_error", 401, {
         ...approved,
