@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "quality": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run build",
+    "test:staging:offline": "node --test scripts/staging-platform-probes.test.mjs",
+    "staging:platform:plan": "node scripts/staging-platform-probes.mjs",
+    "quality": "npm run format:check && npm run lint && npm run typecheck && npm run test && npm run test:staging:offline && npm run build",
     "test:e2e": "playwright test"
   },
   "dependencies": {
