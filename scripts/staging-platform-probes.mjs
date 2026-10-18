@@ -215,6 +215,7 @@ export async function run(argv, env = process.env) {
   if (args.storageWrite) assert.equal(env.STAGING_STORAGE_WRITE_APPROVED, "yes", "STORAGE_WRITE_APPROVAL_REQUIRED");
   if (args.pooler) validatePooler(env);
   const client = clientFor(STAGING_URL, env.STAGING_PROBE_PUBLISHABLE_KEY);
+  const storageFixtureRunId = args.storageWrite ? crypto.randomUUID() : null;
   const results = [];
   const check = async (name, fn) => {
     try {
@@ -279,7 +280,7 @@ export async function run(argv, env = process.env) {
     await check("Storage list and download", () => timebox(readStorage(client, env)));
     if (args.storageWrite)
       await check("Storage approved upload/download/delete", () =>
-        timebox(writeStorageFixture(client, env, crypto.randomUUID()), 25000),
+        timebox(writeStorageFixture(client, env, storageFixtureRunId), 25000),
       );
     await check("Realtime subscribe and self-broadcast", () =>
       realtimeBroadcast(client, session.access_token, crypto.randomUUID()),
@@ -308,6 +309,7 @@ export async function run(argv, env = process.env) {
   return {
     phase: args.phase,
     target: STAGING_REF,
+    storage_fixture_run_id: storageFixtureRunId,
     tests: results,
     result: results.some((r) => r.status === "FAIL") ? "FAIL" : "PARTIAL_NOT_GO",
   };
