@@ -377,6 +377,29 @@ function knownError(status: number): ReadErrorCode {
   return "READ_UNAVAILABLE";
 }
 
+// Only bounded, allowlisted categories are emitted. Never log upstream responses,
+// error objects, request URLs, signed assertions, access tokens or SQL user data.
+export type PrivateReadDiagnosticStage =
+  "user_auth" | "oidc_exchange" | "google_sts" | "google_iam" | "engine_fetch" | "engine_response";
+export type PrivateReadDiagnosticReason =
+  "unexpected_error" | "network_error" | "http_error" | "non_json_response" | "invalid_response" | "missing_token";
+
+export function recordStagingPrivateReadFailure(
+  stage: PrivateReadDiagnosticStage,
+  reason: PrivateReadDiagnosticReason,
+  status?: number,
+  env: NodeJS.ProcessEnv = process.env,
+): void {
+  if (!(getDiscoveryMode(env) === "staging" || isStagingSmokeEnabled(env))) return;
+  let statusClass: "none" | "5xx" | "4xx" | "other" = "none";
+  if (status !== undefined) {
+    if (status >= 500) statusClass = "5xx";
+    else if (status >= 400) statusClass = "4xx";
+    else statusClass = "other";
+  }
+  console.error(`MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=${stage} reason=${reason} http_class=${statusClass}`);
+}
+
 export interface EngineTransport {
   fetcher: typeof fetch;
   getUserToken(): Promise<string>;
@@ -390,10 +413,13 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
   private async get(path: string, params?: URLSearchParams): Promise<unknown> {
     const endpoint = this.transport.origin + basePath + path + (params ? "?" + params.toString() : "");
     let response: Response;
+    let stage: "user_auth" | "oidc_exchange" | "engine_fetch" = "user_auth";
     try {
       // Authorization and active membership must be reverified before EACH upstream read.
       const userToken = await this.transport.getUserToken();
+      stage = "oidc_exchange";
       const workloadToken = await this.transport.getWorkloadToken();
+      stage = "engine_fetch";
       response = await this.transport.fetcher(endpoint, {
         method: "GET",
         headers: {
@@ -407,18 +433,38 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
       });
     } catch (error) {
       if (error instanceof DiscoveryReadError) throw error;
+      recordStagingPrivateReadFailure(stage, stage === "engine_fetch" ? "network_error" : "unexpected_error");
       throw new DiscoveryReadError("READ_UNAVAILABLE");
     }
     if (!response.ok) {
       // Google IAM errors may not be JSON; never forward upstream details.
-      if (!(response.headers.get("content-type") ?? "").startsWith("application/json"))
+      if (!(response.headers.get("content-type") ?? "").startsWith("application/json")) {
+        recordStagingPrivateReadFailure("engine_response", "non_json_response", response.status);
         throw new DiscoveryReadError("READ_UNAVAILABLE");
-      const body = record(await jsonBounded(response));
+      }
+      let body: Record<string, unknown>;
+      try {
+        body = record(await jsonBounded(response));
+      } catch {
+        recordStagingPrivateReadFailure("engine_response", "invalid_response", response.status);
+        throw new DiscoveryReadError("READ_UNAVAILABLE");
+      }
       const code = knownError(response.status);
-      if (body.code !== code || typeof body.requestId !== "string") throw new DiscoveryReadError("READ_UNAVAILABLE");
+      if (body.code !== code || typeof body.requestId !== "string") {
+        recordStagingPrivateReadFailure("engine_response", "invalid_response", response.status);
+        throw new DiscoveryReadError("READ_UNAVAILABLE");
+      }
+      // The contract-valid engine 5xx is the exact failure this diagnostic exists for.
+      if (code === "READ_UNAVAILABLE")
+        recordStagingPrivateReadFailure("engine_response", "http_error", response.status);
       throw new DiscoveryReadError(code);
     }
-    return jsonBounded(response);
+    try {
+      return await jsonBounded(response);
+    } catch (error) {
+      recordStagingPrivateReadFailure("engine_response", "invalid_response", response.status);
+      throw error;
+    }
   }
 
   private async page<T>(resource: string, path: string, filters: PageArgs): Promise<DiscoveryPage<T>> {
@@ -594,7 +640,12 @@ function oidcClaims(token: string): Record<string, unknown> {
   }
 }
 
-async function shortPost(url: string, body: string, headers: Record<string, string>): Promise<Record<string, unknown>> {
+async function shortPost(
+  url: string,
+  body: string,
+  headers: Record<string, string>,
+  stage: "google_sts" | "google_iam",
+): Promise<Record<string, unknown>> {
   let response: Response;
   try {
     response = await fetch(url, {
@@ -605,9 +656,18 @@ async function shortPost(url: string, body: string, headers: Record<string, stri
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
-    if (!response.ok) throw new DiscoveryReadError("READ_UNAVAILABLE");
+  } catch {
+    recordStagingPrivateReadFailure(stage, "network_error");
+    throw new DiscoveryReadError("READ_UNAVAILABLE");
+  }
+  if (!response.ok) {
+    recordStagingPrivateReadFailure(stage, "http_error", response.status);
+    throw new DiscoveryReadError("READ_UNAVAILABLE");
+  }
+  try {
     return record(await jsonBounded(response));
   } catch {
+    recordStagingPrivateReadFailure(stage, "invalid_response", response.status);
     throw new DiscoveryReadError("READ_UNAVAILABLE");
   }
 }
@@ -641,18 +701,28 @@ export async function workloadToken(config: StageConfig): Promise<string> {
     scope: "https://www.googleapis.com/auth/cloud-platform",
     subject_token: assertion,
   });
-  const sts = await shortPost("https://sts.googleapis.com/v1/token", form.toString(), {
-    "Content-Type": "application/x-www-form-urlencoded",
-  });
-  if (typeof sts.access_token !== "string") throw new DiscoveryReadError("READ_UNAVAILABLE");
+  const sts = await shortPost(
+    "https://sts.googleapis.com/v1/token",
+    form.toString(),
+    { "Content-Type": "application/x-www-form-urlencoded" },
+    "google_sts",
+  );
+  if (typeof sts.access_token !== "string") {
+    recordStagingPrivateReadFailure("google_sts", "missing_token");
+    throw new DiscoveryReadError("READ_UNAVAILABLE");
+  }
   const iam = await shortPost(
     "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/" +
       encodeURIComponent(config.serviceEmail) +
       ":generateIdToken",
     JSON.stringify({ audience: config.origin, includeEmail: true }),
     { Authorization: "Bearer " + sts.access_token, "Content-Type": "application/json" },
+    "google_iam",
   );
-  if (typeof iam.token !== "string") throw new DiscoveryReadError("READ_UNAVAILABLE");
+  if (typeof iam.token !== "string") {
+    recordStagingPrivateReadFailure("google_iam", "missing_token");
+    throw new DiscoveryReadError("READ_UNAVAILABLE");
+  }
   return iam.token;
 }
 
