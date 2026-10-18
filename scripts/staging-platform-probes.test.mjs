@@ -27,9 +27,15 @@ test("wrong Supabase target and unapproved sessions fail closed", () => {
     STAGING_PROBE_PASSWORD: "not-a-real-fixture-password",
   };
   assert.doesNotThrow(() => validateTarget(good));
-  assert.throws(() => validateTarget({ ...good, STAGING_PROBE_SUPABASE_URL: "https://other.supabase.co" }), /WRONG_SUPABASE_TARGET/);
+  assert.throws(
+    () => validateTarget({ ...good, STAGING_PROBE_SUPABASE_URL: "https://other.supabase.co" }),
+    /WRONG_SUPABASE_TARGET/,
+  );
   assert.throws(() => validateTarget({ ...good, STAGING_PLATFORM_PROBE_APPROVED: "no" }), /APPROVAL_REQUIRED/);
-  assert.throws(() => validateTarget({ ...good, STAGING_PROBE_PUBLISHABLE_KEY: "service_role-secret" }), /PUBLISHABLE_KEY_REQUIRED/);
+  assert.throws(
+    () => validateTarget({ ...good, STAGING_PROBE_PUBLISHABLE_KEY: "service_role-secret" }),
+    /PUBLISHABLE_KEY_REQUIRED/,
+  );
 });
 
 test("pooler test is read-only, session-scoped, verify-full and reader-only", () => {
@@ -42,6 +48,9 @@ test("pooler test is read-only, session-scoped, verify-full and reader-only", ()
   };
   assert.doesNotThrow(() => validatePooler(base));
   assert.throws(() => validatePooler({ ...base, STAGING_POOLER_PORT: "6543" }), /SESSION_POOLER_PORT_REQUIRED/);
-  assert.throws(() => validatePooler({ ...base, STAGING_POOLER_USER: "postgres.yfytzogjrhwstcnzspdv" }), /READER_LOGIN_REQUIRED/);
+  assert.throws(
+    () => validatePooler({ ...base, STAGING_POOLER_USER: "postgres.yfytzogjrhwstcnzspdv" }),
+    /READER_LOGIN_REQUIRED/,
+  );
   assert.throws(() => validatePooler({ ...base, STAGING_POOLER_HOST: "prod.db.example" }), /INVALID_POOLER_HOST/);
 });
