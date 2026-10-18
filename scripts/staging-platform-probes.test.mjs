@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { parseArgs, run, STAGING_URL, validatePooler, validateTarget } from "./staging-platform-probes.mjs";
+import { blockedAuthenticatedProbes, parseArgs, run, STAGING_URL, validatePooler, validateTarget } from "./staging-platform-probes.mjs";
 
 test("default invocation is offline and never connects to Supabase", async () => {
   const report = await run([], {});
@@ -58,4 +58,14 @@ test("pooler test is read-only, session-scoped, verify-full and reader-only", ()
     /READER_LOGIN_REQUIRED/,
   );
   assert.throws(() => validatePooler({ ...base, STAGING_POOLER_HOST: "prod.db.example" }), /INVALID_POOLER_HOST/);
+});
+
+test("requested Storage write is BLOCKED when Auth fails, never omitted from the report", () => {
+  const requested = blockedAuthenticatedProbes(true);
+  assert.deepEqual(requested.find(({ name }) => name === "Storage approved upload/download/delete"), {
+    name: "Storage approved upload/download/delete",
+    status: "BLOCKED",
+  });
+  assert.ok(requested.every(({ status }) => status === "BLOCKED"));
+  assert.ok(!blockedAuthenticatedProbes(false).some(({ name }) => name === "Storage approved upload/download/delete"));
 });
