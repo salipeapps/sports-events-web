@@ -69,10 +69,14 @@ test("pooler test is read-only, session-scoped, verify-full and reader-only", ()
 
 test("requested Storage write is BLOCKED when Auth fails, never omitted from the report", () => {
   const requested = blockedAuthenticatedProbes(true);
-  assert.deepEqual(requested.find(({ name }) => name === "Storage approved upload/download/delete"), {
+  const requestedWrite = requested.find(({ name }) => name === "Storage approved upload/download/delete");
+  assert.deepEqual(requestedWrite, {
     name: "Storage approved upload/download/delete",
     status: "BLOCKED",
   });
   assert.ok(requested.every(({ status }) => status === "BLOCKED"));
-  assert.ok(!blockedAuthenticatedProbes(false).some(({ name }) => name === "Storage approved upload/download/delete"));
+  const unexpectedWrite = blockedAuthenticatedProbes(false).some(
+    ({ name }) => name === "Storage approved upload/download/delete",
+  );
+  assert.equal(unexpectedWrite, false);
 });
