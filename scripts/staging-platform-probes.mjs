@@ -34,6 +34,11 @@ export function validateTarget(env) {
   assert.match(env.STAGING_PLATFORM_PROBE_TICKET ?? "", /^[A-Za-z0-9][A-Za-z0-9._-]{5,100}$/, "CHANGE_TICKET_REQUIRED");
   assert.match(env.STAGING_PROBE_EMAIL ?? "", /^[^@\s]+@[^@\s]+\.[^@\s]+$/, "INVITED_TEST_ACCOUNT_REQUIRED");
   assert.ok((env.STAGING_PROBE_PASSWORD ?? "").length >= 12, "TEST_PASSWORD_REQUIRED");
+  assert.match(
+    env.STAGING_PROBE_EXPECTED_USER_UUID ?? "",
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    "PINNED_AUTH_SUBJECT_REQUIRED",
+  );
 }
 
 export function validatePooler(env) {
@@ -107,12 +112,22 @@ async function readStorage(client, env) {
   const lastSlash = object.lastIndexOf("/");
   const prefix = lastSlash < 0 ? "" : object.slice(0, lastSlash);
   const name = object.slice(lastSlash + 1);
-  const { data: list, error: listError } = await client.storage.from(bucket).list(prefix, { limit: 100 });
-  assert.ifError(listError);
-  assert.ok(
-    list?.some((entry) => entry.name === name),
-    "STORAGE_FIXTURE_NOT_LISTED",
-  );
+  let found = false;
+  // Search on the server first; paginate for folders containing many fixtures.
+  for (let offset = 0; offset < 2000; offset += 100) {
+    const { data: list, error: listError } = await client.storage.from(bucket).list(prefix, {
+      search: name,
+      limit: 100,
+      offset,
+    });
+    assert.ifError(listError);
+    if (list?.some((entry) => entry.name === name)) {
+      found = true;
+      break;
+    }
+    if (!list || list.length < 100) break;
+  }
+  assert.ok(found, "STORAGE_FIXTURE_NOT_LISTED");
   const { data, error } = await client.storage.from(bucket).download(object);
   assert.ifError(error);
   assert.ok(data && data.size > 0, "STORAGE_FIXTURE_EMPTY");
@@ -123,25 +138,30 @@ async function writeStorageFixture(client, env, runId) {
   const bucket = env.STAGING_STORAGE_BUCKET;
   assert.ok(bucket, "APPROVED_STORAGE_BUCKET_REQUIRED");
   const name = `__staging-acl-smoke__/${runId}.txt`;
-  let uploaded = false;
+  let uploadAttempted = false;
   let cleanupOk = false;
   try {
+    // A timed-out upload may still have succeeded; cleanup must not depend on its acknowledgement.
+    uploadAttempted = true;
     const { error } = await client.storage.from(bucket).upload(name, new TextEncoder().encode("staging-ACL-smoke\n"), {
       contentType: "text/plain",
       upsert: false,
     });
     assert.ifError(error);
-    uploaded = true;
     const downloaded = await client.storage.from(bucket).download(name);
     assert.ifError(downloaded.error);
     assert.ok(downloaded.data && downloaded.data.size > 0, "STORAGE_WRITE_READBACK_FAILED");
   } finally {
-    if (uploaded) {
-      const result = await client.storage.from(bucket).remove([name]);
-      cleanupOk = !result.error;
+    if (uploadAttempted) {
+      try {
+        const result = await timebox(client.storage.from(bucket).remove([name]), 12000);
+        cleanupOk = !result.error;
+      } catch {
+        cleanupOk = false;
+      }
     }
+    assert.ok(cleanupOk, "STORAGE_CLEANUP_UNVERIFIED");
   }
-  assert.ok(cleanupOk, "STORAGE_CLEANUP_FAILED");
 }
 
 async function checkPooler(env, phase) {
@@ -217,6 +237,7 @@ export async function run(argv, env = process.env) {
     const verified = await timebox(client.auth.getUser());
     assert.ifError(verified.error);
     assert.equal(verified.data.user?.id, login.data.user.id, "AUTH_USER_MISMATCH");
+    assert.equal(login.data.user.id, env.STAGING_PROBE_EXPECTED_USER_UUID, "PINNED_AUTH_SUBJECT_MISMATCH");
     userId = login.data.user.id;
   });
   if (args.refresh)
@@ -268,9 +289,17 @@ export async function run(argv, env = process.env) {
       results.push({ name, status: "BLOCKED" });
   }
   await check("Data API anonymous cannot read memberships", async () => {
-    const anonymous = clientFor(STAGING_URL, env.STAGING_PROBE_PUBLISHABLE_KEY);
-    const { data, error } = await anonymous.from("admin_memberships").select("user_id").limit(1);
-    assert.ok(error || data?.length === 0, "ANONYMOUS_MEMBERSHIP_EXPOSURE");
+    // Inspect HTTP status: PostgREST 5xx, timeout or missing table is NEVER a valid denial.
+    const response = await fetch(`${STAGING_URL}/rest/v1/admin_memberships?select=user_id&limit=1`, {
+      method: "GET",
+      headers: { apikey: env.STAGING_PROBE_PUBLISHABLE_KEY, Accept: "application/json" },
+      redirect: "error",
+      signal: AbortSignal.timeout(12000),
+    });
+    if (response.status === 401 || response.status === 403) return;
+    assert.equal(response.status, 200, "ANONYMOUS_QUERY_UNEXPECTED_STATUS");
+    const data = await response.json();
+    assert.ok(Array.isArray(data) && data.length === 0, "ANONYMOUS_MEMBERSHIP_EXPOSURE");
   });
   if (args.pooler) await check("Session Pooler read-only identity and TEMP", () => checkPooler(env, args.phase));
   else results.push({ name: "Session Pooler", status: "NOT_RUN" });
