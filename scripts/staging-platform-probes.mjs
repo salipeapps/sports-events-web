@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { createClient } from "@supabase/supabase-js";
 
 export const STAGING_REF = "yfytzogjrhwstcnzspdv";
@@ -187,7 +188,7 @@ export async function run(argv, env = process.env) {
       role = data.role;
       assert.equal(role, env.STAGING_PROBE_EXPECTED_ROLE, "MEMBERSHIP_ROLE_MISMATCH");
       const other = env.STAGING_RLS_OTHER_USER_UUID;
-      assert.match(other ?? "", /^[0-9a-f]{8}-[0-9a-f-]{27,}$/i, "SECOND_EXISTING_MEMBER_FIXTURE_REQUIRED");
+      assert.match(other ?? "", /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, "SECOND_EXISTING_MEMBER_FIXTURE_REQUIRED");
       assert.notEqual(other, userId);
       const { data: others, error: err } = await client.from("admin_memberships").select("user_id").eq("user_id", other);
       assert.ifError(err);
@@ -212,7 +213,7 @@ export async function run(argv, env = process.env) {
   return { phase: args.phase, target: STAGING_REF, tests: results, result: results.some((r) => r.status === "FAIL") ? "FAIL" : "PARTIAL_NOT_GO" };
 }
 
-if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   run(process.argv.slice(2))
     .then((report) => { console.log(JSON.stringify(report, null, 2)); if (report.result === "FAIL") process.exitCode = 1; })
     .catch(() => { console.error("STAGING_PLATFORM_PROBES_FAIL_CLOSED: check approved target, fixture and authorization; no secrets logged"); process.exitCode = 1; });
