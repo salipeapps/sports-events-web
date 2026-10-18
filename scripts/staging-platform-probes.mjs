@@ -213,6 +213,12 @@ async function checkPooler(env, phase) {
   );
 }
 
+export function blockedAuthenticatedProbes(storageWrite) {
+  const names = ["Data API own-row RLS", "Storage list and download", "Realtime subscribe and self-broadcast"];
+  if (storageWrite) names.push("Storage approved upload/download/delete");
+  return names.map((name) => ({ name, status: "BLOCKED" }));
+}
+
 export async function run(argv, env = process.env) {
   const args = parseArgs(argv);
   if (!args.execute)
@@ -296,8 +302,7 @@ export async function run(argv, env = process.env) {
       realtimeBroadcast(client, session.access_token, crypto.randomUUID()),
     );
   } else {
-    for (const name of ["Data API own-row RLS", "Storage list and download", "Realtime subscribe and self-broadcast"])
-      results.push({ name, status: "BLOCKED" });
+    results.push(...blockedAuthenticatedProbes(args.storageWrite));
   }
   await check("Data API anonymous cannot read memberships", async () => {
     // Inspect HTTP status: PostgREST 5xx, timeout or missing table is NEVER a valid denial.
