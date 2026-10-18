@@ -25,6 +25,7 @@ test("wrong Supabase target and unapproved sessions fail closed", () => {
     STAGING_PLATFORM_PROBE_TICKET: "ISSUE-94-A",
     STAGING_PROBE_EMAIL: "test@example.test",
     STAGING_PROBE_PASSWORD: "not-a-real-fixture-password",
+    STAGING_PROBE_EXPECTED_USER_UUID: "123e4567-e89b-42d3-a456-426614174000",
   };
   assert.doesNotThrow(() => validateTarget(good));
   assert.throws(
@@ -32,6 +33,7 @@ test("wrong Supabase target and unapproved sessions fail closed", () => {
     /WRONG_SUPABASE_TARGET/,
   );
   assert.throws(() => validateTarget({ ...good, STAGING_PLATFORM_PROBE_APPROVED: "no" }), /APPROVAL_REQUIRED/);
+  assert.throws(() => validateTarget({ ...good, STAGING_PROBE_EXPECTED_USER_UUID: "" }), /PINNED_AUTH_SUBJECT_REQUIRED/);
   assert.throws(
     () => validateTarget({ ...good, STAGING_PROBE_PUBLISHABLE_KEY: "service_role-secret" }),
     /PUBLISHABLE_KEY_REQUIRED/,
