@@ -98,6 +98,10 @@ results beyond the bound require a narrower approved fixture prefix.
 Anonymous PostgREST checks accept only HTTP 401/403 or 200 with an empty array:
 any unexpected response, 5xx or timeout fails.
 
+The report includes only a random `storage_fixture_run_id` when an approved
+Storage write probe was requested. This is **not a credential**: retain it
+privately to locate and remove any orphaned fixture if cleanup is uncertain.
+
 The report is restricted to test name and `PASS` / `FAIL` /
 `BLOCKED` / `NOT_RUN`; details, user ids, tokens, rows, passwords and
 bucket names are suppressed. The final verdict is always
