@@ -333,6 +333,27 @@ describe("private discovery read adapter (offline)", () => {
     }
   });
 
+  it("records a contract-valid engine READ_UNAVAILABLE but not other known engine errors", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const [key, value] of Object.entries({ ...approvedHobbyStaging, DISCOVERY_READ_MODE: "staging" }))
+      vi.stubEnv(key, value);
+    try {
+      const unavailable = setup(503, { code: "READ_UNAVAILABLE", requestId: "safe" });
+      await expect(unavailable.repo.candidates()).rejects.toMatchObject({ code: "READ_UNAVAILABLE" });
+      expect(spy).toHaveBeenCalledWith(
+        "MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=engine_response reason=http_error http_class=5xx",
+      );
+      expect(spy).toHaveBeenCalledTimes(1);
+      spy.mockClear();
+      const forbidden = setup(403, { code: "FORBIDDEN", requestId: "safe" });
+      await expect(forbidden.repo.candidates()).rejects.toMatchObject({ code: "FORBIDDEN" });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+      spy.mockRestore();
+    }
+  });
+
   it("never activates demo in Vercel and keeps offline dev demo local only", () => {
     expect(getDiscoveryMode({ NODE_ENV: "production", VERCEL_ENV: "production", DISCOVERY_READ_MODE: "demo" })).toBe(
       "disabled",

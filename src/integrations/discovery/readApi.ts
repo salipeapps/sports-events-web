@@ -454,6 +454,9 @@ export class HttpDiscoveryReadRepository implements DiscoveryReadRepository {
         recordStagingPrivateReadFailure("engine_response", "invalid_response", response.status);
         throw new DiscoveryReadError("READ_UNAVAILABLE");
       }
+      // The contract-valid engine 5xx is the exact failure this diagnostic exists for.
+      if (code === "READ_UNAVAILABLE")
+        recordStagingPrivateReadFailure("engine_response", "http_error", response.status);
       throw new DiscoveryReadError(code);
     }
     try {
