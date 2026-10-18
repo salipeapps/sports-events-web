@@ -164,12 +164,29 @@ async function writeStorageFixture(client, env, runId) {
   }
 }
 
-async function checkPooler(env, phase) {
-  validatePooler(env);
-  const sql =
-    "BEGIN TRANSACTION READ ONLY; SELECT current_database(),current_user,session_user,has_database_privilege(current_user,current_database(),'TEMPORARY'),has_database_privilege(current_user,current_database(),'CREATE'); ROLLBACK;";
-  const settings = {
-    ...process.env,
+// These are stable error categories only; raw psql stderr is NEVER logged or returned.
+export function classifyPoolerFailure(stderr) {
+  const message = String(stderr ?? "");
+  if (/tenant.*not found|no tenant|invalid tenant|unknown tenant|user not found/i.test(message))
+    return "POOLER_USER_OR_TENANT";
+  if (/password authentication failed|authentication failed|invalid password|SASL.*failed|SCRAM.*failed/i.test(message))
+    return "POOLER_AUTH_REJECTED";
+  if (/server certificate.*does not match|hostname mismatch|certificate verify failed|root certificate|SSL error.*certif/i.test(message))
+    return "POOLER_TLS_ERROR";
+  if (/unsupported startup|unsupported parameter|invalid option|invalid startup|invalid configuration parameter/i.test(message))
+    return "POOLER_STARTUP_OPTION_REJECTED";
+  if (/could not translate host name|name or service not known|no such host/i.test(message))
+    return "POOLER_DNS_ERROR";
+  if (/timed out|timeout|connection refused|network is unreachable|no route to host|could not connect to server/i.test(message))
+    return "POOLER_NETWORK_ERROR";
+  return "POOLER_CONNECTION_FAILED";
+}
+
+// Match the independently successful Windows psql probe: GSSAPI disabled,
+// while enforcing TLS verify-full. Ignore ambient libpq service-file settings.
+export function poolerPsqlEnv(env, ambient = process.env) {
+  return {
+    ...ambient,
     PGHOST: env.STAGING_POOLER_HOST,
     PGPORT: "5432",
     PGDATABASE: "postgres",
@@ -179,8 +196,17 @@ async function checkPooler(env, phase) {
     PGSSLROOTCERT: env.STAGING_POOLER_CA,
     PGCONNECT_TIMEOUT: "5",
     PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=10000",
+    PGGSSENCMODE: "disable",
     PGSERVICE: "",
+    PGSERVICEFILE: "",
   };
+}
+
+async function checkPooler(env, phase) {
+  validatePooler(env);
+  const sql =
+    "BEGIN TRANSACTION READ ONLY; SELECT current_database(),current_user,session_user,has_database_privilege(current_user,current_database(),'TEMPORARY'),has_database_privilege(current_user,current_database(),'CREATE'); ROLLBACK;";
+  const settings = poolerPsqlEnv(env);
   const out = await timebox(
     new Promise((resolve, reject) => {
       const child = spawn("psql", ["-X", "-w", "-A", "-t", "-v", "ON_ERROR_STOP=1", "-c", sql], {
@@ -191,7 +217,11 @@ async function checkPooler(env, phase) {
       child.stdout.on("data", (chunk) => {
         output += chunk.toString().slice(0, 512);
       });
-      child.stderr.on("data", () => {}); // Never show libpq/connection diagnostics or secrets.
+      let stderr = "";
+      child.stderr.on("data", (chunk) => {
+        // In memory only, bounded and never serialized to stdout/report.
+        if (stderr.length < 1024) stderr += chunk.toString().slice(0, 1024 - stderr.length);
+      });
       const killOnTimeout = setTimeout(() => child.kill("SIGKILL"), 10000);
       child.on("error", () => {
         clearTimeout(killOnTimeout);
@@ -200,7 +230,7 @@ async function checkPooler(env, phase) {
       child.on("close", (code) => {
         clearTimeout(killOnTimeout);
         if (code === 0) resolve(output);
-        else reject(new Error("POOLER_CONNECTION_FAILED"));
+        else reject(new Error(classifyPoolerFailure(stderr)));
       });
     }),
     12000,
@@ -317,8 +347,23 @@ export async function run(argv, env = process.env) {
     const data = await response.json();
     assert.ok(Array.isArray(data) && data.length === 0, "ANONYMOUS_MEMBERSHIP_EXPOSURE");
   });
-  if (args.pooler) await check("Session Pooler read-only identity and TEMP", () => checkPooler(env, args.phase));
-  else results.push({ name: "Session Pooler", status: "NOT_RUN" });
+  if (args.pooler) {
+    const name = "Session Pooler read-only identity and TEMP";
+    try {
+      await checkPooler(env, args.phase);
+      results.push({ name, status: "PASS" });
+    } catch (error) {
+      const allowed = new Set([
+        "PSQL_UNAVAILABLE", "TEST_TIMEOUT", "POOLER_ROLE_OR_PRIVILEGE_MISMATCH",
+        "POOLER_USER_OR_TENANT", "POOLER_AUTH_REJECTED", "POOLER_TLS_ERROR",
+        "POOLER_STARTUP_OPTION_REJECTED", "POOLER_DNS_ERROR", "POOLER_NETWORK_ERROR",
+        "POOLER_CONNECTION_FAILED",
+      ]);
+      // Only whitelisted codes: no SQL rows, hostnames, passwords or raw stderr.
+      const failure_code = allowed.has(error?.message) ? error.message : "POOLER_UNCLASSIFIED";
+      results.push({ name, status: "FAIL", failure_code });
+    }
+  } else results.push({ name: "Session Pooler", status: "NOT_RUN" });
   results.push({ name: "Private reader via Vercel OIDC (browser runbook)", status: "NOT_RUN" });
   // Neither output nor exceptions contain tokens, passwords, data rows, or object bodies.
   return {
