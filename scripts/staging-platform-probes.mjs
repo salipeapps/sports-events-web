@@ -171,13 +171,24 @@ export function classifyPoolerFailure(stderr) {
     return "POOLER_USER_OR_TENANT";
   if (/password authentication failed|authentication failed|invalid password|SASL.*failed|SCRAM.*failed/i.test(message))
     return "POOLER_AUTH_REJECTED";
-  if (/server certificate.*does not match|hostname mismatch|certificate verify failed|root certificate|SSL error.*certif/i.test(message))
+  if (
+    /server certificate.*does not match|hostname mismatch|certificate verify failed|root certificate|SSL error.*certif/i.test(
+      message,
+    )
+  )
     return "POOLER_TLS_ERROR";
-  if (/unsupported startup|unsupported parameter|invalid option|invalid startup|invalid configuration parameter/i.test(message))
+  if (
+    /unsupported startup|unsupported parameter|invalid option|invalid startup|invalid configuration parameter/i.test(
+      message,
+    )
+  )
     return "POOLER_STARTUP_OPTION_REJECTED";
-  if (/could not translate host name|name or service not known|no such host/i.test(message))
-    return "POOLER_DNS_ERROR";
-  if (/timed out|timeout|connection refused|network is unreachable|no route to host|could not connect to server/i.test(message))
+  if (/could not translate host name|name or service not known|no such host/i.test(message)) return "POOLER_DNS_ERROR";
+  if (
+    /timed out|timeout|connection refused|network is unreachable|no route to host|could not connect to server/i.test(
+      message,
+    )
+  )
     return "POOLER_NETWORK_ERROR";
   return "POOLER_CONNECTION_FAILED";
 }
@@ -354,9 +365,15 @@ export async function run(argv, env = process.env) {
       results.push({ name, status: "PASS" });
     } catch (error) {
       const allowed = new Set([
-        "PSQL_UNAVAILABLE", "TEST_TIMEOUT", "POOLER_ROLE_OR_PRIVILEGE_MISMATCH",
-        "POOLER_USER_OR_TENANT", "POOLER_AUTH_REJECTED", "POOLER_TLS_ERROR",
-        "POOLER_STARTUP_OPTION_REJECTED", "POOLER_DNS_ERROR", "POOLER_NETWORK_ERROR",
+        "PSQL_UNAVAILABLE",
+        "TEST_TIMEOUT",
+        "POOLER_ROLE_OR_PRIVILEGE_MISMATCH",
+        "POOLER_USER_OR_TENANT",
+        "POOLER_AUTH_REJECTED",
+        "POOLER_TLS_ERROR",
+        "POOLER_STARTUP_OPTION_REJECTED",
+        "POOLER_DNS_ERROR",
+        "POOLER_NETWORK_ERROR",
         "POOLER_CONNECTION_FAILED",
       ]);
       // Only whitelisted codes: no SQL rows, hostnames, passwords or raw stderr.
