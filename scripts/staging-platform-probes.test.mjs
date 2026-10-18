@@ -84,18 +84,21 @@ test("requested Storage write is BLOCKED when Auth fails, never omitted from the
 });
 
 test("pooler probe disables GSS negotiation without weakening certificate verification", () => {
-  const env = poolerPsqlEnv({
-    STAGING_POOLER_HOST: "aws-1-eu-west-3.pooler.supabase.com",
-    STAGING_POOLER_USER: "engine_discovery_reader.yfytzogjrhwstcnzspdv",
-    STAGING_POOLER_PASSWORD: "synthetic-placeholder-not-a-secret",
-    STAGING_POOLER_CA: "C:/fixtures/ca.pem",
-  }, {
-    PGGSSENCMODE: "prefer",
-    PGSERVICE: "stale-ambient-service",
-    PGSERVICEFILE: "C:/stale.conf",
-    PGSSLMODE: "disable",
-    PGOPTIONS: "-c something_unsafe=true",
-  });
+  const env = poolerPsqlEnv(
+    {
+      STAGING_POOLER_HOST: "aws-1-eu-west-3.pooler.supabase.com",
+      STAGING_POOLER_USER: "engine_discovery_reader.yfytzogjrhwstcnzspdv",
+      STAGING_POOLER_PASSWORD: "synthetic-placeholder-not-a-secret",
+      STAGING_POOLER_CA: "C:/fixtures/ca.pem",
+    },
+    {
+      PGGSSENCMODE: "prefer",
+      PGSERVICE: "stale-ambient-service",
+      PGSERVICEFILE: "C:/stale.conf",
+      PGSSLMODE: "disable",
+      PGOPTIONS: "-c something_unsafe=true",
+    },
+  );
   assert.equal(env.PGGSSENCMODE, "disable");
   assert.equal(env.PGSSLMODE, "verify-full");
   assert.equal(env.PGSSLROOTCERT, "C:/fixtures/ca.pem");
