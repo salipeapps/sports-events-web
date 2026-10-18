@@ -178,6 +178,8 @@ async function checkPooler(env, phase) {
     PGSSLMODE: "verify-full",
     PGSSLROOTCERT: env.STAGING_POOLER_CA,
     PGCONNECT_TIMEOUT: "5",
+    PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=10000",
+    PGSERVICE: "",
   };
   const out = await timebox(
     new Promise((resolve, reject) => {
@@ -190,8 +192,16 @@ async function checkPooler(env, phase) {
         output += chunk.toString().slice(0, 512);
       });
       child.stderr.on("data", () => {}); // Never show libpq/connection diagnostics or secrets.
-      child.on("error", () => reject(new Error("PSQL_UNAVAILABLE")));
-      child.on("close", (code) => (code === 0 ? resolve(output) : reject(new Error("POOLER_CONNECTION_FAILED"))));
+      const killOnTimeout = setTimeout(() => child.kill("SIGKILL"), 10000);
+      child.on("error", () => {
+        clearTimeout(killOnTimeout);
+        reject(new Error("PSQL_UNAVAILABLE"));
+      });
+      child.on("close", (code) => {
+        clearTimeout(killOnTimeout);
+        if (code === 0) resolve(output);
+        else reject(new Error("POOLER_CONNECTION_FAILED"));
+      });
     }),
     12000,
   );
