@@ -401,7 +401,12 @@ export function recordStagingPrivateReadFailure(
   env: NodeJS.ProcessEnv = process.env,
 ): void {
   if (!(getDiscoveryMode(env) === "staging" || isStagingSmokeEnabled(env))) return;
-  const statusClass = status === undefined ? "none" : status >= 500 ? "5xx" : status >= 400 ? "4xx" : "other";
+  let statusClass: "none" | "5xx" | "4xx" | "other" = "none";
+  if (status !== undefined) {
+    if (status >= 500) statusClass = "5xx";
+    else if (status >= 400) statusClass = "4xx";
+    else statusClass = "other";
+  }
   console.error(`MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=${stage} reason=${reason} http_class=${statusClass}`);
 }
 
