@@ -379,7 +379,13 @@ function knownError(status: number): ReadErrorCode {
 
 // Only bounded, allowlisted categories are emitted. Never log upstream responses,
 // error objects, request URLs, signed assertions, access tokens or SQL user data.
-export type PrivateReadDiagnosticStage = "user_auth" | "oidc_exchange" | "google_sts" | "google_iam" | "engine_fetch" | "engine_response";
+export type PrivateReadDiagnosticStage =
+  | "user_auth"
+  | "oidc_exchange"
+  | "google_sts"
+  | "google_iam"
+  | "engine_fetch"
+  | "engine_response";
 export type PrivateReadDiagnosticReason =
   | "unexpected_error"
   | "network_error"
