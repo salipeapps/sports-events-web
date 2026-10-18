@@ -9,6 +9,7 @@ import {
   isApprovedStagingDeployment,
   isStagingSmokeEnabled,
   parseStageConfig,
+  recordStagingPrivateReadFailure,
 } from "./readApi";
 
 const candidate = {
@@ -298,6 +299,35 @@ describe("private discovery read adapter (offline)", () => {
     expect(isApprovedStagingDeployment(env)).toBe(false);
     expect(isStagingSmokeEnabled(env)).toBe(false);
     expect(getDiscoveryMode({ ...env, DISCOVERY_READ_MODE: "staging" })).toBe("disabled");
+  });
+
+  it("emits only stage/status categories for the approved STAGING deployment", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const approved = { ...approvedHobbyStaging, DISCOVERY_READ_MODE: "staging" };
+      recordStagingPrivateReadFailure("google_sts", "http_error", 403, approved);
+      expect(spy).toHaveBeenCalledExactlyOnceWith(
+        "MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=google_sts reason=http_error http_class=4xx",
+      );
+      spy.mockClear();
+      recordStagingPrivateReadFailure("engine_response", "non_json_response", 503, approved);
+      expect(spy).toHaveBeenCalledExactlyOnceWith(
+        "MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=engine_response reason=non_json_response http_class=5xx",
+      );
+      spy.mockClear();
+      recordStagingPrivateReadFailure("google_iam", "network_error", undefined, approved);
+      expect(spy).toHaveBeenCalledExactlyOnceWith(
+        "MOUMEET_STAGING_PRIVATE_READ_FAILURE stage=google_iam reason=network_error http_class=none",
+      );
+      spy.mockClear();
+      recordStagingPrivateReadFailure("google_iam", "http_error", 401, {
+        ...approved,
+        VERCEL_PROJECT_ID: "another-project",
+      });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("never activates demo in Vercel and keeps offline dev demo local only", () => {
