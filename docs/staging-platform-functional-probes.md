@@ -1,6 +1,11 @@
 # #94 — STAGING Supabase functional probes (before/after PUBLIC TEMP)
 
-**PREPARED ONLY · NOT RUN · NO-GO for ACL change.** This suite does not approve
+**BEFORE functional evidence captured by operator on 2026-10-20; PARTIAL_NOT_GO
+and NO-GO for ACL change.** Six official Auth/Data API/Storage/Realtime probes
+passed; the Session Pooler passed a separately validated read-only probe. The
+private Vercel OIDC reader was NOT_RUN, and the combined official `--pooler`
+probe must be revalidated after this fix. See Engine #94 for the sanitized
+evidence (the raw report stays private). This suite does not approve
 `REVOKE TEMPORARY`, ALTER ROLE, migrations, changes to Auth hooks/Storage policies,
 writer deployment or discovery commands. `--execute` needs a separate,
 documented operator authorization and **only STAGING**. Never run on PROD.
@@ -130,23 +135,45 @@ approved bucket. A project that cannot safely provision such a bucket
 and policies cannot claim a Storage write PASS. If Storage is not used,
 record N/A with an independently verified service owner decision.
 
-## Supavisor Windows diagnostics (#94)
+## Supavisor / Cloud Shell diagnostics (#94)
 
-The read-only runner now mirrors the standalone operator-verified `psql`
-probe: `PGGSSENCMODE=disable`, `PGSERVICEFILE` cleared, Session Pooler
-port `5432`, `PGSSLMODE=verify-full`, pinned PEM CA, read-only `PGOPTIONS`
-and dedicated reader role. Disabling GSSAPI negotiation **does not** disable
-TLS certificate verification.
+The operator independently verified the STAGING Session Pooler using the
+dedicated `engine_discovery_reader` login, port `5432`, a trusted Supabase
+STAGING CA, `PGSSLMODE=verify-full`, and `PGGSSENCMODE=disable`.
+`psql` failed with `service file ... not found` when the previous Node runner
+set `PGSERVICEFILE=""`. An **empty** libpq service filename is not equivalent
+to an **unset** environment variable. The runner now **omits**
+`PGSERVICE`, `PGSERVICEFILE` and `PGOPTIONS` from the child process
+environment, even if ambient values were present. Supavisor startup
+options may be rejected; the query itself uses
+`BEGIN TRANSACTION READ ONLY; ... ROLLBACK;` and the child process has an
+execution timeout. This does not weaken the forced `verify-full` certificate
+and hostname verification or relax the dedicated reader identity.
+
+The CA used by the operator is a downloaded, verified STAGING certificate,
+typically stored outside Git at
+`~/.config/moumeet-staging/prod-ca-2021.crt`. Verify that it belongs to
+the STAGING project; do not bypass certificate verification with
+`sslmode=require` or `sslmode=disable`. An earlier TLS-category error and
+an empty Cloud Shell environment were independent setup issues; never infer
+a role/password failure from those diagnostic codes.
 
 If only the pooler fails, the JSON test may include a fixed
-`failure_code` (e.g. `POOLER_USER_OR_TENANT`,
-`POOLER_AUTH_REJECTED`, `POOLER_TLS_ERROR`,
-`POOLER_ROLE_OR_PRIVILEGE_MISMATCH`, or `PSQL_UNAVAILABLE`).
-These are allowlisted categories, never the original stderr, connection
-string, database row, JWT or secret. Do not publish raw
-`psql` diagnostics. The standalone validated read-only operator probe and
-a successful portal catalog lookup are useful investigation evidence but
-do **not** substitute for a full before/after suite PASS.
+`failure_code` (e.g. `POOLER_SERVICE_FILE_ERROR`,
+`POOLER_USER_OR_TENANT`, `POOLER_AUTH_REJECTED`,
+`POOLER_TLS_ERROR`, `POOLER_ROLE_OR_PRIVILEGE_MISMATCH`,
+or `PSQL_UNAVAILABLE`). These are allowlisted categories, never raw
+stderr, hostnames, database rows, JWTs or secrets. Do not publish raw
+`psql` diagnostics. The independent PASS is useful evidence but does
+**not** substitute for the official `--pooler` suite result, nor for
+the separate private Vercel OIDC reader validation.
+
+After this change passes offline CI, an operator with **still-valid separate
+BEFORE functional-probe authorization** may rerun the official
+`node scripts/staging-platform-probes.mjs --execute --phase=before --refresh --pooler`
+against exactly the approved STAGING project, using the approved fixtures.
+Do not run `--phase=after` without a separately authorized ACL intervention
+and full approval/rollback gates.
 
 ## Private reader: do not bypass Vercel OIDC
 
