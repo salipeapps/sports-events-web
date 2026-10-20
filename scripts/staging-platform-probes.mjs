@@ -167,6 +167,7 @@ async function writeStorageFixture(client, env, runId) {
 // These are stable error categories only; raw psql stderr is NEVER logged or returned.
 export function classifyPoolerFailure(stderr) {
   const message = String(stderr ?? "");
+  if (/service file.*not found/i.test(message)) return "POOLER_SERVICE_FILE_ERROR";
   if (/tenant.*not found|no tenant|invalid tenant|unknown tenant|user not found/i.test(message))
     return "POOLER_USER_OR_TENANT";
   if (/password authentication failed|authentication failed|invalid password|SASL.*failed|SCRAM.*failed/i.test(message))
@@ -193,10 +194,13 @@ export function classifyPoolerFailure(stderr) {
   return "POOLER_CONNECTION_FAILED";
 }
 
-// Match the independently successful Windows psql probe: GSSAPI disabled,
-// while enforcing TLS verify-full. Ignore ambient libpq service-file settings.
+// Match the independently successful Cloud Shell Session Pooler probe.
+// libpq may treat PGSERVICEFILE="" as a filename and fail before contacting
+// PostgreSQL. Unset service-file configuration rather than passing empty values.
+// Supavisor can reject PGOPTIONS startup parameters: enforce read-only in SQL
+// and bound the psql process instead. Keep verify-full TLS and disable GSSAPI.
 export function poolerPsqlEnv(env, ambient = process.env) {
-  return {
+  const settings = {
     ...ambient,
     PGHOST: env.STAGING_POOLER_HOST,
     PGPORT: "5432",
@@ -206,17 +210,20 @@ export function poolerPsqlEnv(env, ambient = process.env) {
     PGSSLMODE: "verify-full",
     PGSSLROOTCERT: env.STAGING_POOLER_CA,
     PGCONNECT_TIMEOUT: "5",
-    PGOPTIONS: "-c default_transaction_read_only=on -c statement_timeout=10000",
     PGGSSENCMODE: "disable",
-    PGSERVICE: "",
-    PGSERVICEFILE: "",
   };
+  delete settings.PGSERVICE;
+  delete settings.PGSERVICEFILE;
+  delete settings.PGOPTIONS;
+  return settings;
 }
+
+export const POOLER_READ_ONLY_SQL =
+  "BEGIN TRANSACTION READ ONLY; SELECT current_database(),current_user,session_user,has_database_privilege(current_user,current_database(),'TEMPORARY'),has_database_privilege(current_user,current_database(),'CREATE'); ROLLBACK;";
 
 async function checkPooler(env, phase) {
   validatePooler(env);
-  const sql =
-    "BEGIN TRANSACTION READ ONLY; SELECT current_database(),current_user,session_user,has_database_privilege(current_user,current_database(),'TEMPORARY'),has_database_privilege(current_user,current_database(),'CREATE'); ROLLBACK;";
+  const sql = POOLER_READ_ONLY_SQL;
   const settings = poolerPsqlEnv(env);
   const out = await timebox(
     new Promise((resolve, reject) => {
@@ -372,6 +379,7 @@ export async function run(argv, env = process.env) {
         "POOLER_AUTH_REJECTED",
         "POOLER_TLS_ERROR",
         "POOLER_STARTUP_OPTION_REJECTED",
+        "POOLER_SERVICE_FILE_ERROR",
         "POOLER_DNS_ERROR",
         "POOLER_NETWORK_ERROR",
         "POOLER_CONNECTION_FAILED",
