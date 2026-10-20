@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   blockedAuthenticatedProbes,
   parseArgs,
+  POOLER_READ_ONLY_SQL,
   poolerPsqlEnv,
   classifyPoolerFailure,
   run,
@@ -102,14 +103,27 @@ test("pooler probe disables GSS negotiation without weakening certificate verifi
   assert.equal(env.PGGSSENCMODE, "disable");
   assert.equal(env.PGSSLMODE, "verify-full");
   assert.equal(env.PGSSLROOTCERT, "C:/fixtures/ca.pem");
-  assert.equal(env.PGSERVICE, "");
-  assert.equal(env.PGSERVICEFILE, "");
-  assert.equal(env.PGOPTIONS, "-c default_transaction_read_only=on -c statement_timeout=10000");
+  assert.equal(Object.hasOwn(env, "PGSERVICE"), false);
+  assert.equal(Object.hasOwn(env, "PGSERVICEFILE"), false);
+  assert.equal(Object.hasOwn(env, "PGOPTIONS"), false);
+  assert.equal(env.PGHOST, "aws-1-eu-west-3.pooler.supabase.com");
+  assert.equal(env.PGDATABASE, "postgres");
+  assert.equal(env.PGCONNECT_TIMEOUT, "5");
   assert.equal(env.PGUSER, "engine_discovery_reader.yfytzogjrhwstcnzspdv");
   assert.equal(env.PGPORT, "5432");
 });
 
+test("pooler query stays explicitly read-only when startup PGOPTIONS are absent", () => {
+  assert.match(POOLER_READ_ONLY_SQL, /^BEGIN TRANSACTION READ ONLY; SELECT /);
+  assert.match(POOLER_READ_ONLY_SQL, /; ROLLBACK;$/);
+  assert.match(POOLER_READ_ONLY_SQL, /has_database_privilege\(current_user,current_database\(\),'TEMPORARY'\)/);
+});
+
 test("pooler failed connection reports only safe error categories", () => {
+  assert.equal(
+    classifyPoolerFailure('psql: error: service file "/home/operator/invalid.conf" not found'),
+    "POOLER_SERVICE_FILE_ERROR",
+  );
   assert.equal(classifyPoolerFailure("FATAL: Tenant or user not found"), "POOLER_USER_OR_TENANT");
   assert.equal(classifyPoolerFailure("FATAL: password authentication failed"), "POOLER_AUTH_REJECTED");
   assert.equal(classifyPoolerFailure("server certificate does not match host name"), "POOLER_TLS_ERROR");
