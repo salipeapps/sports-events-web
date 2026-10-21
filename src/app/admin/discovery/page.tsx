@@ -21,7 +21,7 @@ export default async function DiscoveryPage({
     const snapshot = await getDiscoveryRepository().getSnapshot();
     return <DiscoveryOverview snapshot={snapshot} activeTab={tab} />;
   }
-  if (mode !== "staging") return <LiveDiscoveryFailure code="NOT_CONFIGURED" />;
+  if (mode !== "staging" && mode !== "SUPABASE_READ") return <LiveDiscoveryFailure code="NOT_CONFIGURED" />;
   const outcome = await (async () => {
     try {
       const repo = getLiveDiscoveryRepository();
