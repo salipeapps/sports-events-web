@@ -72,6 +72,11 @@ function validate(resource: Resource, value: unknown, role: "admin" | "reviewer"
   checkItem(resource, value, 2);
   const item = exact(value, fields[resource]);
   if (resource === "candidates") {
+    if (
+      item.latestReviewId !== (item.latestReview === null ? null : record(item.latestReview).id) ||
+      item.linkedSourceId !== (item.source === null ? null : record(item.source).id)
+    )
+      incompatible();
     safeUrl(item.canonicalUrl);
     if (item.classification !== null)
       exact(item.classification, "kind reason sourceFamily proposedAdapterKey knownSourceId ruleVersion classifiedAt");

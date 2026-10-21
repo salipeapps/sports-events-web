@@ -263,6 +263,47 @@ describe("Supabase Discovery v2 proposal, offline DB response fixtures (not RLS 
   ])("rejects malformed/incompatible DB response %j", async (body) => {
     await expect(setup(body).repo.candidates()).rejects.toMatchObject({ code: "INCOMPATIBLE_CONTRACT" });
   });
+  const source = { id: query.id, status: "UNTRUSTED", enabled: null, adapterKey: null };
+  it.each([
+    ["review ID mismatch", { latestReviewId: execution.id, latestReview: review }],
+    ["review without reference", { latestReviewId: null, latestReview: review }],
+    ["review reference without object", { latestReviewId: review.id, latestReview: null }],
+    ["source ID mismatch", { linkedSourceId: execution.id, source }],
+    ["source without reference", { linkedSourceId: null, source }],
+    ["source reference without object", { linkedSourceId: source.id, source: null }],
+  ] as const)("rejects %s in candidate lists and details for both roles", async (name, patch) => {
+    const candidate = { ...sample, ...patch };
+    for (const role of ["admin", "reviewer"] as const) {
+      const list = setup({ contractVersion: 2, items: [candidate], nextCursor: null }, role);
+      await expect(list.repo.candidates(), `${name}: list ${role}`).rejects.toMatchObject({
+        code: "INCOMPATIBLE_CONTRACT",
+      });
+      const detail = setup({ contractVersion: 2, item: { candidate, promotion: null } }, role);
+      await expect(detail.repo.candidate(candidate.id), `${name}: detail ${role}`).rejects.toMatchObject({
+        code: "INCOMPATIBLE_CONTRACT",
+      });
+    }
+  });
+  it.each([
+    ["both absent", {}],
+    ["matching review", { latestReviewId: review.id, latestReview: review }],
+    ["matching source", { linkedSourceId: source.id, source }],
+    ["both matching", { latestReviewId: review.id, latestReview: review, linkedSourceId: source.id, source }],
+  ] as const)("preserves %s in candidate lists and details for both roles", async (name, patch) => {
+    const candidate = { ...sample, ...patch };
+    for (const role of ["admin", "reviewer"] as const) {
+      const list = setup({ contractVersion: 2, items: [candidate], nextCursor: null }, role);
+      await expect(list.repo.candidates(), `${name}: list ${role}`).resolves.toEqual({
+        items: [candidate],
+        nextCursor: null,
+      });
+      const detail = setup({ contractVersion: 2, item: { candidate, promotion: null } }, role);
+      await expect(detail.repo.candidate(candidate.id), `${name}: detail ${role}`).resolves.toEqual({
+        candidate,
+        promotion: null,
+      });
+    }
+  });
   it("rejects disclosure of actor identity or reviewer-only hidden configuration", async () => {
     for (const [resource, item] of [
       ["providers", { ...provider, maxRequestsPerExecution: 8 }],
