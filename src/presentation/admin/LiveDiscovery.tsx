@@ -81,7 +81,7 @@ export function LiveDiscoveryFailure({ code }: { code: ReadErrorCode }) {
     READ_CONFLICT: "La lectura no puede completarse ahora.",
     READ_UNAVAILABLE: "El motor no está disponible.",
     NOT_CONFIGURED: "La conexión STAGING aún no está configurada o autorizada.",
-    INCOMPATIBLE_CONTRACT: "La respuesta recibida no cumple el contrato v1.",
+    INCOMPATIBLE_CONTRACT: "La respuesta recibida no cumple el contrato de lectura.",
   };
   return (
     <main className="admin-page admin-discovery-page">
@@ -365,7 +365,7 @@ export function LiveDiscoveryOverview({
                     {(data.items as DiscoveryQuery[]).map((q) => (
                       <tr key={q.id}>
                         <td className="admin-table-title">
-                          <strong>{q.expression}</strong>
+                          <strong>{show(q.expression)}</strong>
                           <small>{q.id}</small>
                         </td>
                         <td>{q.providerKey}</td>
@@ -406,7 +406,7 @@ export function LiveDiscoveryOverview({
                           <small>{p.providerKey}</small>
                         </td>
                         <td>{p.enabled ? "Habilitado (credenciales no verificadas)" : "Deshabilitado"}</td>
-                        <td>{p.maxRequestsPerExecution}</td>
+                        <td>{show(p.maxRequestsPerExecution)}</td>
                         <td>{show(p.dailyRequestCap)}</td>
                         <td>{show(p.monthlyRequestCap)}</td>
                       </tr>
@@ -554,7 +554,7 @@ export function LiveCandidateDetail({
               {c.source
                 ? c.source.status +
                   " · " +
-                  c.source.adapterKey +
+                  show(c.source.adapterKey) +
                   " · " +
                   (c.source.enabled === false
                     ? "deshabilitada"
@@ -574,7 +574,7 @@ export function LiveCandidateDetail({
                   " · " +
                   date(c.latestReview.reviewedAt) +
                   " · actor " +
-                  c.latestReview.reviewerRef
+                  show(c.latestReview.reviewerRef)
                 : "Sin decisiones"}
             </dd>
           </div>
@@ -612,7 +612,7 @@ export function LiveCandidateDetail({
             {reviews.items.map((r) => (
               <li key={r.id}>
                 {reviewStatusLabel(r.decision)} · {reviewReasonLabel(r.reasonCode)} · {date(r.reviewedAt)} · actor{" "}
-                {r.reviewerRef}
+                {show(r.reviewerRef)}
               </li>
             ))}
           </ul>

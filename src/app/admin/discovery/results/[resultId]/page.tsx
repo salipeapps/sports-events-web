@@ -26,7 +26,7 @@ export default async function DiscoveryResultPage({
     if (!result) notFound();
     return <DiscoveryResultDetail snapshot={snapshot} result={result} />;
   }
-  if (mode !== "staging") return <LiveDiscoveryFailure code="NOT_CONFIGURED" />;
+  if (mode !== "staging" && mode !== "SUPABASE_READ") return <LiveDiscoveryFailure code="NOT_CONFIGURED" />;
   const outcome = await (async () => {
     try {
       const cursors = await searchParams;

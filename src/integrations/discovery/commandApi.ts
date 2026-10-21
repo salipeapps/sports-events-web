@@ -190,6 +190,7 @@ export const writerAdmissionContract = "engine-authoritative-rejection-v1";
 export function commandsEnabled(operation: CommandOperation, env: NodeJS.ProcessEnv = process.env): boolean {
   return (
     isApprovedStagingDeployment(env) &&
+    env.DISCOVERY_READ_MODE !== "SUPABASE_READ" &&
     writerAdmittedOperations.includes(operation) &&
     env[operation === "rejection" ? "DISCOVERY_REJECTION_ENABLED" : "DISCOVERY_PROMOTION_ENABLED"] === "enabled"
   );

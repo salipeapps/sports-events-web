@@ -6,6 +6,29 @@ const detailPath = `/admin/discovery/results/${sample.id}`;
 const requestId = "43ade75d-0216-4cfd-a515-f1bcfdf062ef";
 const reviewId = "3afeef88-1111-4000-8000-111111111111";
 const sourceId = "11a2a2a2-1111-4000-8000-111111111111";
+
+test("Supabase v2 redacted review/source fields display unknown values with no write actions", async ({ page }) => {
+  const candidate = structuredClone(sample);
+  candidate.linkedSourceId = sourceId;
+  candidate.source = { id: sourceId, status: "UNTRUSTED", enabled: null, adapterKey: null };
+  candidate.latestReview = {
+    id: reviewId,
+    decision: "REJECTED",
+    reviewerRef: null,
+    reasonCode: "OUT_OF_SCOPE",
+    reviewedAt: "2026-10-15T10:00:00Z",
+  };
+  await page.route("**/fixture/state", (route) => route.fulfill({ json: { candidate } }));
+  await page.goto(detailPath);
+  await expect(page.getByText("UNTRUSTED · Sin dato · habilitación desconocida", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Revisiones", exact: true }).locator("..")).toContainText(
+    "actor Sin dato",
+  );
+  await expect(page.getByRole("button", { name: "Rechazar con motivo", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Aprobar y promover a B2", exact: true })).toHaveCount(0);
+  await expect(page.locator("main")).not.toContainText("null");
+});
+
 function state(role: "admin" | "reviewer" = "admin"): FixtureState {
   return {
     candidate: structuredClone(sample),
