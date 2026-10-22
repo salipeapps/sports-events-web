@@ -22,6 +22,25 @@ async function expectCommandsDisabled(page: Page) {
   }
 }
 
+const adminRoutes = [
+  "/admin",
+  "/admin/activities",
+  "/admin/candidates?page=99&search=fixture",
+  "/admin/candidates/candidate-valid-E019",
+  "/admin/sources",
+  "/admin/sources/S001",
+  "/admin/runs",
+  "/admin/runs/fixture-run-8421?page=2",
+];
+
+async function expectUnavailableInventory(page: Page) {
+  const content = page.locator(".admin-content");
+  await expect(content.getByRole("alert")).toContainText("NOT_AVAILABLE");
+  await expect(content.locator("table, form, .admin-metric-card, .admin-status-ring")).toHaveCount(0);
+  await expect(content).not.toContainText("Demo local");
+  await expect(content.getByRole("link", { name: "Ir a Descubrimiento", exact: true })).toBeVisible();
+}
+
 test("anonymous direct command URLs fail closed while flags are disabled", async ({ page }) => {
   await expectCommandsDisabled(page);
 });
@@ -40,8 +59,11 @@ test("admin login persists verified cookies; deactivation takes effect on next r
   await expect(page.locator(".admin-shell")).toBeVisible();
   const response = await request.post("http://127.0.0.1:3201/fixture/deactivate", { data: { id: "admin" } });
   expect(response.ok()).toBe(true);
-  await page.goto("/admin/activities");
-  await expect(page).toHaveURL(/reason=unauthorized/);
+  for (const route of adminRoutes) {
+    await page.goto(route);
+    await expect(page).toHaveURL(/reason=unauthorized/);
+    await expect(page.locator(".admin-shell")).toHaveCount(0);
+  }
 });
 test("reviewer stays in the shell on denied routes and retains discovery and logout", async ({ page, context }) => {
   await login(page, "reviewer");
@@ -81,15 +103,40 @@ test("reviewer stays in the shell on denied routes and retains discovery and log
   await expect(page).toHaveURL(/admin-access/);
 });
 
-test("admin retains source and run list and detail access", async ({ page }) => {
+test("authenticated admin sees explicit unavailable B1 models across all lists and details", async ({ page }) => {
   await login(page, "admin");
   await expect(page).toHaveURL(/\/admin$/);
-  for (const route of ["/admin/sources", "/admin/sources/S001", "/admin/runs", "/admin/runs/fixture-run-8421"]) {
+  for (const route of adminRoutes) {
     await page.goto(route);
-    await expect(page).toHaveURL(new RegExp(`${route}$`));
+    await expect(page).toHaveURL(new URL(route, "http://127.0.0.1:3100").href);
     await expect(page.locator(".admin-content h1")).toBeVisible();
+    await expectUnavailableInventory(page);
   }
   await expect(page.getByRole("link", { name: "Fuentes", exact: true })).toBeVisible();
+  await page.goto("/admin");
+  await page.screenshot({ path: "test-results/admin-unavailable-desktop.png", fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.screenshot({ path: "test-results/admin-unavailable-mobile.png", fullPage: true });
+});
+
+test("reviewer sees unavailable editorial models and loses every module after membership revocation", async ({
+  page,
+  request,
+}) => {
+  await login(page, "reviewer");
+  await expect(page).toHaveURL(/\/admin$/);
+  for (const route of adminRoutes.slice(0, 4)) {
+    await page.goto(route);
+    await expectUnavailableInventory(page);
+  }
+  const response = await request.post("http://127.0.0.1:3201/fixture/deactivate", { data: { id: "reviewer" } });
+  expect(response.ok()).toBe(true);
+  for (const route of adminRoutes) {
+    await page.goto(route);
+    await expect(page).toHaveURL(/reason=unauthorized/);
+    await expect(page.locator(".admin-shell")).toHaveCount(0);
+  }
 });
 for (const subject of ["outsider", "inactive", "expired"])
   test(`${subject} cannot enter Admin despite forged user metadata`, async ({ page }) => {

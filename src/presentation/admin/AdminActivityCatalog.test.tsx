@@ -37,4 +37,17 @@ describe("AdminActivityCatalog", () => {
     expect(html).toContain("Revisión");
     expect(html).not.toContain("Publicadas (");
   });
+
+  it("renders a successful empty search separately from unavailable data, without pagination links", async () => {
+    const model = await loadActivityCatalog(
+      new FixtureAdminRepository(),
+      { q: "no-match-empty-search", page: "99" },
+      "candidates",
+    );
+    const html = renderToStaticMarkup(<AdminActivityCatalog model={model} />);
+    expect(model.rows).toEqual([]);
+    expect(model.total).toBe(0);
+    expect(html).toContain("0 resultados");
+    expect(html).not.toMatch(/NOT_AVAILABLE|READ_UNAVAILABLE|aria-label="Paginación del catálogo"/);
+  });
 });

@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
+vi.mock("server-only", () => ({}));
 vi.mock("@/integrations/auth/adminAuth", () => ({ requireAdminAccess: vi.fn() }));
 
 import AdminPage from "./page";
