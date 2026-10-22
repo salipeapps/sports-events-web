@@ -27,7 +27,7 @@ npm run dev
 
 Open:
 
-- `/` — public shell
+- `/` — public catalogue (disabled until the reviewed public API is available; no invented inventory)
 - `/admin` — Admin v0 bootstrap
 
 > The Admin is **private by default**: an unauthenticated request redirects to `/admin-access`.
@@ -88,6 +88,8 @@ with `NEXT_PUBLIC_`.
 - #7 E2E vertical-slice validation
 
 See `docs/architecture.md` for the baseline architecture.
+
+The public H2 catalogue is prepared offline for #50. See [its contract and activation gates](docs/public-catalog.md).
 
 ## Admin v0 E2E acceptance
 

@@ -4,7 +4,7 @@ const baseURL = "http://127.0.0.1:3100";
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: ["supabase-auth.spec.ts", "discovery-review.spec.ts"],
+  testIgnore: ["supabase-auth.spec.ts", "discovery-review.spec.ts", "public-catalog.spec.ts"],
   timeout: 45_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,
@@ -29,6 +29,7 @@ export default defineConfig({
       NEXT_TEST_DIST_DIR: ".next-e2e",
       NEXT_PUBLIC_SUPABASE_URL: "",
       NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: "",
+      PUBLIC_CATALOG_MODE: "disabled",
       ADMIN_DEV_AUTH_MODE: process.env.ADMIN_DEV_AUTH_MODE ?? "enabled",
       ADMIN_DEV_AUTH_ROLE: "admin",
       ADMIN_DEV_AUTH_NAME: "E2E Admin",
