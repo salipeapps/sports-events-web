@@ -16,7 +16,15 @@ const item: PublicOccurrence = {
   category: null,
   level: null,
   locations: [
-    { role: "departure", municipality: "Alboraia", neighborhood: "Patacona", pointName: null, address: null },
+    {
+      role: "departure",
+      municipality: "Alboraia",
+      neighborhood: "Patacona",
+      pointName: null,
+      address: null,
+      latitude: null,
+      longitude: null,
+    },
   ],
   prices: [],
   updatedAt: "2026-10-20T10:00:00Z",
@@ -49,15 +57,70 @@ describe("public cards and availability", () => {
         occurrence={{
           ...item,
           prices: [
-            { type: "fixed", scope: "month", amount: 25, currency: "EUR", conditions: "Solo socios" },
-            { type: "from", scope: "session", amount: 8, currency: "EUR", conditions: null },
-            { type: "free", scope: "session", amount: 0, currency: null, conditions: null },
-            { type: "unknown", scope: "unknown", amount: null, currency: null, conditions: null },
+            {
+              type: "subscription",
+              scope: "per_month",
+              amount: 25,
+              currency: "EUR",
+              conditions: "Solo socios",
+              validFrom: null,
+              validTo: null,
+              transportCost: "unknown",
+            },
+            {
+              type: "from",
+              scope: "per_session",
+              amount: 8,
+              currency: "EUR",
+              conditions: null,
+              validFrom: null,
+              validTo: null,
+              transportCost: "unknown",
+            },
+            {
+              type: "free",
+              scope: "per_session",
+              amount: null,
+              currency: null,
+              conditions: null,
+              validFrom: null,
+              validTo: null,
+              transportCost: "unknown",
+            },
+            {
+              type: "unknown",
+              scope: "unknown",
+              amount: null,
+              currency: null,
+              conditions: null,
+              validFrom: null,
+              validTo: null,
+              transportCost: "unknown",
+            },
+            {
+              type: "donation",
+              scope: "per_session",
+              amount: null,
+              currency: null,
+              conditions: null,
+              validFrom: null,
+              validTo: null,
+              transportCost: "unknown",
+            },
           ],
         }}
       />,
     );
-    for (const text of ["al mes", "por sesión", "Desde", "Gratis", "Precio por confirmar", "Solo socios"])
+    for (const text of [
+      "al mes",
+      "por sesión",
+      "Desde",
+      "Gratis",
+      "Precio por confirmar",
+      "Solo socios",
+      "Suscripción",
+      "Donación voluntaria",
+    ])
       expect(html).toContain(text);
   });
   it("renders an empty successful catalogue without demo inventory or fake links", () => {

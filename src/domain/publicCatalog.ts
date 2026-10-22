@@ -1,18 +1,29 @@
 /** Public data only. This contract never references editorial candidates or evidence. */
+export interface CatalogTranslations {
+  es: string | null;
+  en: string | null;
+}
+
 export interface PublicLocation {
-  role: "venue" | "departure" | "destination";
+  role: "activity" | "meeting_point" | "departure" | "destination";
   municipality: string | null;
   neighborhood: string | null;
   pointName: string | null;
   address: string | null;
+  latitude: number | null;
+  longitude: number | null;
 }
 
 export interface PublicPrice {
-  type: "free" | "fixed" | "from" | "unknown";
-  scope: "session" | "month" | "year" | "unknown";
+  type: "free" | "fixed" | "donation" | "trial" | "early_bird" | "from" | "membership" | "subscription" | "unknown";
+  scope:
+    "per_session" | "first_session_only" | "per_month" | "per_year" | "membership" | "transport" | "other" | "unknown";
   amount: number | null;
   currency: string | null;
   conditions: string | null;
+  validFrom: string | null;
+  validTo: string | null;
+  transportCost: "included" | "excluded" | "not_applicable" | "unknown";
 }
 
 export interface PublicOccurrence {
@@ -24,7 +35,11 @@ export interface PublicOccurrence {
   registrationUrl: string | null;
   activityLanguage: string | null;
   category: string | null;
-  level: string | null;
+  level: CatalogTranslations | null;
+  titleTranslations?: CatalogTranslations;
+  requirements?: CatalogTranslations;
+  lastVerifiedAt?: string;
+  verifiedUntil?: string;
   locations: PublicLocation[];
   prices: PublicPrice[];
   updatedAt: string;

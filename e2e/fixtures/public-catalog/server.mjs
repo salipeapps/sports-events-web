@@ -28,8 +28,11 @@ function reset(next) {
     timeZone: "Europe/Madrid",
     registrationUrl: null,
     activityLanguage: index === 1 ? "es" : null,
-    category: index === 1 ? "Running" : null,
-    level: index === 1 ? "Iniciación" : null,
+    category: "running",
+    level: { es: index === 1 ? "Iniciación" : null, en: null },
+    requirements: { es: null, en: null },
+    lastVerifiedAt: new Date(now - 86_400_000).toISOString(),
+    verifiedUntil: new Date(now + 6 * 86_400_000).toISOString(),
     locations:
       index === 0
         ? [
@@ -39,14 +42,38 @@ function reset(next) {
               neighborhood: "Patacona",
               pointName: "TEST · Punto de encuentro",
               address: null,
+              latitude: null,
+              longitude: null,
             },
           ]
         : [],
     prices:
       index === 1
-        ? [{ type: "free", scope: "session", amount: 0, currency: null, conditions: null }]
+        ? [
+            {
+              type: "free",
+              scope: "per_session",
+              amount: null,
+              currency: null,
+              conditions: null,
+              validFrom: null,
+              validTo: null,
+              transportCost: "unknown",
+            },
+          ]
         : index === 2
-          ? [{ type: "fixed", scope: "month", amount: 25, currency: "EUR", conditions: "TEST · Cuota mensual" }]
+          ? [
+              {
+                type: "subscription",
+                scope: "per_month",
+                amount: 25,
+                currency: "EUR",
+                conditions: "TEST · Cuota mensual",
+                validFrom: null,
+                validTo: null,
+                transportCost: "unknown",
+              },
+            ]
           : [],
     updatedAt: new Date(now - 86_400_000).toISOString(),
   }));
@@ -107,9 +134,10 @@ createServer(async (request, response) => {
             Date.parse(row.startInstant) >= Math.max(from, Date.now()) &&
             Date.parse(row.startInstant) < to,
         );
-  const items = eligible
-    .slice(offset, offset + query.limit)
-    .map((row) => Object.fromEntries(Object.entries(row).filter(([key]) => key !== "status")));
+  const items = eligible.slice(offset, offset + query.limit).map((row) => ({
+    ...Object.fromEntries(Object.entries(row).filter(([key]) => key !== "status")),
+    titleTranslations: { es: row.title, en: null },
+  }));
   const nextCursor =
     offset + query.limit < eligible.length
       ? Buffer.from(JSON.stringify({ context, offset: offset + query.limit })).toString("base64url")

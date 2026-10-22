@@ -9,6 +9,7 @@ import type {
   PublicLocation,
   PublicOccurrence,
   PublicPrice,
+  CatalogTranslations,
 } from "@/domain/publicCatalog";
 
 const maxBytes = 1024 * 1024;
@@ -30,13 +31,13 @@ function record(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function text(value: unknown, max = 250): string {
+function text(value: unknown, max = 500): string {
   if (typeof value !== "string" || !value.trim() || value.length > max || /[\u0000-\u001f\u007f<>]/.test(value))
     return incompatible();
   return value;
 }
 
-function nullableText(value: unknown, max = 250): string | null {
+function nullableText(value: unknown, max = 500): string | null {
   return value === null ? null : text(value, max);
 }
 
@@ -74,26 +75,83 @@ function registrationUrl(value: unknown): string | null {
 
 function location(value: unknown): PublicLocation {
   const item = record(value);
+  const latitude = item.latitude,
+    longitude = item.longitude;
+  if ((latitude === null) !== (longitude === null)) return incompatible();
+  if (
+    latitude !== null &&
+    (typeof latitude !== "number" || !Number.isFinite(latitude) || latitude < -90 || latitude > 90)
+  )
+    return incompatible();
+  if (
+    longitude !== null &&
+    (typeof longitude !== "number" || !Number.isFinite(longitude) || longitude < -180 || longitude > 180)
+  )
+    return incompatible();
   return {
-    role: enumValue(item.role, ["venue", "departure", "destination"]),
+    role: enumValue(item.role, ["activity", "meeting_point", "departure", "destination"]),
     municipality: nullableText(item.municipality),
     neighborhood: nullableText(item.neighborhood),
     pointName: nullableText(item.pointName),
     address: nullableText(item.address),
+    latitude: latitude as number | null,
+    longitude: longitude as number | null,
   };
+}
+
+function translations(value: unknown): CatalogTranslations {
+  const item = record(value);
+  return { es: nullableText(item.es), en: nullableText(item.en) };
+}
+
+function priceDate(value: unknown): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value) || !isCatalogInstant(`${value}T00:00:00Z`))
+    return incompatible();
+  return value;
 }
 
 function price(value: unknown): PublicPrice {
   const item = record(value);
-  const type = enumValue(item.type, ["free", "fixed", "from", "unknown"]);
-  const scope = enumValue(item.scope, ["session", "month", "year", "unknown"]);
+  const type = enumValue(item.type, [
+    "free",
+    "fixed",
+    "donation",
+    "trial",
+    "early_bird",
+    "from",
+    "membership",
+    "subscription",
+  ]);
+  const scope = enumValue(item.scope, [
+    "per_session",
+    "first_session_only",
+    "per_month",
+    "per_year",
+    "membership",
+    "transport",
+    "other",
+  ]);
   const amount = item.amount;
   const currency = nullableText(item.currency, 3);
   if (currency !== null && !/^[A-Z]{3}$/.test(currency)) return incompatible();
   if (amount !== null && (typeof amount !== "number" || !Number.isFinite(amount) || amount < 0)) return incompatible();
-  if (type === "free" && amount !== null && amount !== 0) return incompatible();
-  if ((type === "fixed" || type === "from") && (amount === null || currency === null)) return incompatible();
-  return { type, scope, amount: amount as number | null, currency, conditions: nullableText(item.conditions, 500) };
+  if ((amount === null) !== (currency === null)) return incompatible();
+  if (type === "free" && amount !== null) return incompatible();
+  if (type !== "free" && type !== "donation" && amount === null) return incompatible();
+  const validFrom = priceDate(item.validFrom),
+    validTo = priceDate(item.validTo);
+  if (validFrom !== null && validTo !== null && validTo < validFrom) return incompatible();
+  return {
+    type,
+    scope,
+    amount: amount as number | null,
+    currency,
+    conditions: nullableText(item.conditions),
+    validFrom,
+    validTo,
+    transportCost: enumValue(item.transportCost, ["included", "excluded", "not_applicable", "unknown"]),
+  };
 }
 
 function occurrence(value: unknown): PublicOccurrence {
@@ -112,11 +170,23 @@ function occurrence(value: unknown): PublicOccurrence {
     endInstant,
     registrationUrl: registrationUrl(item.registrationUrl),
     activityLanguage: nullableText(item.activityLanguage, 100),
-    // Optional extensions pending #122. Never infer them from titles or private B1 data.
-    category: item.category === undefined ? null : nullableText(item.category, 100),
-    level: item.level === undefined ? null : nullableText(item.level, 100),
+    category: enumValue(item.category, [
+      "yoga",
+      "running",
+      "hiking",
+      "cycling",
+      "fitness",
+      "swimming",
+      "dance",
+      "other",
+    ]),
+    level: translations(item.level),
+    titleTranslations: translations(item.titleTranslations),
+    requirements: translations(item.requirements),
+    lastVerifiedAt: instant(item.lastVerifiedAt),
+    verifiedUntil: instant(item.verifiedUntil),
     locations: array(item.locations, 8, location),
-    prices: array(item.prices, 12, price),
+    prices: array(item.prices, 8, price),
     updatedAt: instant(item.updatedAt),
   };
 }
@@ -195,7 +265,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   }
 }
 
-/** Provisional H0 consumer; Engine #122 must confirm SQL/nested shapes before remote activation. */
+/** H2 wire contract from Engine #133. Remote activation still requires its SQL review and H3. */
 export class SupabasePublicCatalogRepository implements PublicCatalogRepository {
   constructor(
     private readonly config: { url: string; key: string },

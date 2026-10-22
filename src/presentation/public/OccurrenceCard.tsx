@@ -9,15 +9,33 @@ const startFormatter = new Intl.DateTimeFormat("es-ES", {
   minute: "2-digit",
 });
 const dateFormatter = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", day: "numeric", month: "short" });
-const scopes = { session: "por sesión", month: "al mes", year: "al año", unknown: "periodicidad por confirmar" };
+const scopes = {
+  per_session: "por sesión",
+  first_session_only: "primera sesión",
+  per_month: "al mes",
+  per_year: "al año",
+  membership: "afiliación",
+  transport: "transporte",
+  other: "otra modalidad",
+  unknown: "periodicidad por confirmar",
+};
 
 export function priceLabel(price: PublicPrice): string {
   if (price.type === "unknown") return "Precio por confirmar";
   if (price.type === "free") return `Gratis · ${scopes[price.scope]}`;
-  const amount = new Intl.NumberFormat("es-ES", { style: "currency", currency: price.currency ?? "EUR" }).format(
-    price.amount ?? 0,
-  );
-  return `${price.type === "from" ? "Desde " : ""}${amount} · ${scopes[price.scope]}`;
+  if (price.type === "donation" && price.amount === null) return `Donación voluntaria · ${scopes[price.scope]}`;
+  if (price.amount === null || price.currency === null) return "Precio por confirmar";
+  const amount = new Intl.NumberFormat("es-ES", { style: "currency", currency: price.currency }).format(price.amount);
+  const prefix = {
+    from: "Desde ",
+    donation: "Donación ",
+    trial: "Prueba ",
+    early_bird: "Anticipada ",
+    membership: "Cuota ",
+    subscription: "Suscripción ",
+    fixed: "",
+  }[price.type];
+  return `${prefix}${amount} · ${scopes[price.scope]}`;
 }
 
 export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence }) {
@@ -41,7 +59,16 @@ export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence })
         {occurrence.locations.length ? (
           occurrence.locations.map((location, index) => (
             <div key={index}>
-              <dt>{{ venue: "Lugar", departure: "Salida", destination: "Destino" }[location.role]}</dt>
+              <dt>
+                {
+                  {
+                    activity: "Lugar",
+                    meeting_point: "Punto de encuentro",
+                    departure: "Salida",
+                    destination: "Destino",
+                  }[location.role]
+                }
+              </dt>
               <dd>
                 {[location.pointName, location.address, location.neighborhood, location.municipality]
                   .filter(Boolean)
@@ -71,7 +98,7 @@ export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence })
         <div>
           <dt>Idioma / nivel</dt>
           <dd>
-            {language} · {occurrence.level ?? "Nivel por confirmar"}
+            {language} · {occurrence.level?.es ?? "Nivel por confirmar"}
           </dd>
         </div>
       </dl>

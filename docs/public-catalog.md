@@ -11,7 +11,8 @@ disabled, failed and invalid requests have distinct states without a false zero 
 Engine H0 is architecturally accepted. Its [ADR](https://github.com/raulacden/sports-events-engine/blob/develop/docs/hybrid-architecture-adr.md)
 and [public v1 contract](https://github.com/raulacden/sports-events-engine/blob/develop/docs/hybrid-read-contract-v2.md)
 were inspected on 22 October 2026. [Engine #122](https://github.com/raulacden/sports-events-engine/issues/122)
-does not yet provide implemented/reviewed RPCs; [#123](https://github.com/raulacden/sports-events-engine/issues/123)
+has an offline implementation in [Engine PR #133](https://github.com/raulacden/sports-events-engine/pull/133),
+still requiring independent SQL review and operational approval; [#123](https://github.com/raulacden/sports-events-engine/issues/123)
 must produce real editorial publications and update the projection atomically.
 
 This is a **draft consumer**, not a claim that real published inventory, RLS or grants
@@ -28,7 +29,7 @@ used by the public path. The test server lives under `e2e/fixtures` and is never
 imported by application code. The local integration always shows **Datos de prueba
 locales · No son actividades reales**. It has no fallback on error.
 
-## Provisional wire mapping to confirm with #122
+## H2 wire mapping shared with Engine #133
 
 Server composition: `app/page.tsx` → `loadPublicCatalog` → server-only
 `SupabasePublicCatalogRepository` → `POST /rest/v1/rpc/catalog_occurrences_v1`.
@@ -44,26 +45,41 @@ prices, registration URL and public update time. Extra provider fields are disca
 not spread or serialized into React props. IDs, limits, ordering `(startInstant,id)`,
 duplicate IDs, range membership and response version are checked.
 
-H0 leaves nested enums/types unspecified. The **test-only proposed decoding** uses:
+The adapter consumes H2's canonical nested types without translating price modality
+or location roles into a smaller provisional enum:
 
-| Field                   | Provisional representation                                      |
-| ----------------------- | --------------------------------------------------------------- |
-| `locations.role`        | `venue`, `departure`, `destination`                             |
-| Location display fields | nullable `municipality`, `neighborhood`, `pointName`, `address` |
-| `prices.type`           | `free`, `fixed`, `from`, `unknown`                              |
-| `prices.scope`          | `session`, `month`, `year`, `unknown`                           |
-| Other price fields      | nullable numeric `amount`, ISO currency and `conditions`        |
-| Category and level      | optional public `category` / `level` extension; otherwise null  |
-| Cursor                  | opaque base64url-safe string, max 2048 characters               |
+| Field                                  | H2 representation                                                                                     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `locations.role`                       | `activity`, `meeting_point`, `departure`, `destination`                                               |
+| Location display fields                | nullable `municipality`, `neighborhood`, `pointName`, `address`                                       |
+| `prices.type`                          | `free`, `fixed`, `donation`, `trial`, `early_bird`, `from`, `membership`, `subscription`              |
+| `prices.scope`                         | `per_session`, `first_session_only`, `per_month`, `per_year`, `membership`, `transport`, `other`      |
+| Other price fields                     | nullable amount/currency/conditions/validFrom/validTo; explicit transportCost                         |
+| Category                               | explicit H2 taxonomy; never inferred from titles                                                      |
+| Level, titleTranslations, requirements | `{es:string\|null,en:string\|null}`; Spanish level displayed without inventing an English translation |
+| Freshness                              | lastVerifiedAt / verifiedUntil preserved separately from updatedAt                                    |
+| Cursor                                 | opaque base64url-safe string, max 2048 characters                                                     |
 
-These choices **are not an implemented Engine contract**. Reconcile enum casing,
-nullability, filters, price validity/transport costs, optional category/level and freshness
-metadata with #122 before remote enablement. H0 does not yet define category/level in
-the response; absent values display “por confirmar”, with no classification inferred
-from titles. `localStart/localEnd` are not trusted for formatting: display is derived
+The cursor is **canonical base64url without padding**, never PostgreSQL MIME base64.
+Legacy string levels, `venue`, `session/month/year` wire scopes are rejected rather
+than silently conflating them with H2. Unknown prices use an empty collection;
+`free` is explicit with null money, and a donation without amount is not rendered
+as zero EUR. Subscriptions, membership and first-session trials retain their labels.
+Unknown Spanish level displays “por confirmar”. `localStart/localEnd` are not trusted for formatting: display is derived
 from the validated instants using `Intl` with `Europe/Madrid`. No raw HTML or third-party
 imagery is used. HTTPS registration URLs reject credentials, fragments and sensitive
 query parameter names; unsafe data fails the response instead of exposing it.
+
+The Engine integration test exports **real PG17/PostgREST** anonymous responses in
+`target/catalog-web-contract`. From that Engine checkout run
+`node scripts/verify-catalog-web-contract.cjs <absolute-Web-checkout>` after
+`CatalogSupabaseReadIT`. This executes this actual repository adapter and URL
+navigation over five captured pages / 105 rows, passing every emitted cursor
+through a link and unchanged into the next RPC request. It also preserves all
+eight price modalities, four location roles and ES/EN fields. Record both commit
+SHAs with the result; the handwritten E2E fixture remains a UI simulation and
+does not by itself prove RLS or this interoperability. No remote enablement follows
+from these offline checks; H2/H3 review and STAGING authorization remain required.
 
 “Próxima” describes temporal currency. “Ficha actualizada” uses `updatedAt`, **not**
 `checked_at`, a last editorial verification or an invented revalidation date. The DB

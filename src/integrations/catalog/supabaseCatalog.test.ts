@@ -17,6 +17,12 @@ function occurrence(extra: Record<string, unknown> = {}) {
     timeZone: "Europe/Madrid",
     registrationUrl: null,
     activityLanguage: null,
+    category: "running",
+    titleTranslations: { es: "TEST · Actividad revisada", en: null },
+    level: { es: null, en: null },
+    requirements: { es: null, en: null },
+    lastVerifiedAt: "2026-10-21T10:00:00Z",
+    verifiedUntil: "2026-10-28T10:00:00Z",
     locations: [],
     prices: [],
     updatedAt: "2026-10-21T10:00:00Z",
@@ -29,7 +35,7 @@ const envelope = (items: unknown[] = [occurrence()], nextCursor: unknown = null)
   nextCursor,
 });
 
-describe("H0 public RPC adapter (simulated contract, no real RLS proof)", () => {
+describe("H2 public RPC adapter (unit fixtures; real PostgREST tested across repositories)", () => {
   it("uses only the fixed anonymous RPC with no session/bearer or cache", async () => {
     const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json(envelope()));
     const repository = new SupabasePublicCatalogRepository(
@@ -61,17 +67,53 @@ describe("H0 public RPC adapter (simulated contract, no real RLS proof)", () => 
     );
     expect(JSON.stringify(page)).not.toContain("private");
     expect(page.items[0]).toMatchObject({
-      category: null,
-      level: null,
+      category: "running",
+      level: { es: null, en: null },
       activityLanguage: null,
       prices: [],
       locations: [],
     });
   });
-  it("accepts approved optional category/level extensions", () => {
+  it("preserves H2 bilingual editorial fields", () => {
     expect(
-      decodeCatalogPage(envelope([occurrence({ category: "Running", level: "Iniciación" })]), query, now).items[0],
-    ).toMatchObject({ category: "Running", level: "Iniciación" });
+      decodeCatalogPage(
+        envelope([occurrence({ category: "running", level: { es: "Iniciación", en: "Beginner" } })]),
+        query,
+        now,
+      ).items[0],
+    ).toMatchObject({ category: "running", level: { es: "Iniciación", en: "Beginner" } });
+  });
+  it.each(["free", "fixed", "donation", "trial", "early_bird", "from", "membership", "subscription"])(
+    "preserves H2 price modality %s",
+    (type) => {
+      const option = {
+        type,
+        scope: "per_month",
+        amount: type === "free" || type === "donation" ? null : 20,
+        currency: type === "free" || type === "donation" ? null : "EUR",
+        conditions: null,
+        validFrom: "2026-10-01",
+        validTo: "2026-10-31",
+        transportCost: "excluded",
+      };
+      expect(decodeCatalogPage(envelope([occurrence({ prices: [option] })]), query, now).items[0].prices[0]).toEqual(
+        option,
+      );
+    },
+  );
+  it.each(["activity", "meeting_point", "departure", "destination"])("preserves H2 location role %s", (role) => {
+    const location = {
+      role,
+      municipality: "Valencia",
+      neighborhood: null,
+      pointName: null,
+      address: null,
+      latitude: null,
+      longitude: null,
+    };
+    expect(
+      decodeCatalogPage(envelope([occurrence({ locations: [location] })]), query, now).items[0].locations[0],
+    ).toEqual(location);
   });
   it("removes a start that passed while paginating without losing the next cursor", () => {
     const page = decodeCatalogPage(envelope([occurrence()], "next_page"), query, new Date("2026-10-22T12:00:00Z"));
@@ -91,6 +133,9 @@ describe("H0 public RPC adapter (simulated contract, no real RLS proof)", () => 
     { startInstant: "2026-10-21T11:00:00Z" },
     { endInstant: "2026-10-22T10:30:00Z" },
     { title: "<script>untrusted</script>" },
+    { level: "Iniciación" },
+    { level: { es: null } },
+    { category: "inferred-category" },
     { registrationUrl: "javascript:alert(1)" },
     { registrationUrl: "https://u:p@example.org/" },
     { registrationUrl: "https://example.org/?access_token=private" },
@@ -121,6 +166,8 @@ describe("H0 public RPC adapter (simulated contract, no real RLS proof)", () => 
     { hasta: "2026-12-01T10:00:00Z" },
     { hasta: query.desde },
     { cursor: "injection()" },
+    { cursor: "base64+MIME/with=padding" },
+    { cursor: "base64\nwrapped" },
   ])("rejects unbounded requests before network I/O %j", (change) => {
     expect(() => validateCatalogQuery({ ...query, ...change })).toThrow("INVALID_REQUEST");
   });
