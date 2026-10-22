@@ -21,6 +21,7 @@ test("Admin shell, Figma sections and desktop responsive structure", async ({ pa
   for (const [url, title, screenshot] of screens) {
     await page.goto(url);
     await expect(page.locator(".admin-shell")).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Demo local" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Administración" })).toBeVisible();
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
     await expectNoViewportOverflow(page);

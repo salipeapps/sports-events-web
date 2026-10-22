@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import { getAdminAccess } from "@/integrations/auth/adminAuth";
 import { AdminShell } from "@/presentation/admin/AdminShell";
+import { isLocalAdminDemo } from "@/config/adminData";
 
 export const metadata: Metadata = {
   title: "Admin",
@@ -24,5 +25,9 @@ export default async function AdminLayout({ children }: Readonly<{ children: Rea
     redirect(`/admin-access?reason=${access.reason}`);
   }
 
-  return <AdminShell session={access.session}>{children}</AdminShell>;
+  return (
+    <AdminShell session={access.session} demo={isLocalAdminDemo()}>
+      {children}
+    </AdminShell>
+  );
 }

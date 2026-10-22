@@ -9,9 +9,10 @@ import { AdminSessionRefresh } from "./AdminSessionRefresh";
 interface AdminShellProps {
   session: AdminSession;
   children: ReactNode;
+  demo?: boolean;
 }
 
-export function AdminShell({ session, children }: AdminShellProps) {
+export function AdminShell({ session, children, demo = false }: AdminShellProps) {
   return (
     <div className="admin-shell">
       <AdminSessionRefresh />
@@ -50,7 +51,10 @@ export function AdminShell({ session, children }: AdminShellProps) {
           </div>
         </header>
 
-        <div className="admin-content">{children}</div>
+        <div className="admin-content">
+          {demo ? <p role="status">Demo local · Datos simulados para desarrollo.</p> : null}
+          {children}
+        </div>
       </div>
     </div>
   );
