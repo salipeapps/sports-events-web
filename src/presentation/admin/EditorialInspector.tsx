@@ -6,8 +6,13 @@ import type { AdminRole } from "@/domain/adminAccess";
 
 type Action = "APPROVE" | "REJECT" | "PUBLISH" | "SUSPEND";
 interface Candidate {
-  candidateId: string; candidateVersion: number; revision: number; status: string;
-  title: string; conflictCount: number; moreConflicts: boolean;
+  candidateId: string;
+  candidateVersion: number;
+  revision: number;
+  status: string;
+  title: string;
+  conflictCount: number;
+  moreConflicts: boolean;
 }
 const errors: Record<string, string> = {
   NOT_CONFIGURED: "El circuito editorial todavía no está habilitado en este entorno.",
@@ -35,24 +40,36 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
   // Do not change the idempotency key for an uncertain outcome and unchanged payload.
   const pending = useRef<{ fingerprint: string; key: string } | null>(null);
 
-  const refresh = useCallback(async (signal?: AbortSignal) => {
-    const response = await fetch("/api/internal/editorial/candidates/" + candidateId, {
-      cache: "no-store", signal, credentials: "same-origin",
-    });
-    const data = await response.json() as Record<string, unknown>;
-    if (!response.ok) throw new Error(errors[String(data.code)] ?? "No se ha podido inspeccionar el candidato.");
-    return data as unknown as Candidate;
-  }, [candidateId]);
+  const refresh = useCallback(
+    async (signal?: AbortSignal) => {
+      const response = await fetch("/api/internal/editorial/candidates/" + candidateId, {
+        cache: "no-store",
+        signal,
+        credentials: "same-origin",
+      });
+      const data = (await response.json()) as Record<string, unknown>;
+      if (!response.ok) throw new Error(errors[String(data.code)] ?? "No se ha podido inspeccionar el candidato.");
+      return data as unknown as Candidate;
+    },
+    [candidateId],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
     setLoading(true);
     refresh(controller.signal)
-      .then((value) => { if (!controller.signal.aborted) { setCandidate(value); setError(""); } })
+      .then((value) => {
+        if (!controller.signal.aborted) {
+          setCandidate(value);
+          setError("");
+        }
+      })
       .catch((cause: unknown) => {
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Lectura no disponible.");
       })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+      .finally(() => {
+        if (!controller.signal.aborted) setLoading(false);
+      });
     return () => controller.abort();
   }, [refresh]);
 
@@ -61,20 +78,30 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
     if (!candidate || busy || !reason.trim()) return;
     if (role !== "admin" && action !== "APPROVE" && action !== "REJECT") return;
     const payload: Record<string, unknown> = {
-      action, expectedVersion: candidate.candidateVersion, expectedRevision: candidate.revision, reason: reason.trim(),
+      action,
+      expectedVersion: candidate.candidateVersion,
+      expectedRevision: candidate.revision,
+      reason: reason.trim(),
     };
-    if (action === "APPROVE") { payload.verificationUrl = verificationUrl; payload.category = category; }
+    if (action === "APPROVE") {
+      payload.verificationUrl = verificationUrl;
+      payload.category = category;
+    }
     const fingerprint = JSON.stringify(payload);
     if (!pending.current || pending.current.fingerprint !== fingerprint)
       pending.current = { fingerprint, key: crypto.randomUUID() };
-    setBusy(true); setError(""); setResult("");
+    setBusy(true);
+    setError("");
+    setResult("");
     try {
       const response = await fetch("/api/internal/editorial/candidates/" + candidateId + "/commands", {
-        method: "POST", credentials: "same-origin", cache: "no-store",
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
         headers: { "Content-Type": "application/json", "Idempotency-Key": pending.current.key },
         body: fingerprint,
       });
-      const value = await response.json() as Record<string, unknown>;
+      const value = (await response.json()) as Record<string, unknown>;
       if (!response.ok) {
         const code = String(value.code ?? "");
         if (["INVALID_REQUEST", "FORBIDDEN", "NOT_FOUND", "CONFLICT"].includes(code)) pending.current = null;
@@ -89,13 +116,17 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       setReason("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : errors.WRITE_UNAVAILABLE);
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <section>
       <h1>Inspección editorial B1</h1>
-      <p><Link href="/admin/editorial">Buscar otro candidato</Link></p>
+      <p>
+        <Link href="/admin/editorial">Buscar otro candidato</Link>
+      </p>
       <p>Las decisiones se ejecutan exclusivamente por el servidor Java. No se muestran datos de prueba como reales.</p>
       {loading ? <p role="status">Consultando candidatura…</p> : null}
       {error ? <p role="alert">{error}</p> : null}
@@ -103,31 +134,60 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       {candidate && (
         <>
           <dl>
-            <dt>Actividad</dt><dd>{candidate.title}</dd>
-            <dt>Estado</dt><dd>{candidate.status}</dd>
-            <dt>Versión</dt><dd>{candidate.candidateVersion}</dd>
-            <dt>Revisión</dt><dd>{candidate.revision}</dd>
-            <dt>Conflictos</dt><dd>{candidate.conflictCount}{candidate.moreConflicts ? " (hay más)" : ""}</dd>
+            <dt>Actividad</dt>
+            <dd>{candidate.title}</dd>
+            <dt>Estado</dt>
+            <dd>{candidate.status}</dd>
+            <dt>Versión</dt>
+            <dd>{candidate.candidateVersion}</dd>
+            <dt>Revisión</dt>
+            <dd>{candidate.revision}</dd>
+            <dt>Conflictos</dt>
+            <dd>
+              {candidate.conflictCount}
+              {candidate.moreConflicts ? " (hay más)" : ""}
+            </dd>
           </dl>
           <form onSubmit={submit}>
             <label htmlFor="editorial-action">Decisión</label>
-            <select id="editorial-action" value={action} onChange={(e) => { setAction(e.target.value as Action); pending.current = null; }}>
+            <select
+              id="editorial-action"
+              value={action}
+              onChange={(e) => {
+                setAction(e.target.value as Action);
+                pending.current = null;
+              }}
+            >
               <option value="REJECT">Rechazar candidato</option>
               <option value="APPROVE">Aprobar candidato</option>
               {role === "admin" && <option value="PUBLISH">Publicar actividad</option>}
               {role === "admin" && <option value="SUSPEND">Suspender publicación</option>}
             </select>
             <label htmlFor="editorial-reason">Motivo obligatorio</label>
-            <textarea id="editorial-reason" maxLength={1000} required value={reason}
-              onChange={(e) => setReason(e.target.value)} />
+            <textarea
+              id="editorial-reason"
+              maxLength={1000}
+              required
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+            />
             {action === "APPROVE" && (
               <>
                 <label htmlFor="editorial-url">URL oficial verificada (HTTPS, sin query)</label>
-                <input id="editorial-url" type="url" required value={verificationUrl}
-                  onChange={(e) => setVerificationUrl(e.target.value)} />
+                <input
+                  id="editorial-url"
+                  type="url"
+                  required
+                  value={verificationUrl}
+                  onChange={(e) => setVerificationUrl(e.target.value)}
+                />
                 <label htmlFor="editorial-category">Categoría</label>
                 <select id="editorial-category" value={category} onChange={(e) => setCategory(e.target.value)}>
-                  {categories.map((entry) => <option key={entry} value={entry}>{entry}</option>)}
+                  {categories.map((entry) => (
+                    <option key={entry} value={entry}>
+                      {entry}
+                    </option>
+                  ))}
                 </select>
               </>
             )}
