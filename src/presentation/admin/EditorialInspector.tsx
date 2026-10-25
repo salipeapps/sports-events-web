@@ -56,7 +56,6 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
 
   useEffect(() => {
     const controller = new AbortController();
-    setLoading(true);
     refresh(controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) {
