@@ -119,7 +119,9 @@ describe("B1 deployment and request constraints", () => {
     const ctx = setup();
     const response = await ctx.run("command");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual(receipt);
+    const result = await response.text();
+    expect(JSON.parse(result)).toEqual(receipt);
+    expect(result).not.toContain("private-jwt");
     expect(ctx.fetcher).toHaveBeenCalledWith(engine + "/api/editorial/v1/candidates/" + id + "/commands",
       expect.objectContaining({
         method: "POST", redirect: "error", cache: "no-store", body: JSON.stringify(reject),
@@ -128,7 +130,6 @@ describe("B1 deployment and request constraints", () => {
           "Idempotency-Key": key,
         }),
       }));
-    expect(JSON.stringify(await response.text())).not.toContain("private-jwt");
   });
 
   it("strips private inspection payload and rejects malformed upstream response", async () => {
