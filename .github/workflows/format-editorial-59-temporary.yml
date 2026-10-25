@@ -1,0 +1,33 @@
+name: Temporary PR59 formatter
+on:
+  push:
+    branches:
+      - feat/59-editorial-b1-bff-offline
+permissions:
+  contents: write
+jobs:
+  format:
+    if: github.repository == 'raulacden/sports-events-web'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/59-editorial-b1-bff-offline
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - name: Apply Prettier strictly to new files
+        run: |
+          npx --no-install prettier --write src/app/admin/editorial/page.tsx src/integrations/editorial/boundary.test.ts src/integrations/editorial/boundary.ts src/presentation/admin/EditorialInspector.tsx
+      - name: Commit formatting only in PR branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- src/app/admin/editorial/page.tsx src/integrations/editorial/boundary.test.ts src/integrations/editorial/boundary.ts src/presentation/admin/EditorialInspector.tsx
+          if ! git diff --cached --quiet; then
+            git commit -m "style(#59): apply Prettier to editorial BFF and UI"
+            git push origin HEAD:refs/heads/feat/59-editorial-b1-bff-offline
+          fi
