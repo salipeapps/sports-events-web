@@ -109,7 +109,7 @@ describe("B1 deployment and request constraints", () => {
       expect(ctx.getAccess).not.toHaveBeenCalled();
       expect(ctx.fetcher).not.toHaveBeenCalled();
     }
-    expect(editorialB1Enabled({})).toBe(false);
+    expect(editorialB1Enabled({ NODE_ENV: "test" })).toBe(false);
     expect(editorialConfig(env).origin).toBe(engine);
   });
 
