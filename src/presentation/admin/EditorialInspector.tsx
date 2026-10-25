@@ -89,6 +89,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
     const fingerprint = JSON.stringify(payload);
     if (!pending.current || pending.current.fingerprint !== fingerprint)
       pending.current = { fingerprint, key: crypto.randomUUID() };
+    const submittedKey = pending.current.key;
     setBusy(true);
     setError("");
     setResult("");
@@ -97,7 +98,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         method: "POST",
         credentials: "same-origin",
         cache: "no-store",
-        headers: { "Content-Type": "application/json", "Idempotency-Key": pending.current.key },
+        headers: { "Content-Type": "application/json", "Idempotency-Key": submittedKey },
         body: fingerprint,
       });
       const value = (await response.json()) as Record<string, unknown>;
@@ -107,7 +108,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         throw new Error(errors[code] ?? "Error al enviar la decisión.");
       }
       // A successful receipt is mandatory; never infer success from a timeout or 2xx without a receipt.
-      if (value.commandKey !== pending.current.key || !Array.isArray(value.candidateIds))
+      if (value.commandKey !== submittedKey || !Array.isArray(value.candidateIds))
         throw new Error(errors.INCOMPATIBLE_CONTRACT);
       pending.current = null;
       setResult("Decisión confirmada por Engine: " + String(value.status));
@@ -152,10 +153,8 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
             <select
               id="editorial-action"
               value={action}
-              onChange={(e) => {
-                setAction(e.target.value as Action);
-                pending.current = null;
-              }}
+              disabled={busy}
+              onChange={(e) => setAction(e.target.value as Action)}
             >
               <option value="REJECT">Rechazar candidato</option>
               <option value="APPROVE">Aprobar candidato</option>
@@ -168,6 +167,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
               maxLength={1000}
               required
               value={reason}
+              disabled={busy}
               onChange={(e) => setReason(e.target.value)}
             />
             {action === "APPROVE" && (
@@ -178,10 +178,16 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                   type="url"
                   required
                   value={verificationUrl}
+                  disabled={busy}
                   onChange={(e) => setVerificationUrl(e.target.value)}
                 />
                 <label htmlFor="editorial-category">Categoría</label>
-                <select id="editorial-category" value={category} onChange={(e) => setCategory(e.target.value)}>
+                <select
+                  id="editorial-category"
+                  value={category}
+                  disabled={busy}
+                  onChange={(e) => setCategory(e.target.value)}
+                >
                   {categories.map((entry) => (
                     <option key={entry} value={entry}>
                       {entry}
