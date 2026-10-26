@@ -133,6 +133,53 @@ describe("public cards and availability", () => {
     expect(html).not.toContain("Consultar inscripción");
     expect(html).not.toContain("Ver más actividades");
   });
+  it("shows loading without claiming there are zero events or a service failure", () => {
+    const html = renderToStaticMarkup(<PublicHome selection={null} result={{ status: "loading" }} />);
+    expect(html).toContain('aria-busy="true"');
+    expect(html).toContain("Consultando las próximas actividades");
+    expect(html).not.toContain("0 actividades");
+    expect(html).not.toContain("No hay actividades");
+    expect(html).not.toContain("no está disponible");
+  });
+  it("offers a fresh period request after an upstream failure", () => {
+    const html = renderToStaticMarkup(<PublicHome selection={selection} result={{ status: "unavailable" }} />);
+    expect(html).toContain("Volver a consultar");
+    expect(html).not.toContain("cursor=");
+    expect(html).not.toContain("at=");
+  });
+  it("uses the Madrid activity date for price validity across midnight and DST", () => {
+    const option = {
+      type: "free",
+      scope: "per_session",
+      amount: null,
+      currency: null,
+      conditions: null,
+      validFrom: "2026-10-26",
+      validTo: "2026-10-26",
+      transportCost: "not_applicable",
+    } as const;
+    const html = renderToStaticMarkup(
+      <OccurrenceCard occurrence={{ ...item, startInstant: "2026-10-25T23:30:00Z", prices: [option] }} />,
+    );
+    expect(html).toContain("00:30");
+    expect(html).toContain("Gratis");
+    const expired = renderToStaticMarkup(
+      <OccurrenceCard occurrence={{ ...item, startInstant: "2026-10-26T23:30:00Z", prices: [option] }} />,
+    );
+    expect(expired).toContain("Precio por confirmar");
+    expect(expired).not.toContain("Gratis");
+  });
+  it("displays the actual verification separately from the source update", () => {
+    const html = renderToStaticMarkup(
+      <OccurrenceCard
+        occurrence={{ ...item, lastVerifiedAt: "2026-10-24T10:00:00Z", verifiedUntil: "2026-10-25T10:00:00Z" }}
+      />,
+    );
+    expect(html).toContain("Verificada");
+    expect(html).toContain("Vigente hasta");
+    expect(html).toContain('dateTime="2026-10-24T10:00:00Z"');
+    expect(html).toContain('dateTime="2026-10-20T10:00:00Z"');
+  });
   it.each(["disabled", "unavailable", "invalid"] as const)("does not disguise %s as an empty database", (status) => {
     const html = renderToStaticMarkup(<PublicHome selection={selection} result={{ status }} />);
     expect(html).not.toContain("0 actividades");

@@ -55,7 +55,7 @@ test("mobile calendar navigation, invalid cursor recovery and no horizontal over
   await expect(page.getByLabel("Elegir mes")).toBeVisible();
   await page.getByRole("link", { name: "Mes siguiente" }).click();
   await expect(page.getByRole("link", { name: "Mes anterior" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "No hay actividades publicadas en esta página" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "No hay actividades publicadas para estas fechas" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   await page.goto("/?cursor=invalid!");
   await expect(page.getByRole("heading", { name: "No podemos mostrar esta búsqueda" })).toBeVisible();
@@ -70,6 +70,7 @@ test("mobile calendar navigation, invalid cursor recovery and no horizontal over
 test("desktop layout and keyboard access", async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/");
+  await expect(page.getByRole("article")).toHaveCount(24);
   await testInfo.attach("public-home-desktop", {
     body: await page.screenshot({ path: testInfo.outputPath("home-desktop.png") }),
     contentType: "image/png",
@@ -83,4 +84,14 @@ test("desktop layout and keyboard access", async ({ page }, testInfo) => {
     body: await page.screenshot({ path: testInfo.outputPath("desktop.png") }),
     contentType: "image/png",
   });
+});
+
+test("tablet layout and an explicit loading state while the public RPC is pending", async ({ page, request }) => {
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await request.post("http://127.0.0.1:3122/test/scenario/slow");
+  await page.goto("/", { waitUntil: "commit" });
+  await expect(page.getByRole("heading", { name: "Consultando las próximas actividades" })).toBeVisible();
+  await expect(page.getByRole("article")).toHaveCount(24);
+  await expect(page.getByRole("heading", { name: "Consultando las próximas actividades" })).toHaveCount(0);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

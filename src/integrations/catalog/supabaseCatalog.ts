@@ -154,20 +154,29 @@ function price(value: unknown): PublicPrice {
   };
 }
 
-function occurrence(value: unknown): PublicOccurrence {
+function occurrence(value: unknown): PublicOccurrence & {
+  status: "upcoming" | "in_progress";
+  lastVerifiedAt: string;
+  verifiedUntil: string;
+} {
   const item = record(value);
   // Only explicitly public fields are reconstructed; never spread provider objects into the page.
   if (item.contractVersion !== 1 || item.timeZone !== "Europe/Madrid" || !uuid.test(text(item.id)))
     return incompatible();
   const startInstant = instant(item.startInstant);
   const endInstant = item.endInstant === null ? null : instant(item.endInstant);
+  const status = enumValue(item.status, ["upcoming", "in_progress"]);
+  const lastVerifiedAt = instant(item.lastVerifiedAt);
+  const verifiedUntil = instant(item.verifiedUntil);
   if (endInstant !== null && Date.parse(endInstant) <= Date.parse(startInstant)) return incompatible();
+  if (Date.parse(verifiedUntil) <= Date.parse(lastVerifiedAt)) return incompatible();
   return {
     id: item.id as string,
     title: text(item.title),
     organizerName: nullableText(item.organizerName),
     startInstant,
     endInstant,
+    status,
     registrationUrl: registrationUrl(item.registrationUrl),
     activityLanguage: nullableText(item.activityLanguage, 100),
     category: enumValue(item.category, [
@@ -183,8 +192,8 @@ function occurrence(value: unknown): PublicOccurrence {
     level: translations(item.level),
     titleTranslations: translations(item.titleTranslations),
     requirements: translations(item.requirements),
-    lastVerifiedAt: instant(item.lastVerifiedAt),
-    verifiedUntil: instant(item.verifiedUntil),
+    lastVerifiedAt,
+    verifiedUntil,
     locations: array(item.locations, 8, location),
     prices: array(item.prices, 8, price),
     updatedAt: instant(item.updatedAt),
@@ -233,7 +242,16 @@ export function decodeCatalogPage(value: unknown, query: CatalogQuery, now: Date
     seen.add(item.id);
   }
   // The public list promises upcoming starts. Past/ongoing events belong to a later detail experience.
-  return { items: items.filter((item) => Date.parse(item.startInstant) >= now.getTime()), nextCursor };
+  return {
+    items: items.filter(
+      (item) =>
+        item.status === "upcoming" &&
+        Date.parse(item.startInstant) >= now.getTime() &&
+        Date.parse(item.lastVerifiedAt) <= now.getTime() &&
+        Date.parse(item.verifiedUntil) > now.getTime(),
+    ),
+    nextCursor,
+  };
 }
 
 async function readBoundedJson(response: Response): Promise<unknown> {
@@ -265,7 +283,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
   }
 }
 
-/** H2 wire contract from Engine #133. Remote activation still requires its SQL review and H3. */
+/** H2 public RPC contract, verified directly in STAGING by Engine #139. */
 export class SupabasePublicCatalogRepository implements PublicCatalogRepository {
   constructor(
     private readonly config: { url: string; key: string },

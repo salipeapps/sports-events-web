@@ -7,5 +7,11 @@ import "./catalog.css";
 export default async function HomePage({ searchParams }: { searchParams: Promise<CatalogSearchParams> }) {
   const selection = selectCatalog(await searchParams);
   const result = await loadPublicCatalog(selection?.query ?? null);
-  return <PublicHome result={result} selection={selection} demo={getPublicCatalogConfig() !== null} />;
+  return (
+    <PublicHome
+      result={result}
+      selection={selection}
+      demo={process.env.PUBLIC_CATALOG_MODE === "local-rpc" && getPublicCatalogConfig() !== null}
+    />
+  );
 }

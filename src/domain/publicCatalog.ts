@@ -32,6 +32,7 @@ export interface PublicOccurrence {
   organizerName: string | null;
   startInstant: string;
   endInstant: string | null;
+  status?: "upcoming" | "in_progress";
   registrationUrl: string | null;
   activityLanguage: string | null;
   category: string | null;

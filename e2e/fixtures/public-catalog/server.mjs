@@ -105,6 +105,7 @@ createServer(async (request, response) => {
   )
     return reply({}, 403);
   if (scenario === "error") return reply({ message: "PRIVATE_SQL_TOKEN_DO_NOT_RENDER" }, 500);
+  if (scenario === "slow") await new Promise((resolve) => setTimeout(resolve, 1500));
   let body = "";
   for await (const chunk of request) body += chunk;
   const query = JSON.parse(body);
@@ -137,6 +138,7 @@ createServer(async (request, response) => {
   const items = eligible.slice(offset, offset + query.limit).map((row) => ({
     ...Object.fromEntries(Object.entries(row).filter(([key]) => key !== "status")),
     titleTranslations: { es: row.title, en: null },
+    status: "upcoming",
   }));
   const nextCursor =
     offset + query.limit < eligible.length
