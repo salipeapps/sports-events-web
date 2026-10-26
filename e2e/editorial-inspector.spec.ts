@@ -189,3 +189,21 @@ test("reviews real-shaped details and completes missing organizer/location throu
   expect(payload).not.toHaveProperty("actor");
   expect(payload).not.toHaveProperty("role");
 });
+
+test("shows the known end date for a candidate without scheduled times", async ({ page }) => {
+  await page.route("**" + inspectionPath, (route) =>
+    route.fulfill({
+      json: {
+        ...candidate,
+        data: {
+          ...candidate.data,
+          schedule: null,
+          calendarDates: { startDate: "2030-05-01", endDate: "2030-05-03", precision: "DATE_ONLY" },
+        },
+      },
+    }),
+  );
+  await page.goto("/admin/editorial/" + candidateId);
+  await expect(page.getByText("2030-05-01", { exact: true })).toBeVisible();
+  await expect(page.getByText("2030-05-03", { exact: true })).toBeVisible();
+});

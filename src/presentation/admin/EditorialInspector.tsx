@@ -184,7 +184,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
             <dt>Fecha y hora (Europe/Madrid)</dt>
             <dd>{candidate.data.schedule?.localStart ?? candidate.data.calendarDates?.startDate ?? "Por confirmar"}</dd>
             <dt>Finalización</dt>
-            <dd>{candidate.data.schedule?.localEnd ?? "Por confirmar"}</dd>
+            <dd>{candidate.data.schedule?.localEnd ?? candidate.data.calendarDates?.endDate ?? "Por confirmar"}</dd>
             <dt>Ubicación</dt>
             <dd>
               {candidate.data.locations.length === 0
