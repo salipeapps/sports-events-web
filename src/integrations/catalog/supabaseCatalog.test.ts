@@ -14,6 +14,7 @@ function occurrence(extra: Record<string, unknown> = {}) {
     organizerName: "TEST · Organizador",
     startInstant: "2026-10-22T11:00:00Z",
     endInstant: null,
+    status: "upcoming",
     timeZone: "Europe/Madrid",
     registrationUrl: null,
     activityLanguage: null,
@@ -124,8 +125,32 @@ describe("H2 public RPC adapter (unit fixtures; real PostgREST tested across rep
       decodeCatalogPage(envelope([occurrence({ startInstant: now.toISOString() })]), query, now).items,
     ).toHaveLength(1);
   });
+  it("keeps multiple valid occurrences ordered by their actual instant and UUID", () => {
+    const later = occurrence({ id: "00000000-0000-4000-8000-000000000002", startInstant: "2026-10-23T11:00:00Z" });
+    expect(decodeCatalogPage(envelope([occurrence(), later]), query, now).items.map((item) => item.id)).toEqual([
+      occurrence().id,
+      later.id,
+    ]);
+  });
+  it.each([
+    { status: "in_progress", startInstant: "2026-10-22T10:00:00Z", endInstant: "2026-10-22T12:00:00Z" },
+    { lastVerifiedAt: "2026-10-20T10:00:00Z", verifiedUntil: now.toISOString() },
+    { lastVerifiedAt: "2026-10-20T10:00:00Z", verifiedUntil: "2026-10-21T10:00:00Z" },
+    { lastVerifiedAt: "2026-10-23T10:00:00Z" },
+  ])("does not render a started or no-longer-current occurrence: %j", (change) => {
+    expect(decodeCatalogPage(envelope([occurrence(change)], "next_page"), query, now)).toEqual({
+      items: [],
+      nextCursor: "next_page",
+    });
+  });
   it.each([
     { contractVersion: 2 },
+    { status: "draft" },
+    { status: "cancelled" },
+    { status: "suspended" },
+    { status: "conflicting" },
+    { status: undefined },
+    { lastVerifiedAt: "2026-10-28T10:00:00Z", verifiedUntil: "2026-10-21T10:00:00Z" },
     { timeZone: "UTC" },
     { startInstant: "2026-02-30T11:00:00Z" },
     { startInstant: "2026-10-22T11:00:00" },

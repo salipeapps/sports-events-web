@@ -8,7 +8,7 @@ export function PublicHome({
   selection,
   demo = false,
 }: {
-  result: CatalogResult;
+  result: CatalogResult | { status: "loading" };
   selection: CatalogSelection | null;
   demo?: boolean;
 }) {
@@ -102,7 +102,13 @@ export function PublicHome({
               {selection.nextMonth && <a href={catalogHref(selection.nextMonth)}>Mes siguiente →</a>}
             </nav>
           )}
-          {result.status === "ready" ? (
+          {result.status === "loading" ? (
+            <div className="public-empty" role="status" aria-busy="true">
+              <span aria-hidden="true">○</span>
+              <h3>Consultando las próximas actividades</h3>
+              <p>Estamos cargando el calendario. Enseguida podrás consultar las actividades publicadas.</p>
+            </div>
+          ) : result.status === "ready" ? (
             <>
               <p className="public-result-note">
                 {result.items.length}{" "}
@@ -118,11 +124,15 @@ export function PublicHome({
               ) : (
                 <div className="public-empty" role="status">
                   <span aria-hidden="true">○</span>
-                  <h3>No hay actividades publicadas en esta página</h3>
+                  <h3>
+                    {selection?.query.cursor || selection?.tail
+                      ? "No hay actividades publicadas en esta página"
+                      : "No hay actividades publicadas para estas fechas"}
+                  </h3>
                   <p>
                     {selection?.query.cursor || selection?.tail
                       ? "Puedes volver al inicio del periodo para consultar la agenda actualizada."
-                      : "Todavía no hay actividades confirmadas para este periodo. Puedes consultar otras fechas en el calendario."}
+                      : "Estamos actualizando el calendario. Puedes consultar otras fechas para encontrar actividades publicadas."}
                   </p>
                 </div>
               )}
@@ -146,7 +156,9 @@ export function PublicHome({
                   ? "El periodo o la página no son válidos. Vuelve al inicio de la agenda para consultar las próximas actividades."
                   : "Vuelve a consultar la agenda más adelante para ver actividades confirmadas."}
               </p>
-              {result.status === "invalid" && <a href={catalogHref(null)}>Ver próximas actividades</a>}
+              <a href={result.status === "invalid" ? catalogHref(null) : catalogHref(selection?.month ?? null)}>
+                {result.status === "invalid" ? "Ver próximas actividades" : "Volver a consultar"}
+              </a>
             </div>
           )}
         </section>

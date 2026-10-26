@@ -9,6 +9,22 @@ const startFormatter = new Intl.DateTimeFormat("es-ES", {
   minute: "2-digit",
 });
 const dateFormatter = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", day: "numeric", month: "short" });
+const localDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Madrid",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+const categories: Record<string, string> = {
+  yoga: "Yoga",
+  running: "Running",
+  hiking: "Senderismo",
+  cycling: "Ciclismo",
+  fitness: "Fitness",
+  swimming: "Natación",
+  dance: "Baile",
+  other: "Otros deportes",
+};
 const scopes = {
   per_session: "por sesión",
   first_session_only: "primera sesión",
@@ -40,13 +56,20 @@ export function priceLabel(price: PublicPrice): string {
 
 export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence }) {
   const start = new Date(occurrence.startInstant);
+  const localDate = localDateFormatter.format(start);
+  const prices = occurrence.prices.filter(
+    (price) => (!price.validFrom || price.validFrom <= localDate) && (!price.validTo || price.validTo >= localDate),
+  );
   const language = occurrence.activityLanguage
-    ? ({ es: "Español", en: "Inglés", ca: "Valenciano" }[occurrence.activityLanguage] ?? occurrence.activityLanguage)
+    ? ({ es: "Español", en: "Inglés", ca: "Valenciano", other: "Otro idioma" }[occurrence.activityLanguage] ??
+      occurrence.activityLanguage)
     : "Idioma por confirmar";
   return (
     <article className="public-occurrence" aria-labelledby={`activity-${occurrence.id}`}>
       <div className="public-card-top">
-        <span>{occurrence.category ?? "Categoría por confirmar"}</span>
+        <span>
+          {occurrence.category ? (categories[occurrence.category] ?? occurrence.category) : "Categoría por confirmar"}
+        </span>
         <span className="public-freshness">Próxima</span>
       </div>
       <h3 id={`activity-${occurrence.id}`}>{occurrence.title}</h3>
@@ -85,8 +108,8 @@ export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence })
         <div>
           <dt>Precio</dt>
           <dd>
-            {occurrence.prices.length
-              ? occurrence.prices.map((price, index) => (
+            {prices.length
+              ? prices.map((price, index) => (
                   <span className="public-price-option" key={index}>
                     {priceLabel(price)}
                     {price.conditions && <small>{price.conditions}</small>}
@@ -103,6 +126,16 @@ export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence })
         </div>
       </dl>
       <div className="public-card-footer">
+        {occurrence.lastVerifiedAt && occurrence.verifiedUntil && (
+          <small>
+            Verificada{" "}
+            <time dateTime={occurrence.lastVerifiedAt}>
+              {startFormatter.format(new Date(occurrence.lastVerifiedAt))}
+            </time>
+            {" · "}Vigente hasta{" "}
+            <time dateTime={occurrence.verifiedUntil}>{startFormatter.format(new Date(occurrence.verifiedUntil))}</time>
+          </small>
+        )}
         <small>
           Ficha actualizada{" "}
           <time dateTime={occurrence.updatedAt}>{dateFormatter.format(new Date(occurrence.updatedAt))}</time>

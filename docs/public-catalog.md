@@ -1,27 +1,31 @@
 # Public catalogue H2 — Web #50
 
-Offline preparation for [Web #50](https://github.com/raulacden/sports-events-web/issues/50).
+Public implementation for [Web #50](https://github.com/raulacden/sports-events-web/issues/50).
 The home renders anonymous upcoming activities, comparable cards, a seven-local-date
 window and a calendar paginated by month and opaque cursor (24 cards per page).
 No published inventory is invented. Empty successful responses show zero activities;
 disabled, failed and invalid requests have distinct states without a false zero count.
 
-## Boundaries and activation status
+## Configuration and boundaries
 
-Engine H0 is architecturally accepted. Its [ADR](https://github.com/raulacden/sports-events-engine/blob/develop/docs/hybrid-architecture-adr.md)
-and [public v1 contract](https://github.com/raulacden/sports-events-engine/blob/develop/docs/hybrid-read-contract-v2.md)
-were inspected on 22 October 2026. [Engine #122](https://github.com/raulacden/sports-events-engine/issues/122)
-has an offline implementation in [Engine PR #133](https://github.com/raulacden/sports-events-engine/pull/133),
-still requiring independent SQL review and operational approval; [#123](https://github.com/raulacden/sports-events-engine/issues/123)
-must produce real editorial publications and update the projection atomically.
+Engine V019/V020 are installed in STAGING. [Engine #139](https://github.com/raulacden/sports-events-engine/pull/139)
+verified 23 direct anonymous HTTP checks against the real public RPC. The current
+STAGING inventory is empty. This Web implementation consumes that API without
+waiting for a first publication or treating empty inventory as an error.
 
-This is a **draft consumer**, not a claim that real published inventory, RLS or grants
-have been validated. `PUBLIC_CATALOG_MODE` defaults to `disabled`. The only implemented
-active mode is `local-rpc`, requiring development Node/APP environments, loopback app
-and upstream origins, a publishable key, and no Vercel environment. STAGING, PROD and
-generic Preview cannot enable this adapter, even by setting `local-rpc`. A remote
-enablement path must be added in a separately reviewed integration once #122 supplies
-the final DTOs, independent SQL/RLS review and direct PostgREST tests.
+`PUBLIC_CATALOG_MODE` is explicit and defaults to `disabled`:
+
+- `supabase`: actual HTTPS Supabase RPC, using `NEXT_PUBLIC_SUPABASE_URL`, a modern
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` and canonical `APP_ORIGIN`. Set `APP_ENV`
+  explicitly to `development`, `staging` or `production`. The public request is
+  independent of Admin, Cloud Run, Google identity and visitor login.
+- `local-rpc`: labelled test simulation only. Requires development Node/APP
+  environments, loopback app/upstream origins, a publishable test key and no Vercel.
+- `disabled`, absent, unknown or incomplete configuration: unavailable state,
+  no upstream request, no fixtures and no false zero result.
+
+The default remains disabled so this PR does not change remote environment flags
+or deploy anything. Supporting a mode in code is separate from activating a deployment.
 
 No migrations, ACL, flags, secrets or deployments are applied by this work. No private
 Admin/B1/B3 repository, fixture adapter, user session, Google identity or command is
@@ -81,11 +85,16 @@ SHAs with the result; the handwritten E2E fixture remains a UI simulation and
 does not by itself prove RLS or this interoperability. No remote enablement follows
 from these offline checks; H2/H3 review and STAGING authorization remain required.
 
-“Próxima” describes temporal currency. “Ficha actualizada” uses `updatedAt`, **not**
-`checked_at`, a last editorial verification or an invented revalidation date. The DB
+"Próxima" describes temporal currency. "Verificada" and "Vigente hasta" use
+`lastVerifiedAt` and `verifiedUntil`; "Ficha actualizada" uses `updatedAt`, **not**
+`checked_at` or an invented revalidation date. Price options are shown only when their
+validity includes the Madrid date of the activity. The DB
 must guarantee that the projection contains only explicitly published, verified,
 unexpired, unblocked, unsuspended and uncancelled occurrences. Web does not duplicate
-editorial rules or try to access private data to prove those conditions.
+editorial rules or try to access private data to prove those conditions. As an extra
+read-time guard, the adapter validates H2's `upcoming/in_progress` status, excludes
+started/ongoing and expired/future-verification rows, and rejects incompatible
+states such as draft/cancelled rather than rendering them as published activities.
 
 ## Time, pagination and cancellation
 
@@ -114,30 +123,67 @@ npm run test:e2e -- --config playwright.catalog.config.ts
 npm run test:e2e -- e2e/public-home.spec.ts
 ```
 
-Unit tests cover blocked deployment/local modes, no privileged key, no backend call
+Unit tests cover explicit remote and restricted local modes, no privileged key, no backend call
 when disabled, bounds/errors, private-field stripping, price semantics, Patacona in
 Alboraia, local times, impossible dates, DST, stable cursors and the autumn tail.
 Dedicated E2E runs the real Next route against a separate labelled HTTP simulation:
 anonymous rendering, 24+3 page flow, unknown/free/monthly prices, hidden
 draft/conflict/cancelled/historical fixtures, empty/failure recovery, no caching,
-mobile overflow, desktop and keyboard skip navigation. The normal E2E configuration
+mobile/tablet overflow, loading, desktop and keyboard skip navigation. The normal E2E configuration
 also verifies the default disabled home requires no account and invents no inventory.
 
 These tests do **not** prove real Engine RLS, grants or editorial publication. The
 negative editorial cases are simulated upstream filtering and must be repeated with
 the actual #122/#123 SQL and PostgREST, without Next.js, before activation.
 
-## Remaining integration gates
+## Check the home against real STAGING
 
-1. Engine #122: final public DTO/enums, RLS, ownership/EXECUTE, database-enforced
-   range/cursor/limit and direct PostgREST negative tests; independent security review.
-2. Engine #123: verified publication and projection updates in the same transaction,
-   including cancellation, suspension, correction and freshness expiry.
-3. Confirm public fields and pass against the real local API, including price
-   validity and transport semantics. Add the reviewed STAGING-only activation gate.
-4. Obtain independent operational approval, preflight and rollback before any remote
-   grants/migrations/flags/deployment; verify real empty inventory and an approved
-   current publication. SEO/EN and full activity detail remain separate work.
+No migration or private Engine runtime is needed. In the authorized environment:
 
-Until those gates pass, #50 is prepared offline and must not be reported as a real
-STAGING catalogue or all acceptance criteria completed.
+1. Use `APP_ENV=staging`, the actual canonical `APP_ORIGIN`,
+   `NEXT_PUBLIC_SUPABASE_URL=https://yfytzogjrhwstcnzspdv.supabase.co` and its
+   existing modern publishable key. Keep Admin/editorial/writer gates as configured.
+2. Set `PUBLIC_CATALOG_MODE=supabase`. For a local verification use
+   `APP_ORIGIN=http://127.0.0.1:3141` with `npm run dev -- --hostname 127.0.0.1 --port 3141`.
+   The code permits local development to read the actual HTTPS API. Never use
+   `local-rpc` for this check. Do not put keys in command arguments or tracked files.
+3. Open `/` in a browser without signing in. With the current empty projection expect
+   “0 actividades en esta página” and “No hay actividades publicadas para estas fechas”,
+   with no cards, registration/detail links or local test banner. Use “Calendario
+   completo” and change month; the same API supplies the selected bounded range.
+4. Inspect server-side requests: POST to `/rest/v1/rpc/catalog_occurrences_v1`,
+   profile `api`, explicit dates/cursor/limit, publishable key, no bearer or cookies.
+   The browser receives rendered public content, not private table access.
+5. Once deploying this PR is separately authorized, apply the same settings only
+   to the dedicated Web STAGING project, deploy the reviewed SHA and repeat steps
+   3–4 on its home URL. A merge does not modify existing deployment variables.
+   Rollback: restore `PUBLIC_CATALOG_MODE=disabled` and redeploy the prior artifact
+   through the approved deployment procedure; no SQL/ACL rollback is required.
+
+WEB #50's consumer can be complete with empty inventory. A genuine publish/suspend
+smoke, formal SQL review and backup recovery remain Engine operational gates;
+they do not require invented public activities. Advanced filters (#51), full
+activity detail (#52), SEO and visitor authentication are outside this change.
+
+## Validation on 26 October 2026
+
+- `npm run quality` PASS: formatting, lint (nine existing warnings), typecheck,
+  688 Vitest tests, eight offline platform tests and production build. The existing
+  Next.js 16.4.0 security warning interrupted initial runs; ordinary retries passed.
+  Updating that dependency is a separate task.
+- Five catalogue E2E tests PASS: anonymous 24+3 pagination, semantic labels,
+  cancellation/no-cache, empty/error distinction and retry, mobile/tablet/desktop,
+  loading state and keyboard skip link. Default disabled home E2E also PASS.
+- Engine's `verify-catalog-web-contract.cjs` PASS with the updated adapter over
+  five previously captured real PG17/PostgREST pages / 105 rows. These are test
+  captures, not current STAGING inventory.
+- Live browser → local Next server (`APP_ENV=staging`, `PUBLIC_CATALOG_MODE=supabase`)
+  → actual STAGING API PASS at `2026-10-26T12:54:07Z` (13:54 Europe/Madrid).
+  Widths 390/768/1440: HTTP 200, zero cards, explicit successful empty state,
+  no local test banner, no horizontal overflow. Current/next month navigation
+  succeeded; zero browser page errors. No request was mocked and no data was inserted.
+  This verifies the real upstream from local Web code; it does not claim a remote
+  Web deployment has been activated.
+
+Local browser evidence: `.next-e2e-catalog-live/evidence/result.json` and
+`home-390.png`, `home-768.png`, `home-1440.png` in the same ignored directory.
