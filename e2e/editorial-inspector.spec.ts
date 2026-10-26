@@ -1,10 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
+import { inspectionFixture } from "../src/integrations/editorial/inspection.fixture";
+import { normalizeInspection } from "../src/integrations/editorial/inspection";
 
 test.skip(process.env.ADMIN_DEV_AUTH_MODE === "disabled", "This suite requires the explicit development-only Admin.");
 
 const candidateId = "ca73b0ff-8001-4000-8000-111111111111";
 const inspectionPath = "/api/internal/editorial/candidates/" + candidateId;
 const candidate = {
+  ...normalizeInspection(inspectionFixture, candidateId),
   candidateId,
   candidateVersion: 1,
   revision: 0,
@@ -135,7 +138,7 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
   expect(reads.readCount()).toBe(initialReads);
 
   // Returning to the unchanged payload must retain the key of the uncertain command.
-  await action.selectOption("SUSPEND");
+  await action.selectOption("CORRECT");
   await action.selectOption("REJECT");
   await page.getByRole("button", { name: "Confirmar decisión" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toHaveText(
@@ -146,4 +149,43 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
   expect(requests[0].key).toMatch(/^[0-9a-f-]{36}$/);
   expect(requests[1]).toEqual(requests[0]);
   expect(reads.readCount()).toBe(initialReads + 1);
+});
+
+test("reviews real-shaped details and completes missing organizer/location through CORRECT", async ({ page }) => {
+  let current = { ...candidate, organizerName: null, data: { ...candidate.data, organizerId: null } };
+  await page.route("**" + inspectionPath, (route) => route.fulfill({ json: current }));
+  let payload: Record<string, unknown> | undefined;
+  await page.route("**" + inspectionPath + "/commands", (route) => {
+    payload = route.request().postDataJSON();
+    current = { ...current, revision: 1 };
+    return route.fulfill({ json: receipt(route.request().headers()["idempotency-key"], "in_review") });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await expect(page.getByText("2030-05-01T12:00:00", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Parque del Turia/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Revisar convocatoria oficial" })).toHaveAttribute(
+    "href",
+    "https://example.org/current",
+  );
+  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT");
+  await page.getByLabel("Organizador comprobado").selectOption(inspectionFixture.organizers[0].id);
+  await page.getByLabel("Enlace de inscripción comprobado").fill("https://example.org/confirmed-booking");
+  await page.getByLabel("He comprobado todas las ubicaciones mostradas en la convocatoria oficial.").check();
+  await page.getByLabel("Motivo obligatorio").fill("Organizador y ubicación contrastados en la convocatoria vigente");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toContainText(
+    "in_review",
+  );
+  expect(payload).toMatchObject({
+    action: "CORRECT",
+    expectedVersion: 1,
+    expectedRevision: 0,
+    correction: {
+      organizerId: inspectionFixture.organizers[0].id,
+      registrationUri: "https://example.org/confirmed-booking",
+      locations: [{ verified: true }],
+    },
+  });
+  expect(payload).not.toHaveProperty("actor");
+  expect(payload).not.toHaveProperty("role");
 });

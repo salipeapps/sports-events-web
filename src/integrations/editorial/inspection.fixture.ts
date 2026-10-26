@@ -1,0 +1,48 @@
+/** Offline contract sample only. Never loaded by a runtime route. */
+export const inspectionFixture = {
+  candidateId: "ca73b0ff-8001-4000-8000-111111111111",
+  candidateVersion: 1,
+  revision: 0,
+  status: "in_review",
+  data: {
+    title: "Sport in Valencia",
+    organizerId: "20a2a2a2-1111-4000-8000-111111111111",
+    schedule: {
+      localStart: "2030-05-01T12:00:00",
+      localEnd: null,
+      zoneId: "Europe/Madrid",
+      startInstant: "2030-05-01T10:00:00Z",
+      endInstant: null,
+    },
+    calendarDates: null,
+    locations: [
+      {
+        role: "ACTIVITY",
+        municipality: "Valencia",
+        neighborhood: null,
+        pointName: "Parque del Turia",
+        address: null,
+        latitude: null,
+        longitude: null,
+        verified: false,
+      },
+    ],
+    priceOptions: [],
+    registrationUri: "https://example.org/book",
+    activityLanguage: null,
+  },
+  source: {
+    id: "20a2a2a2-1111-4000-8000-111111111111",
+    name: "Official source",
+    url: "https://example.org/current",
+    observedAt: "2026-10-25T12:00:00Z",
+  },
+  organizerName: "Organizer",
+  organizers: [{ id: "20a2a2a2-1111-4000-8000-111111111111", name: "Organizer" }],
+  moreOrganizers: false,
+  publicationId: null,
+  publicationStatus: null,
+  protectedPaths: [],
+  conflicts: [],
+  moreConflicts: false,
+};

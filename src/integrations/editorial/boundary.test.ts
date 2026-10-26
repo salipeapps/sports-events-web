@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
 import { editorialB1Enabled, editorialConfig, handleEditorialB1, validateEditorialCommand } from "./boundary";
+import { inspectionFixture } from "./inspection.fixture";
+import { normalizeInspection } from "./inspection";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/integrations/auth/supabaseServer", () => ({ createAuthClient: vi.fn() }));
@@ -9,7 +11,7 @@ const id = "ca73b0ff-8001-4000-8000-111111111111";
 const actor = "20a2a2a2-1111-4000-8000-111111111111";
 const key = "11a2a2a2-1111-4000-8000-111111111111";
 const origin = "https://sports-events-web-staging.vercel.app";
-const engine = "https://editorial.a.run.app";
+const engine = "https://editorial-staging.example.org";
 const env: NodeJS.ProcessEnv = {
   NODE_ENV: "production",
   APP_ENV: "staging",
@@ -22,13 +24,9 @@ const env: NodeJS.ProcessEnv = {
   NEXT_PUBLIC_SUPABASE_URL: "https://yfytzogjrhwstcnzspdv.supabase.co",
   ADMIN_DEV_AUTH_MODE: "disabled",
   EDITORIAL_B1_ENABLED: "enabled",
-  EDITORIAL_ENGINE_REVIEWED_SHA: "ff49e563b6016bdcb5062fde92eef5a2e5894f9a",
+  EDITORIAL_ENGINE_REVIEWED_SHA: "ae31d25a274a811ad75a93fa81ecc5aaeec07ea6",
   EDITORIAL_ENGINE_STAGING_ORIGIN: engine,
   EDITORIAL_ENGINE_VERIFIED_ORIGIN: engine,
-  EDITORIAL_ENGINE_STAGING_ID_TOKEN_AUDIENCE: engine,
-  GCP_EDITORIAL_INVOKER_SERVICE_ACCOUNT_EMAIL: "editorial@offline.iam.gserviceaccount.com",
-  GCP_COMMAND_INVOKER_SERVICE_ACCOUNT_EMAIL: "writer@offline.iam.gserviceaccount.com",
-  GCP_INVOKER_SERVICE_ACCOUNT_EMAIL: "reader@offline.iam.gserviceaccount.com",
   ENGINE_COMMAND_STAGING_BASE_URL: "https://writer.a.run.app",
   ENGINE_STAGING_BASE_URL: "https://reader.a.run.app",
 };
@@ -90,7 +88,7 @@ function setup(role: "admin" | "reviewer" = "admin", deployment: NodeJS.ProcessE
 }
 
 describe("B1 deployment and request constraints", () => {
-  it("fails closed off-staging, with wrong pinned SHA, URL or IAM principal", async () => {
+  it("fails closed off-staging, with wrong pinned SHA or unverified origin", async () => {
     const disabled = [
       { EDITORIAL_B1_ENABLED: "disabled" },
       { APP_ENV: "production" },
@@ -100,7 +98,9 @@ describe("B1 deployment and request constraints", () => {
       { EDITORIAL_ENGINE_REVIEWED_SHA: undefined },
       { EDITORIAL_ENGINE_VERIFIED_ORIGIN: "https://wrong.a.run.app" },
       { EDITORIAL_ENGINE_STAGING_ORIGIN: "http://editorial.a.run.app" },
-      { GCP_EDITORIAL_INVOKER_SERVICE_ACCOUNT_EMAIL: env.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL },
+      { EDITORIAL_ENGINE_STAGING_ORIGIN: "https://127.0.0.1" },
+      { EDITORIAL_ENGINE_STAGING_ORIGIN: "https://localhost" },
+      { EDITORIAL_ENGINE_STAGING_ORIGIN: env.ENGINE_STAGING_BASE_URL },
     ];
     for (const change of disabled) {
       const configured = { ...env, ...change };
@@ -145,7 +145,7 @@ describe("B1 deployment and request constraints", () => {
     expect(ctx.fetcher).toHaveBeenCalledOnce();
   });
 
-  it("revalidates session and identity after workload-token exchange", async () => {
+  it("revalidates session and identity before HTTPS dispatch", async () => {
     const ctx = setup();
     ctx.getAccess
       .mockResolvedValueOnce({ status: "authorized", role: "admin", subject: actor, accessToken: "old" })
@@ -154,7 +154,7 @@ describe("B1 deployment and request constraints", () => {
     expect(ctx.fetcher).not.toHaveBeenCalled();
   });
 
-  it("forwards only dedicated credentials and the exact replay key, without redirects", async () => {
+  it("uses the verified user bearer without legacy IAM and preserves the replay key", async () => {
     const ctx = setup();
     const response = await ctx.run("command");
     expect(response.status).toBe(200);
@@ -170,40 +170,59 @@ describe("B1 deployment and request constraints", () => {
         body: JSON.stringify(reject),
         headers: expect.objectContaining({
           Authorization: "Bearer private-jwt",
-          "X-Serverless-Authorization": "Bearer private-workload-token",
           "Idempotency-Key": key,
         }),
       }),
     );
+    expect(ctx.getWorkloadToken).not.toHaveBeenCalled();
+    expect(ctx.fetcher.mock.calls[0][1]?.headers).not.toHaveProperty("X-Serverless-Authorization");
   });
 
   it("strips private inspection payload and rejects malformed upstream response", async () => {
     const ctx = setup("reviewer");
     ctx.fetcher.mockResolvedValueOnce(
       upstream({
-        candidateId: id,
-        candidateVersion: 1,
+        ...inspectionFixture,
         revision: 2,
-        status: "in_review",
-        data: { title: "Sport in Valencia", privateEvidence: "do not expose" },
-        conflicts: [{ id, fieldPath: "schedule", sourceUrl: "https://private.example" }],
-        moreConflicts: false,
+        data: { ...inspectionFixture.data, privateEvidence: "do not expose" },
+        conflicts: [
+          {
+            id,
+            fieldPath: "schedule",
+            sourceUrl: "https://example.org/conflict",
+            observedAt: "2026-10-25T12:00:00Z",
+            valueSnapshot: "PRIVATE",
+          },
+        ],
         injectedAccessToken: "secret",
       }),
     );
     const response = await ctx.run("inspect");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
-      candidateId: id,
-      candidateVersion: 1,
-      revision: 2,
-      status: "in_review",
+    const result = await response.json();
+    expect(result).toMatchObject({
       title: "Sport in Valencia",
+      revision: 2,
       conflictCount: 1,
-      moreConflicts: false,
+      organizerName: "Organizer",
+      source: { name: "Official source" },
     });
+    expect(JSON.stringify(result)).not.toMatch(/PRIVATE|do not expose|injectedAccessToken|protectedPaths/);
     ctx.fetcher.mockResolvedValueOnce(upstream({ x: "unexpected" }));
     expect((await ctx.run("inspect")).status).toBe(503);
+  });
+
+  it("rejects unsafe evidence navigation and malformed domain fields", () => {
+    const sample = structuredClone(inspectionFixture);
+    sample.source.url = "https://example.org/current?token=private";
+    expect(normalizeInspection(sample, id).source.url).toBeNull();
+    for (const change of [
+      { data: { ...sample.data, locations: [{}] } },
+      { data: { ...sample.data, schedule: { ...sample.data.schedule, zoneId: "UTC" } } },
+      { source: { ...sample.source, observedAt: "2026-02-30T00:00:00Z" } },
+      { publicationId: "not-a-uuid" },
+    ])
+      expect(() => normalizeInspection({ ...sample, ...change }, id)).toThrow();
   });
 
   it("maps genuine 409 without a fake success, fails closed on 500", async () => {

@@ -1,8 +1,9 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
-import { isApprovedStagingDeployment, parseStageConfig, workloadToken } from "@/integrations/discovery/readApi";
+import { isApprovedStagingDeployment } from "@/integrations/discovery/readApi";
 import { getDiscoveryAccessToken, type DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
+import { EditorialInspectionError, normalizeInspection } from "./inspection";
 
 type Operation = "inspect" | "command" | "import";
 type ErrorCode =
@@ -117,20 +118,16 @@ export function editorialB1Enabled(env: NodeJS.ProcessEnv = process.env): boolea
     isApprovedStagingDeployment(env) &&
     env.EDITORIAL_B1_ENABLED === "enabled" &&
     env.DISCOVERY_STAGING_SMOKE_ENABLED !== "enabled" &&
-    env.EDITORIAL_ENGINE_REVIEWED_SHA === "ff49e563b6016bdcb5062fde92eef5a2e5894f9a"
+    env.EDITORIAL_ENGINE_REVIEWED_SHA === "ae31d25a274a811ad75a93fa81ecc5aaeec07ea6"
   );
 }
 
 interface EditorialConfig {
   origin: string;
-  account: string;
-  audience: string;
 }
 export function editorialConfig(env: NodeJS.ProcessEnv = process.env): EditorialConfig {
   if (!editorialB1Enabled(env)) fail("NOT_CONFIGURED");
   const origin = env.EDITORIAL_ENGINE_STAGING_ORIGIN;
-  const account = env.GCP_EDITORIAL_INVOKER_SERVICE_ACCOUNT_EMAIL;
-  const audience = env.EDITORIAL_ENGINE_STAGING_ID_TOKEN_AUDIENCE;
   try {
     const url = new URL(origin ?? "");
     if (
@@ -142,18 +139,16 @@ export function editorialConfig(env: NodeJS.ProcessEnv = process.env): Editorial
       url.port ||
       url.username ||
       url.password ||
-      !/^[a-z0-9-]+\.a\.run\.app$/.test(url.hostname) ||
       origin !== env.EDITORIAL_ENGINE_VERIFIED_ORIGIN ||
-      audience !== origin ||
-      !account ||
-      account === env.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL ||
-      account === env.GCP_COMMAND_INVOKER_SERVICE_ACCOUNT_EMAIL ||
+      !url.hostname.includes(".") ||
+      /^(localhost|.*\.localhost|.*\.local)$/.test(url.hostname) ||
+      /^[\d.]+$/.test(url.hostname) ||
+      url.hostname.includes(":") ||
       origin === env.ENGINE_STAGING_BASE_URL ||
-      origin === env.ENGINE_COMMAND_STAGING_BASE_URL ||
-      !/^[a-zA-Z0-9.-]+@[a-zA-Z0-9-]+\.iam\.gserviceaccount\.com$/.test(account)
+      origin === env.ENGINE_COMMAND_STAGING_BASE_URL
     )
       fail("NOT_CONFIGURED");
-    return { origin, account, audience };
+    return { origin };
   } catch {
     return fail("NOT_CONFIGURED");
   }
@@ -161,21 +156,11 @@ export function editorialConfig(env: NodeJS.ProcessEnv = process.env): Editorial
 interface Dependencies {
   env: NodeJS.ProcessEnv;
   getAccess(): Promise<DiscoveryTokenResult>;
-  getWorkloadToken(config: EditorialConfig, env: NodeJS.ProcessEnv): Promise<string>;
   fetcher: typeof fetch;
 }
 const defaults: Dependencies = {
   env: process.env,
   getAccess: getDiscoveryAccessToken,
-  getWorkloadToken: (config, env) =>
-    workloadToken(
-      parseStageConfig({
-        ...env,
-        ENGINE_STAGING_BASE_URL: config.origin,
-        ENGINE_STAGING_ID_TOKEN_AUDIENCE: config.audience,
-        GCP_INVOKER_SERVICE_ACCOUNT_EMAIL: config.account,
-      }),
-    ),
   fetcher: fetch,
 };
 
@@ -245,34 +230,6 @@ function normalizeReceipt(raw: unknown) {
     recordedAt: raw.recordedAt,
   };
 }
-function normalizeInspection(raw: unknown, candidateId: string) {
-  if (
-    !isRecord(raw) ||
-    raw.candidateId !== candidateId ||
-    !isPositiveVersion(raw.candidateVersion) ||
-    raw.candidateVersion < 1 ||
-    !isPositiveVersion(raw.revision) ||
-    !str(raw.status) ||
-    raw.status.length > 45 ||
-    !isRecord(raw.data) ||
-    !str(raw.data.title) ||
-    raw.data.title.length > 500 ||
-    !Array.isArray(raw.conflicts) ||
-    raw.conflicts.length > 100 ||
-    typeof raw.moreConflicts !== "boolean" ||
-    !raw.conflicts.every((item) => isRecord(item) && isUuid(item.id) && str(item.fieldPath))
-  )
-    fail("INCOMPATIBLE_CONTRACT");
-  return {
-    candidateId,
-    candidateVersion: raw.candidateVersion,
-    revision: raw.revision,
-    status: raw.status,
-    title: raw.data.title,
-    conflictCount: raw.conflicts.length,
-    moreConflicts: raw.moreConflicts,
-  };
-}
 function validateRequest(request: Request, operation: Operation, env: NodeJS.ProcessEnv) {
   const origin = env.APP_ORIGIN;
   const url = new URL(request.url);
@@ -291,7 +248,7 @@ function validateRequest(request: Request, operation: Operation, env: NodeJS.Pro
     fail("FORBIDDEN");
 }
 
-/** Server-only BFF. Browser never sees the upstream URL, workload token, or Supabase JWT. */
+/** Server-only HTTPS BFF. The Java runtime verifies the user's Supabase JWT and live membership. */
 export async function handleEditorialB1(
   request: Request,
   operation: Operation,
@@ -323,7 +280,6 @@ export async function handleEditorialB1(
     const first = await deps.getAccess();
     if (first.status === "denied") fail(first.code);
     allowRole(first, operation, action);
-    const workload = await deps.getWorkloadToken(config, deps.env);
     const current = await deps.getAccess();
     if (current.status === "denied") fail(current.code);
     if (current.subject !== first.subject) fail("UNAUTHENTICATED");
@@ -336,7 +292,6 @@ export async function handleEditorialB1(
     const headers: Record<string, string> = {
       Accept: "application/json",
       Authorization: "Bearer " + current.accessToken,
-      "X-Serverless-Authorization": "Bearer " + workload,
     };
     if (operation !== "inspect") {
       headers["Idempotency-Key"] = key!;
@@ -376,9 +331,11 @@ export async function handleEditorialB1(
     const err =
       error instanceof EditorialBffError
         ? error
-        : error instanceof SyntaxError
-          ? new EditorialBffError("INVALID_REQUEST")
-          : new EditorialBffError("WRITE_UNAVAILABLE");
+        : error instanceof EditorialInspectionError
+          ? new EditorialBffError("INCOMPATIBLE_CONTRACT")
+          : error instanceof SyntaxError
+            ? new EditorialBffError("INVALID_REQUEST")
+            : new EditorialBffError("WRITE_UNAVAILABLE");
     return respond({ code: err.code }, status[err.code]);
   }
 }

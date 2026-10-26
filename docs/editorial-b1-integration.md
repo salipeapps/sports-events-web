@@ -1,26 +1,30 @@
 # H3 B1 · Admin editorial ↔ Engine Java (#59)
 
-Estado: **preparación offline; NO-GO STAGING/PROD**. No sustituye la cola de **fuentes B2**
+Estado: **implementación preparada; activación STAGING pendiente de runtime/ACL**. No sustituye la cola de **fuentes B2**
 de Web #34 ni las vistas B1 generales, todavía `NOT_AVAILABLE` sin read-model. El panel
-`/admin/editorial` permite acceder por UUID B1 obtenido del recibo de importación real.
+`/admin/editorial` permite acceder por UUID B1 existente o recibido en una importación real.
 No se muestran fixtures ni se anuncia éxito antes de recibir el recibo del Engine.
 
 ## Contratos y límites
 
 - `GET /api/internal/editorial/candidates/{id}`: inspección de candidato B1 desde
-  `GET /api/editorial/v1/candidates/{id}`, con UUID, versión/revisión, título,
-  estado y **número** de conflictos; no se entrega el resto de evidencia ni los
-  valores del motor al navegador. Solo `reviewer/admin` activos.
+  `GET /api/editorial/v1/candidates/{id}`, con UUID, versión/revisión, datos de la
+  actividad, organizador, fuente/observación, conflictos y estado de publicación.
+  Reconstruye una allowlist acotada: no expone snapshots privados ni campos extra.
+  Las URLs inseguras no se convierten en enlaces. Solo `reviewer/admin` activos.
 - `POST /api/internal/editorial/candidates/{id}/commands`: acciones
   `APPROVE/REJECT/CORRECT/RESOLVE_CONFLICTS/PUBLISH/SUSPEND`. El panel inicial
-  incluye `APPROVE/REJECT` y `PUBLISH/SUSPEND` solo para admin. Aprobación ≠ publicación.
+  incluye `APPROVE/REJECT`, `PUBLISH/SUSPEND` solo para admin y una corrección acotada
+  de organizador/inscripción/confirmación de ubicación mediante CORRECT existente.
+  La selección de organizadores está limitada a 100 referencias y avisa si hay más.
+  No inventa precios, idioma ni categoría por defecto. Aprobación ≠ publicación.
   El backend revalida membresía viva, contexto editorial, revisión y revocación;
   no se acepta ID de actor, roles o tokens desde el formulario.
 - `POST /api/internal/editorial/imports`: JSON/CSV acotado, encabezados
   `Idempotency-Key` y `X-Editorial-Reason`. No hay UI pública de importación todavía;
   el endpoint está protegido por rol admin y la misma puerta de activación.
 - Protección de origen y Host estrictos en POST, token Auth verificado de
-  Supabase, JWT del usuario + token IAM dedicado solo server-side,
+  Supabase, JWT del usuario verificado solo server-side sobre HTTPS,
   validación de body/esquema, lectura acotada, sin redirección/caché,
   12 s timeout y errores públicos sin SQL/secretos.
 - La clave de idempotencia pertenece a la **intención** y se conserva durante
@@ -36,33 +40,55 @@ No se muestran fixtures ni se anuncia éxito antes de recibir el recibo del Engi
 
 `EDITORIAL_B1_ENABLED=disabled` por defecto. El código exige simultáneamente:
 
+Comprobación remota 26/10: el proyecto STAGING sirve `27c434b` (#61), pero carece de
+`PUBLIC_CATALOG_MODE` y de variables editoriales. La portada falla cerrada; añadir
+`PUBLIC_CATALOG_MODE=supabase` al target production **del proyecto STAGING** y
+redesplegar es necesario para comprobar #50. No se cambió esa configuración aquí.
+
 1. Proyecto Vercel STAGING dedicado y rama `develop` con identidad de despliegue
    idéntica a `isApprovedStagingDeployment`; PROD y Preview fallan cerrado.
 2. `EDITORIAL_B1_ENABLED=enabled` y
-   `EDITORIAL_ENGINE_REVIEWED_SHA=ff49e563b6016bdcb5062fde92eef5a2e5894f9a`
-   (código Engine #135; una cadena SHA por sí misma **no certifica** el artefacto
+   `EDITORIAL_ENGINE_REVIEWED_SHA=ae31d25a274a811ad75a93fa81ecc5aaeec07ea6`
+   (incluye Engine #135 y la inspección ampliada; una cadena SHA no certifica el artefacto
    desplegado: verificar imagen/revisión y firma en acta operacional).
-3. `EDITORIAL_ENGINE_STAGING_ORIGIN` HTTPS Cloud Run privado, igual a
-   `EDITORIAL_ENGINE_VERIFIED_ORIGIN` y audiencia
-   `EDITORIAL_ENGINE_STAGING_ID_TOKEN_AUDIENCE`, y una cuenta
-   `GCP_EDITORIAL_INVOKER_SERVICE_ACCOUNT_EMAIL` independiente
-   de legacy writer/reader. La identidad se intercambia mediante la
-   integración OIDC/WIF del proyecto Vercel (sin secretos exportados al browser).
+3. `EDITORIAL_ENGINE_STAGING_ORIGIN` es el origen HTTPS del nuevo runtime Java,
+   igual a `EDITORIAL_ENGINE_VERIFIED_ORIGIN` y distinto de lectores/writers legacy.
+   Sin path, query, fragment, credenciales ni puertos personalizados. No depende de
+   Cloud Run, STS, WIF, audiencia IAM ni cuenta de servicio. Solo se envía el bearer
+   Supabase del usuario; Engine comprueba firma, issuer, sesión y membresía viva.
 4. Web #59 revisada, pruebas de contrato Java-Web y una API Java real desplegada
    con `EDITORIAL_API_ENABLED=true` sobre runtime dedicado, sin Flyway, jobs ni
    API anterior; autorización, quota, red, factura y permisos JDBC mínimos
    verificados en Engine #123.
-5. Gate H1 #131: V016/V017 primero con restauración/snapshots; V018 después de
-   autorización propia. Gate H2 V019: catalog_read/API anon y convivencia con H1.
-   Gate H3 V020: revisión permisos del trigger, SQL sin SUPERUSER, runtime
-   NOLOGIN/NOBYPASSRLS; aplicar y validar **solo con autorización separada**.
-6. Prueba GET de candidato real y prueba de importación/aprobación/publicación
-   de una ficha vigente autorizada, desde Java, SQL/PostgREST y Web, con
-   suspensión y rollback; cotejar auditoría y contadores. Nunca convertir
-   el dataset histórico de 05/10/2026 en inventario actual por su antigua etiqueta.
+5. V020 ya está aplicada en STAGING (26/10/2026). Falta autorizar el login editorial,
+   su canal de secreto, políticas Auth y política de vigencia por fuente. Paquetes
+   concretos y bloqueo del propietario de Auth: Engine
+   `docs/editorial-first-event-staging.md`. No volver a aplicar migraciones.
+6. Probar el candidato real existente indicado abajo. Revalidar su convocatoria
+   antes de decidir; nunca convertir el dataset histórico en inventario vigente
+   por sus etiquetas antiguas. No importar otra identidad del mismo evento.
 
-**Si falta una puerta, mantener disabled.** No activar V019/V020, conceder
-`api.USAGE` anónimo, provisionar credenciales o desplegar por fusionar esta PR.
+**Si falta una puerta, mantener disabled.** Fusionar esta PR no provisiona
+credenciales, políticas ni hosting; esas modificaciones requieren autorización.
+
+## Validación mínima en STAGING después de activar
+
+1. Entrar como admin en `/admin/editorial/9a13ed5e-4e08-4705-a2b5-540ef126081c`:
+   Carrera per la Solidaritat 2026, 08/11/2026 09:00 Europe/Madrid, Alameda.
+   Ficha y reglamento contrastados el 26/10 en el documento Engine indicado arriba.
+2. Consultar convocatoria e inscripción actuales. Seleccionar **Confirmar
+   organizador, inscripción y ubicación**, elegir Fundación Deportiva Municipal
+   València, confirmar la ubicación y guardar con motivo. El comando es CORRECT;
+   no publica. Preservar el UUID; no crear una importación duplicada.
+3. Aprobar con URL oficial, categoría running y motivo; publicar con un segundo
+   comando admin. Reviewer puede revisar/aprobar candidatos sin publicación;
+   no puede publicar, suspender ni retirar publicaciones activas por otra acción.
+4. Leer `api.catalog_occurrences_v1` para noviembre y abrir
+   `/?month=2026-11#activities`: la tarjeta debe existir una sola vez. El filtro
+   inicial es de siete días y no incluye el 8 de noviembre el día de esta revisión.
+5. Suspender con admin; repetir RPC y recargar esa URL: la tarjeta debe desaparecer.
+   Guardar recibos/IDs y comprobar decisiones persistidas. Reintentar un comando
+   incierto conserva Idempotency-Key; Engine devuelve el mismo recibo.
 
 ## Pruebas offline
 
@@ -70,4 +96,7 @@ No se muestran fixtures ni se anuncia éxito antes de recibir el recibo del Engi
 revocación antes de dispatch, headers/token privado e idempotencia,
 negativos y reducción explícita del DTO. Requiere revisar la UI manualmente
 con un Engine aislado antes de STAGING; los mocks no equivalen a un test
-real de publicación.
+real de publicación. El test adicional `engineContract.test.ts` acepta
+`EDITORIAL_ENGINE_CONTRACT_FILE` apuntando al JSON generado por
+`EditorialCommandsIT` en Engine: valida inspección y respuestas RPC antes/después
+de suspender sin adaptar Web #50. Es evidencia PG17 offline, no una publicación real.
