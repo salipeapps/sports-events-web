@@ -10,7 +10,8 @@ export default async function EditorialEntry({ searchParams }: { searchParams: P
     <section>
       <h1>Revisión editorial B1</h1>
       <p>
-        Acceso controlado a candidatos de actividades. La escritura remota permanece desactivada hasta el GO de STAGING.
+        Consulta los datos y la convocatoria oficial antes de decidir. Aprobar una actividad no la publica; publicación
+        y suspensión requieren un administrador.
       </p>
       <form method="get" action="/admin/editorial">
         <label htmlFor="candidate">Identificador del candidato</label>
