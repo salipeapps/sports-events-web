@@ -118,7 +118,7 @@ export function editorialB1Enabled(env: NodeJS.ProcessEnv = process.env): boolea
     isApprovedStagingDeployment(env) &&
     env.EDITORIAL_B1_ENABLED === "enabled" &&
     env.DISCOVERY_STAGING_SMOKE_ENABLED !== "enabled" &&
-    env.EDITORIAL_ENGINE_REVIEWED_SHA === "ae31d25a274a811ad75a93fa81ecc5aaeec07ea6"
+    env.EDITORIAL_ENGINE_REVIEWED_SHA === "eb4f4f5604a27ec410cdb5342ea5ef89a8b4378c"
   );
 }
 
