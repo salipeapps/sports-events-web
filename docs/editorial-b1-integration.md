@@ -40,16 +40,15 @@ No se muestran fixtures ni se anuncia éxito antes de recibir el recibo del Engi
 
 `EDITORIAL_B1_ENABLED=disabled` por defecto. El código exige simultáneamente:
 
-Comprobación remota 26/10: el proyecto STAGING sirve `27c434b` (#61), pero carece de
-`PUBLIC_CATALOG_MODE` y de variables editoriales. La portada falla cerrada; añadir
-`PUBLIC_CATALOG_MODE=supabase` al target production **del proyecto STAGING** y
-redesplegar es necesario para comprobar #50. No se cambió esa configuración aquí.
+Comprobación remota 27/10: Web STAGING sirve `5ca8d0e` (#62), con
+`PUBLIC_CATALOG_MODE=supabase` y catálogo vacío real. Faltan las variables
+editoriales y el nuevo runtime Java; la API editorial responde NOT_CONFIGURED.
 
 1. Proyecto Vercel STAGING dedicado y rama `develop` con identidad de despliegue
    idéntica a `isApprovedStagingDeployment`; PROD y Preview fallan cerrado.
 2. `EDITORIAL_B1_ENABLED=enabled` y
-   `EDITORIAL_ENGINE_REVIEWED_SHA=ae31d25a274a811ad75a93fa81ecc5aaeec07ea6`
-   (incluye Engine #135 y la inspección ampliada; una cadena SHA no certifica el artefacto
+   `EDITORIAL_ENGINE_REVIEWED_SHA=eb4f4f5604a27ec410cdb5342ea5ef89a8b4378c`
+   (Engine #142: sesión mediante RPC invoker sin acceso JDBC a Auth; una cadena SHA no certifica el artefacto
    desplegado: verificar imagen/revisión y firma en acta operacional).
 3. `EDITORIAL_ENGINE_STAGING_ORIGIN` es el origen HTTPS del nuevo runtime Java,
    igual a `EDITORIAL_ENGINE_VERIFIED_ORIGIN` y distinto de lectores/writers legacy.
@@ -60,10 +59,15 @@ redesplegar es necesario para comprobar #50. No se cambió esa configuración aq
    con `EDITORIAL_API_ENABLED=true` sobre runtime dedicado, sin Flyway, jobs ni
    API anterior; autorización, quota, red, factura y permisos JDBC mínimos
    verificados en Engine #123.
-5. V020 ya está aplicada en STAGING (26/10/2026). Falta autorizar el login editorial,
-   su canal de secreto, políticas Auth y política de vigencia por fuente. Paquetes
-   concretos y bloqueo del propietario de Auth: Engine
-   `docs/editorial-first-event-staging.md`. No volver a aplicar migraciones.
+5. V020, login editorial y vigencia FDM preparados. Falta revisar y autorizar
+   `scripts/prepare-editorial-session-rpc.sql` de Engine: SELECT de columnas Auth
+   para authenticated, con RLS permisivo/restrictivo limitado al propio usuario y
+   session_id; RPC sin argumentos SECURITY INVOKER que devuelve solo un booleano.
+   Java usa el mismo bearer y `EDITORIAL_AUTH_PUBLISHABLE_KEY` sb_publishable del
+   proyecto. Conserva firma JWT, membresía viva e idempotencia. No necesita USAGE
+   de Auth para engine_editorial ni soporte. Construir una imagen nueva; conservar
+   la contraseña/cuenta/contenedor ya creados. Pasos en Engine
+   `docs/editorial-first-event-staging.md`. No volver a aplicar V020.
 6. Probar el candidato real existente indicado abajo. Revalidar su convocatoria
    antes de decidir; nunca convertir el dataset histórico en inventario vigente
    por sus etiquetas antiguas. No importar otra identidad del mismo evento.
