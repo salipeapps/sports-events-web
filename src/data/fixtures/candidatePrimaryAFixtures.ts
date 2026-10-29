@@ -1,13 +1,5 @@
 import { known, unknown, type AdminCandidate } from "@/domain/admin";
-import {
-  buenoTournamentExtracted,
-  eventDetails,
-  leTarotExtracted,
-  leTarotFinal,
-  penyagolosaExtracted,
-  penyagolosaFinal,
-  systemActor,
-} from "./candidateFixtureBase";
+import { buenoTournamentExtracted, eventDetails, systemActor } from "./candidateFixtureBase";
 
 export const primaryCandidateAFixtures: AdminCandidate[] = [
   {

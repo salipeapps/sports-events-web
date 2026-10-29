@@ -54,10 +54,14 @@ function setup(
   body: unknown = { items: [candidate], nextCursor: "opaque-keyset" },
   contentType = "application/json",
 ) {
-  const fetcher = vi.fn(
-    async (_input: RequestInfo | URL, _init?: RequestInit) =>
-      new Response(JSON.stringify(body), { status, headers: { "content-type": contentType } }),
-  );
+  const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
+    void _input;
+    void _init;
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { "content-type": contentType },
+    });
+  });
   const getUserToken = vi.fn(async () => "signed-user");
   const getWorkloadToken = vi.fn(async () => "signed-cloud-run");
   const repo = new HttpDiscoveryReadRepository({
