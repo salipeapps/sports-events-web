@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { isSafeRegistrationUrl } from "@/domain/registration";
 import { isApprovedStagingDeployment } from "@/integrations/discovery/readApi";
 import { getDiscoveryAccessToken, type DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
 import { EditorialInspectionError, normalizeInspection } from "./inspection";
@@ -59,9 +60,11 @@ function isPositiveVersion(value: unknown): value is number {
 function isValidReason(value: unknown): boolean {
   return str(value) && value.trim().length > 0 && value.length <= 1000 && !/[\x00-\x1f]/.test(value);
 }
-function isHttpsVerificationUrl(value: unknown): boolean {
+function isHttpsVerificationUrl(value: unknown, registrationVerified = false): boolean {
   if (!str(value) || value.length > 2048) return false;
   try {
+    // Preserve the audited evidence URI for Java's equality check; WHATWG serialization can change it.
+    if (registrationVerified) return isSafeRegistrationUrl(value);
     const url = new URL(value);
     return (
       url.protocol === "https:" &&
@@ -92,8 +95,17 @@ export function validateEditorialCommand(
   const action = value.action as (typeof actions)[number];
   const common = ["action", "expectedVersion", "expectedRevision", "reason"];
   if (action === "APPROVE") {
-    exactKeys(value, [...common, "verificationUrl", "category"]);
-    if (!isHttpsVerificationUrl(value.verificationUrl) || !categories.includes(value.category as string))
+    exactKeys(value, [
+      ...common,
+      "verificationUrl",
+      "category",
+      ...(Object.hasOwn(value, "registrationVerified") ? ["registrationVerified"] : []),
+    ]);
+    if (Object.hasOwn(value, "registrationVerified") && value.registrationVerified !== true) fail("INVALID_REQUEST");
+    if (
+      !isHttpsVerificationUrl(value.verificationUrl, value.registrationVerified === true) ||
+      !categories.includes(value.category as string)
+    )
       fail("INVALID_REQUEST");
   } else if (action === "CORRECT") {
     exactKeys(value, [...common, "correction"]);
@@ -118,7 +130,9 @@ export function editorialB1Enabled(env: NodeJS.ProcessEnv = process.env): boolea
     isApprovedStagingDeployment(env) &&
     env.EDITORIAL_B1_ENABLED === "enabled" &&
     env.DISCOVERY_STAGING_SMOKE_ENABLED !== "enabled" &&
-    env.EDITORIAL_ENGINE_REVIEWED_SHA === "eb4f4f5604a27ec410cdb5342ea5ef89a8b4378c"
+    (env.EDITORIAL_ENGINE_REVIEWED_SHA === "eb4f4f5604a27ec410cdb5342ea5ef89a8b4378c" ||
+      (env.EDITORIAL_REGISTRATION_ENABLED === "enabled" &&
+        env.EDITORIAL_ENGINE_REVIEWED_SHA === "fd593be3d44c48080fd211c2b390e0a055133e3a"))
   );
 }
 
@@ -257,6 +271,7 @@ export async function handleEditorialB1(
 ): Promise<Response> {
   try {
     const config = editorialConfig(deps.env);
+    const registrationContract = deps.env.EDITORIAL_REGISTRATION_ENABLED === "enabled";
     if ((operation !== "import" && !isUuid(candidateId)) || (operation === "import" && candidateId !== null))
       fail("INVALID_REQUEST");
     validateRequest(request, operation, deps.env);
@@ -270,6 +285,13 @@ export async function handleEditorialB1(
         rawBody = await bounded(request, 16384);
         const payload = validateEditorialCommand(JSON.parse(rawBody));
         action = payload.action;
+        if (
+          registrationContract &&
+          ((action === "APPROVE" && payload.registrationVerified !== true) ||
+            (action === "CORRECT" &&
+              (!isRecord(payload.correction) || !Object.hasOwn(payload.correction, "registration"))))
+        )
+          fail("INVALID_REQUEST");
       } else {
         if (!/^(application\/json|text\/csv)(?:;\s*charset=utf-8)?$/i.test(type)) fail("INVALID_REQUEST");
         reason = request.headers.get("x-editorial-reason") ?? "";
@@ -326,7 +348,12 @@ export async function handleEditorialB1(
       return respond({ code: result.code }, upstream.status);
     }
     if (upstream.status !== 200) fail("INCOMPATIBLE_CONTRACT");
-    return respond(operation === "inspect" ? normalizeInspection(result, candidateId!) : normalizeReceipt(result), 200);
+    if (operation === "inspect") {
+      const inspection = normalizeInspection(result, candidateId!);
+      if (registrationContract && !inspection.registrationSupported) fail("INCOMPATIBLE_CONTRACT");
+      return respond(inspection, 200);
+    }
+    return respond(normalizeReceipt(result), 200);
   } catch (error) {
     const err =
       error instanceof EditorialBffError

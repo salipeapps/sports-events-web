@@ -82,3 +82,11 @@ describe("public catalogue activation", () => {
     expect(getPublicCatalogConfig({ ...remote, ...change })).toBeNull();
   });
 });
+
+it("selects v2 explicitly in STAGING and fails closed for invalid or PROD versions", () => {
+  expect(getPublicCatalogConfig({ ...remote, PUBLIC_CATALOG_CONTRACT_VERSION: "2" })).toMatchObject({
+    contractVersion: 2,
+  });
+  expect(getPublicCatalogConfig({ ...remote, PUBLIC_CATALOG_CONTRACT_VERSION: "v2" })).toBeNull();
+  expect(getPublicCatalogConfig({ ...remote, APP_ENV: "production", PUBLIC_CATALOG_CONTRACT_VERSION: "2" })).toBeNull();
+});

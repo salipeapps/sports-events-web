@@ -91,7 +91,12 @@ createServer(async (request, response) => {
     reset(request.url.split("/").at(-1));
     return reply({ ok: true });
   }
-  if (request.url !== "/rest/v1/rpc/catalog_occurrences_v1" || request.method !== "POST") return reply({}, 404);
+  const version = request.url === "/rest/v1/rpc/catalog_occurrences_v2" ? 2 : 1;
+  if (
+    !["/rest/v1/rpc/catalog_occurrences_v1", "/rest/v1/rpc/catalog_occurrences_v2"].includes(request.url) ||
+    request.method !== "POST"
+  )
+    return reply({}, 404);
   lastHeaders = {
     authorization: request.headers.authorization ?? null,
     cookie: request.headers.cookie ?? null,
@@ -144,5 +149,17 @@ createServer(async (request, response) => {
     offset + query.limit < eligible.length
       ? Buffer.from(JSON.stringify({ context, offset: offset + query.limit })).toString("base64url")
       : null;
-  reply({ contractVersion: 1, items, nextCursor });
+  if (version === 2)
+    items.forEach((item, index) => {
+      delete item.registrationUrl;
+      item.contractVersion = 2;
+      item.sourceUrl = "https://example.org/activity";
+      item.registration = [
+        { method: "WEB", destination: "https://example.org/book", action: "OPEN_HTTPS" },
+        { method: "WHATSAPP", destination: "+34600111222", action: "COPY_NUMBER" },
+        { method: "PHONE", destination: "+34600111333", action: "CALL" },
+        { method: "EMAIL", destination: "reservas@example.org", action: "COMPOSE_EMAIL" },
+      ][index % 4];
+    });
+  reply({ contractVersion: version, items, nextCursor });
 }).listen(3122, "127.0.0.1");

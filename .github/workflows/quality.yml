@@ -82,6 +82,9 @@ jobs:
       - name: Public catalogue (labelled local RPC fixtures, no public activation)
         run: npm run test:e2e -- --config playwright.catalog.config.ts
 
+      - name: Verified multichannel registration (labelled local RPC fixtures)
+        run: npm run test:e2e -- --config playwright.registration.config.ts
+
       - name: Upload browser traces and screenshots on failure
         if: failure()
         uses: actions/upload-artifact@v4

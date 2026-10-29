@@ -30,6 +30,7 @@ export interface EditorialData {
     transportCost: string;
   }[];
   registrationUri: string | null;
+  registration?: import("./registration").OrganizerRegistration | null;
   activityLanguage: string | null;
 }
 
@@ -46,6 +47,7 @@ export interface EditorialInspection {
   source: { id: string; name: string; url: string | null; observedAt: string };
   publicationId: string | null;
   publicationStatus: string | null;
+  registrationSupported?: boolean;
   conflictCount: number;
   moreConflicts: boolean;
   conflicts: { id: string; fieldPath: string; sourceUrl: string | null; observedAt: string }[];

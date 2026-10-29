@@ -1,4 +1,5 @@
 import "server-only";
+import { decodePublicRegistration, isSafeRegistrationUrl } from "@/domain/registration";
 
 import { isCatalogInstant } from "@/domain/publicCatalog";
 
@@ -154,14 +155,17 @@ function price(value: unknown): PublicPrice {
   };
 }
 
-function occurrence(value: unknown): PublicOccurrence & {
+function occurrence(
+  value: unknown,
+  version: 1 | 2,
+): PublicOccurrence & {
   status: "upcoming" | "in_progress";
   lastVerifiedAt: string;
   verifiedUntil: string;
 } {
   const item = record(value);
   // Only explicitly public fields are reconstructed; never spread provider objects into the page.
-  if (item.contractVersion !== 1 || item.timeZone !== "Europe/Madrid" || !uuid.test(text(item.id)))
+  if (item.contractVersion !== version || item.timeZone !== "Europe/Madrid" || !uuid.test(text(item.id)))
     return incompatible();
   const startInstant = instant(item.startInstant);
   const endInstant = item.endInstant === null ? null : instant(item.endInstant);
@@ -177,7 +181,13 @@ function occurrence(value: unknown): PublicOccurrence & {
     startInstant,
     endInstant,
     status,
-    registrationUrl: registrationUrl(item.registrationUrl),
+    registrationUrl: version === 1 ? registrationUrl(item.registrationUrl) : null,
+    ...(version === 2
+      ? {
+          registration: decodePublicRegistration(item.registration),
+          sourceUrl: isSafeRegistrationUrl(item.sourceUrl) ? item.sourceUrl : incompatible(),
+        }
+      : {}),
     activityLanguage: nullableText(item.activityLanguage, 100),
     category: enumValue(item.category, [
       "yoga",
@@ -216,10 +226,10 @@ export function validateCatalogQuery(query: CatalogQuery) {
     throw new CatalogReadError("INVALID_REQUEST");
 }
 
-export function decodeCatalogPage(value: unknown, query: CatalogQuery, now: Date): CatalogPage {
+export function decodeCatalogPage(value: unknown, query: CatalogQuery, now: Date, version: 1 | 2 = 1): CatalogPage {
   const data = record(value);
-  if (data.contractVersion !== 1) return incompatible();
-  const items = array(data.items, query.limit, occurrence);
+  if (data.contractVersion !== version) return incompatible();
+  const items = array(data.items, query.limit, (value) => occurrence(value, version));
   const nextCursor = data.nextCursor === null ? null : text(data.nextCursor, 2048);
   if (nextCursor !== null && (!cursorPattern.test(nextCursor) || nextCursor === query.cursor || items.length === 0))
     return incompatible();
@@ -286,7 +296,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
 /** H2 public RPC contract, verified directly in STAGING by Engine #139. */
 export class SupabasePublicCatalogRepository implements PublicCatalogRepository {
   constructor(
-    private readonly config: { url: string; key: string },
+    private readonly config: { url: string; key: string; contractVersion?: 1 | 2 },
     private readonly request: typeof fetch = fetch,
     private readonly clock: () => Date = () => new Date(),
   ) {
@@ -312,24 +322,27 @@ export class SupabasePublicCatalogRepository implements PublicCatalogRepository 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
-      const response = await this.request(`${this.config.url}/rest/v1/rpc/catalog_occurrences_v1`, {
-        method: "POST",
-        headers: {
-          apikey: this.config.key,
-          "Content-Type": "application/json",
-          "Accept-Profile": "api",
-          "Content-Profile": "api",
+      const response = await this.request(
+        `${this.config.url}/rest/v1/rpc/catalog_occurrences_v${this.config.contractVersion ?? 1}`,
+        {
+          method: "POST",
+          headers: {
+            apikey: this.config.key,
+            "Content-Type": "application/json",
+            "Accept-Profile": "api",
+            "Content-Profile": "api",
+          },
+          body: JSON.stringify(query),
+          cache: "no-store",
+          redirect: "error",
+          signal: controller.signal,
         },
-        body: JSON.stringify(query),
-        cache: "no-store",
-        redirect: "error",
-        signal: controller.signal,
-      });
+      );
       if (!response.ok) {
         await response.body?.cancel();
         throw new CatalogReadError(response.status === 400 ? "INVALID_REQUEST" : "READ_UNAVAILABLE");
       }
-      return decodeCatalogPage(await readBoundedJson(response), query, this.clock());
+      return decodeCatalogPage(await readBoundedJson(response), query, this.clock(), this.config.contractVersion ?? 1);
     } catch (error) {
       if (error instanceof CatalogReadError) throw error;
       throw new CatalogReadError("READ_UNAVAILABLE");

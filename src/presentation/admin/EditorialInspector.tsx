@@ -1,5 +1,6 @@
 "use client";
 
+import { isRegistrationDestination, isSafeRegistrationUrl, type RegistrationMethod } from "@/domain/registration";
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
 import type { AdminRole } from "@/domain/adminAccess";
@@ -60,6 +61,11 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
   const [category, setCategory] = useState("");
   const [organizerId, setOrganizerId] = useState("");
   const [registrationUri, setRegistrationUri] = useState("");
+  const [registrationMethod, setRegistrationMethod] = useState<RegistrationMethod | "">("");
+  const [destination, setDestination] = useState("");
+  const [evidenceUrl, setEvidenceUrl] = useState("");
+  const [organizerPublished, setOrganizerPublished] = useState(false);
+  const [registrationVerified, setRegistrationVerified] = useState(false);
   const [locationConfirmed, setLocationConfirmed] = useState(false);
   // Do not change the idempotency key for an uncertain outcome and unchanged payload.
   const pending = useRef<{ fingerprint: string; key: string } | null>(null);
@@ -86,6 +92,12 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
           setCandidate(value);
           setOrganizerId(value.data.organizerId ?? "");
           setRegistrationUri(value.data.registrationUri ?? "");
+          setRegistrationMethod(value.data.registration?.method ?? "");
+          setDestination(value.data.registration?.destination ?? "");
+          setEvidenceUrl(value.data.registration?.evidenceUrl ?? "");
+          setOrganizerPublished(value.data.registration?.organizerPublished ?? false);
+          setVerificationUrl(value.data.registration?.evidenceUrl ?? "");
+          setRegistrationVerified(false);
           setError("");
         }
       })
@@ -109,15 +121,29 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       reason: reason.trim(),
     };
     if (action === "APPROVE") {
+      if (candidate.registrationSupported) {
+        if (!registrationVerified || !candidate.data.registration?.organizerPublished) return;
+        payload.registrationVerified = true;
+      }
       payload.verificationUrl = verificationUrl;
       payload.category = category;
     }
     if (action === "CORRECT") {
       if (!locationConfirmed || !organizerId || candidate.data.locations.length === 0) return;
+      if (
+        candidate.registrationSupported &&
+        (!isRegistrationDestination(registrationMethod, destination) || !isSafeRegistrationUrl(evidenceUrl))
+      ) {
+        setError("Revisa el canal, destino y URL de evidencia pública.");
+        return;
+      }
       payload.correction = {
         ...candidate.data,
         organizerId,
-        registrationUri,
+        registrationUri: candidate.registrationSupported ? candidate.data.registrationUri : registrationUri,
+        ...(candidate.registrationSupported
+          ? { registration: { method: registrationMethod, destination, evidenceUrl, organizerPublished } }
+          : {}),
         locations: candidate.data.locations.map((location) => ({ ...location, verified: true })),
       };
     }
@@ -151,6 +177,12 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       setCandidate(updated);
       setOrganizerId(updated.data.organizerId ?? "");
       setRegistrationUri(updated.data.registrationUri ?? "");
+      setRegistrationMethod(updated.data.registration?.method ?? "");
+      setDestination(updated.data.registration?.destination ?? "");
+      setEvidenceUrl(updated.data.registration?.evidenceUrl ?? "");
+      setOrganizerPublished(updated.data.registration?.organizerPublished ?? false);
+      setVerificationUrl(updated.data.registration?.evidenceUrl ?? "");
+      setRegistrationVerified(false);
       setLocationConfirmed(false);
       setReason("");
     } catch (cause) {
@@ -219,7 +251,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
             <dd>
               {candidate.data.registrationUri ? (
                 <a href={candidate.data.registrationUri} target="_blank" rel="noopener noreferrer">
-                  Consultar inscripción
+                  Consultar información de inscripción
                 </a>
               ) : (
                 "Por confirmar"
@@ -338,15 +370,71 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                 {candidate.moreOrganizers && (
                   <p>La lista es parcial. Si no aparece el organizador, solicita su selección al operador.</p>
                 )}
-                <label htmlFor="editorial-registration">Enlace de inscripción comprobado</label>
-                <input
-                  id="editorial-registration"
-                  type="url"
-                  value={registrationUri}
-                  onChange={(event) => setRegistrationUri(event.target.value)}
-                  disabled={busy}
-                  required
-                />
+                {candidate.registrationSupported ? (
+                  <>
+                    <label htmlFor="editorial-registration-method">Canal de inscripción</label>
+                    <select
+                      id="editorial-registration-method"
+                      value={registrationMethod}
+                      required
+                      disabled={busy}
+                      onChange={(e) => {
+                        setRegistrationMethod(e.target.value as RegistrationMethod);
+                        setDestination("");
+                        setOrganizerPublished(false);
+                      }}
+                    >
+                      <option value="">Selecciona el canal publicado</option>
+                      <option value="WEB">Web</option>
+                      <option value="WHATSAPP">WhatsApp</option>
+                      <option value="PHONE">Teléfono</option>
+                      <option value="EMAIL">Correo electrónico</option>
+                    </select>
+                    <label htmlFor="editorial-registration-destination">Destino de inscripción publicado</label>
+                    <input
+                      id="editorial-registration-destination"
+                      required
+                      disabled={busy}
+                      value={destination}
+                      onChange={(e) => setDestination(e.target.value)}
+                      type={registrationMethod === "WEB" ? "url" : registrationMethod === "EMAIL" ? "email" : "tel"}
+                      pattern={["WHATSAPP", "PHONE"].includes(registrationMethod) ? "[+][1-9][0-9]{6,14}" : undefined}
+                    />
+                    <small>
+                      WhatsApp y teléfono: formato internacional E.164. No se generarán enlaces de WhatsApp.
+                    </small>
+                    <label htmlFor="editorial-registration-evidence">URL de la evidencia de inscripción</label>
+                    <input
+                      id="editorial-registration-evidence"
+                      type="url"
+                      required
+                      disabled={busy}
+                      value={evidenceUrl}
+                      onChange={(e) => setEvidenceUrl(e.target.value)}
+                    />
+                    <label>
+                      <input
+                        type="checkbox"
+                        disabled={busy}
+                        checked={organizerPublished}
+                        onChange={(e) => setOrganizerPublished(e.target.checked)}
+                      />
+                      El organizador publica este canal y destino para inscripción y autoriza su uso público.
+                    </label>
+                  </>
+                ) : (
+                  <>
+                    <label htmlFor="editorial-registration">Enlace de inscripción comprobado</label>
+                    <input
+                      id="editorial-registration"
+                      type="url"
+                      value={registrationUri}
+                      onChange={(event) => setRegistrationUri(event.target.value)}
+                      disabled={busy}
+                      required
+                    />
+                  </>
+                )}
                 <label>
                   <input
                     type="checkbox"
@@ -360,8 +448,28 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                 <p>Guardar esta revisión retira cualquier publicación activa y exige una nueva aprobación.</p>
               </>
             )}
+            {candidate.registrationSupported && candidate.data.registration && (
+              <p>
+                Inscripción: {candidate.data.registration.method} · {candidate.data.registration.destination}.{" "}
+                <a href={candidate.data.registration.evidenceUrl} target="_blank" rel="noopener noreferrer">
+                  Ver evidencia del organizador
+                </a>
+              </p>
+            )}
             {action === "APPROVE" && (
               <>
+                {candidate.registrationSupported && (
+                  <label>
+                    <input
+                      type="checkbox"
+                      required
+                      checked={registrationVerified}
+                      disabled={busy || !candidate.data.registration?.organizerPublished}
+                      onChange={(e) => setRegistrationVerified(e.target.checked)}
+                    />
+                    He verificado ahora el canal, destino y autorización de publicación del organizador.
+                  </label>
+                )}
                 <label htmlFor="editorial-url">URL oficial verificada (HTTPS, sin query)</label>
                 <input
                   id="editorial-url"

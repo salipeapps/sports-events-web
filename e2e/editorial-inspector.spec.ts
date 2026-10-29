@@ -207,3 +207,94 @@ test("shows the known end date for a candidate without scheduled times", async (
   await expect(page.getByText("2030-05-01", { exact: true })).toBeVisible();
   await expect(page.getByText("2030-05-03", { exact: true })).toBeVisible();
 });
+
+for (const evidenceUrl of ["https://example.org", "https://example.org/", "https://example.org/a/../booking"]) {
+  test(`corrects WhatsApp and preserves evidence on refresh: ${evidenceUrl}`, async ({ page }) => {
+    let inspection = {
+      ...candidate,
+      registrationSupported: true,
+      data: {
+        ...candidate.data,
+        registration: null as null | {
+          method: string;
+          destination: string;
+          evidenceUrl: string;
+          organizerPublished: boolean;
+        },
+      },
+    };
+    const payloads: Record<string, unknown>[] = [];
+    await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
+    await page.route("**" + inspectionPath + "/commands", (route) => {
+      const payload = route.request().postDataJSON();
+      payloads.push(payload);
+      if (payload.action === "CORRECT") inspection = { ...inspection, revision: 1, data: payload.correction };
+      return route.fulfill({ json: receipt(route.request().headers()["idempotency-key"]) });
+    });
+    await page.goto("/admin/editorial/" + candidateId);
+    await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT");
+    await page.getByLabel("Motivo obligatorio").fill("Canal y número publicados por el organizador");
+    await page.getByLabel("Canal de inscripción", { exact: true }).selectOption("WHATSAPP");
+    const destination = page.getByLabel("Destino de inscripción publicado", { exact: true });
+    await expect(destination).toHaveAttribute("type", "tel");
+    await destination.fill("+34600111222");
+    await page.getByLabel("URL de la evidencia de inscripción").fill(evidenceUrl);
+    await page
+      .getByLabel("El organizador publica este canal y destino para inscripción y autoriza su uso público.")
+      .check();
+    await page.getByLabel("He comprobado todas las ubicaciones mostradas en la convocatoria oficial.").check();
+    await page.getByRole("button", { name: "Confirmar decisión" }).click();
+    await expect(page.getByText("Inscripción: WHATSAPP", { exact: false })).toBeVisible();
+    expect((payloads[0].correction as { registration: unknown }).registration).toEqual({
+      method: "WHATSAPP",
+      destination: "+34600111222",
+      evidenceUrl: evidenceUrl,
+      organizerPublished: true,
+    });
+    expect(JSON.stringify(payloads)).not.toContain("wa.me");
+    await expect(page.getByLabel("URL oficial verificada (HTTPS, sin query)")).toHaveCount(0);
+    await page.getByLabel("Decisión", { exact: true }).selectOption("APPROVE");
+    await expect(page.getByLabel("URL oficial verificada (HTTPS, sin query)")).toHaveValue(evidenceUrl);
+    await page.getByLabel("Motivo obligatorio").fill("Verificada la autorización pública ahora");
+    await page.getByLabel("Categoría", { exact: true }).selectOption("yoga");
+    await page.getByRole("button", { name: "Confirmar decisión" }).click();
+    expect(payloads).toHaveLength(1);
+    await page
+      .getByLabel("He verificado ahora el canal, destino y autorización de publicación del organizador.")
+      .check();
+    await page.getByRole("button", { name: "Confirmar decisión" }).click();
+    await expect.poll(() => payloads.length).toBe(2);
+    expect(payloads[1]).toMatchObject({
+      action: "APPROVE",
+      registrationVerified: true,
+      verificationUrl: evidenceUrl,
+    });
+  });
+}
+
+test("initial inspection prefills the exact bare-origin evidence for approval", async ({ page }) => {
+  const evidenceUrl = "https://example.org";
+  const inspection = {
+    ...candidate,
+    registrationSupported: true,
+    data: {
+      ...candidate.data,
+      registration: { method: "WHATSAPP", destination: "+34600111222", evidenceUrl, organizerPublished: true },
+    },
+  };
+  const payloads: Record<string, unknown>[] = [];
+  await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
+  await page.route("**" + inspectionPath + "/commands", (route) => {
+    payloads.push(route.request().postDataJSON());
+    return route.fulfill({ json: receipt(route.request().headers()["idempotency-key"]) });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("APPROVE");
+  await expect(page.getByLabel("URL oficial verificada (HTTPS, sin query)")).toHaveValue(evidenceUrl);
+  await page.getByLabel("Motivo obligatorio").fill("Verified the exact organizer evidence");
+  await page.getByLabel("Categoría", { exact: true }).selectOption("yoga");
+  await page.getByLabel("He verificado ahora el canal, destino y autorización de publicación del organizador.").check();
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect.poll(() => payloads.length).toBe(1);
+  expect(payloads[0]).toMatchObject({ action: "APPROVE", verificationUrl: evidenceUrl, registrationVerified: true });
+});
