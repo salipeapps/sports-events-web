@@ -70,7 +70,6 @@ const rejected = {
   reviewerRef: actor,
   reviewedAt: "2026-10-14T12:00:00Z",
 };
-const promoted = { candidateId: id, reviewId, sourceId: key, reusedSource: false, promotedAt: "2026-10-14T12:00:00Z" };
 function response(body: unknown = rejected, status = 200, headers: Record<string, string> = {}) {
   return new Response(JSON.stringify(body), {
     status,

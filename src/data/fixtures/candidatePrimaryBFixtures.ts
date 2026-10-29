@@ -1,7 +1,5 @@
 import { known, unknown, type AdminCandidate } from "@/domain/admin";
 import {
-  buenoTournamentExtracted,
-  eventDetails,
   leTarotExtracted,
   leTarotFinal,
   penyagolosaExtracted,
