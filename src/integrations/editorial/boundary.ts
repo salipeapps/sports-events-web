@@ -1,6 +1,7 @@
 import "server-only";
 
 import { randomUUID } from "node:crypto";
+import { isSafeRegistrationUrl } from "@/domain/registration";
 import { isApprovedStagingDeployment } from "@/integrations/discovery/readApi";
 import { getDiscoveryAccessToken, type DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
 import { EditorialInspectionError, normalizeInspection } from "./inspection";
@@ -59,9 +60,11 @@ function isPositiveVersion(value: unknown): value is number {
 function isValidReason(value: unknown): boolean {
   return str(value) && value.trim().length > 0 && value.length <= 1000 && !/[\x00-\x1f]/.test(value);
 }
-function isHttpsVerificationUrl(value: unknown): boolean {
+function isHttpsVerificationUrl(value: unknown, registrationVerified = false): boolean {
   if (!str(value) || value.length > 2048) return false;
   try {
+    // Preserve the audited evidence URI for Java's equality check; WHATWG serialization can change it.
+    if (registrationVerified) return isSafeRegistrationUrl(value);
     const url = new URL(value);
     return (
       url.protocol === "https:" &&
@@ -99,7 +102,10 @@ export function validateEditorialCommand(
       ...(Object.hasOwn(value, "registrationVerified") ? ["registrationVerified"] : []),
     ]);
     if (Object.hasOwn(value, "registrationVerified") && value.registrationVerified !== true) fail("INVALID_REQUEST");
-    if (!isHttpsVerificationUrl(value.verificationUrl) || !categories.includes(value.category as string))
+    if (
+      !isHttpsVerificationUrl(value.verificationUrl, value.registrationVerified === true) ||
+      !categories.includes(value.category as string)
+    )
       fail("INVALID_REQUEST");
   } else if (action === "CORRECT") {
     exactKeys(value, [...common, "correction"]);

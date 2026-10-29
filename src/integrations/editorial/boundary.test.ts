@@ -337,3 +337,68 @@ it("never downgrades the explicitly selected registration contract to a legacy E
   );
   expect((await ctx.run("inspect")).status).toBe(200);
 });
+
+describe("registration approval preserves the saved evidence URI", () => {
+  it.each(["https://example.org", "https://example.org/", "https://EXAMPLE.org", "https://example.org/a/../booking"])(
+    "forwards the exact inspected evidence URL: %s",
+    async (evidenceUrl) => {
+      const ctx = setup("reviewer", {
+        ...env,
+        EDITORIAL_REGISTRATION_ENABLED: "enabled",
+        EDITORIAL_ENGINE_REVIEWED_SHA: "fd593be3d44c48080fd211c2b390e0a055133e3a",
+      });
+      ctx.fetcher.mockResolvedValueOnce(
+        upstream({
+          ...inspectionFixture,
+          data: {
+            ...inspectionFixture.data,
+            registration: { method: "WHATSAPP", destination: "+34600111222", evidenceUrl, organizerPublished: true },
+          },
+        }),
+      );
+      const inspectionResponse = await ctx.run("inspect");
+      expect(inspectionResponse.status).toBe(200);
+      const inspection = await inspectionResponse.json();
+      expect(inspection.data.registration.evidenceUrl).toBe(evidenceUrl);
+      const payload = {
+        ...approve,
+        registrationVerified: true,
+        verificationUrl: inspection.data.registration.evidenceUrl,
+      };
+      const response = await ctx.run("command", request("command", payload));
+      expect(response.status).toBe(200);
+      // Java compares verificationUrl with the stored evidence URI: do not normalize either payload or replay.
+      expect(ctx.fetcher.mock.calls[1][1]?.body).toBe(JSON.stringify(payload));
+      expect(JSON.parse(ctx.fetcher.mock.calls[1][1]?.body as string).verificationUrl).toBe(evidenceUrl);
+    },
+  );
+
+  it.each([
+    "http://example.org/",
+    "https://user:pass@example.org/",
+    "https://example.org:443/",
+    "https://example.org/?tracking=yes",
+    "https://example.org/#fragment",
+    "https://127.0.0.1/",
+    "https://999.999.999.999/",
+    "https://example.123/",
+    "https://example.internal/",
+    "https://example.org/%2e%2e/",
+    "https://example.org/123456789",
+    "https://example.org/abcdefghijklmnopqrstuvwxyz0123456789",
+    "https://example.org/token",
+  ])("rejects unsafe attested evidence before dispatch: %s", async (verificationUrl) => {
+    const ctx = setup();
+    expect(
+      (await ctx.run("command", request("command", { ...approve, registrationVerified: true, verificationUrl })))
+        .status,
+    ).toBe(400);
+    expect(ctx.fetcher).not.toHaveBeenCalled();
+  });
+
+  it("retains the legacy canonical URL policy without registration attestation", () => {
+    expect(() => validateEditorialCommand({ ...approve, verificationUrl: "https://example.org" })).toThrow(
+      "INVALID_REQUEST",
+    );
+  });
+});
