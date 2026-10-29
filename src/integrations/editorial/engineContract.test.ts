@@ -27,3 +27,25 @@ if (process.env.EDITORIAL_ENGINE_CONTRACT_FILE) {
     expect(() => normalizeInspection({ data: { title: "Incomplete" } }, "missing")).toThrow();
   });
 }
+
+if (process.env.REGISTRATION_ENGINE_CONTRACT_DIR) {
+  it.each(["WEB", "WHATSAPP", "PHONE", "EMAIL"])("consumes the actual PG17 v2 %s projection", (method) => {
+    const file = process.env.REGISTRATION_ENGINE_CONTRACT_DIR + "/" + method + ".json";
+    const captured = JSON.parse(readFileSync(file, "utf8"));
+    const item = captured.item;
+    const query = {
+      desde: new Date(Date.parse(item.startInstant) - 1000).toISOString(),
+      hasta: new Date(Date.parse(item.startInstant) + 3600000).toISOString(),
+      cursor: null,
+      limit: 24,
+    };
+    const page = decodeCatalogPage(
+      { contractVersion: 2, items: [item], nextCursor: null },
+      query,
+      new Date(item.lastVerifiedAt),
+      2,
+    );
+    expect(page.items[0].registration?.method).toBe(method);
+    expect(JSON.stringify(page)).not.toMatch(/evidenceUrl|organizerPublished|wa[.]me/);
+  });
+}

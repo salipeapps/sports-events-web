@@ -1,3 +1,4 @@
+import { isRegistrationDestination, isSafeRegistrationUrl } from "@/domain/registration";
 import type { EditorialData, EditorialInspection } from "@/domain/editorial";
 import { isCatalogInstant } from "@/domain/publicCatalog";
 
@@ -135,6 +136,27 @@ function data(value: unknown): EditorialData {
         transportCost: enumeration(item.transportCost, ["INCLUDED", "EXCLUDED", "NOT_APPLICABLE", "UNKNOWN"]),
       };
     }),
+    ...(Object.hasOwn(raw, "registration")
+      ? {
+          registration: (() => {
+            if (raw.registration === null) return null;
+            const r = record(raw.registration);
+            if (
+              Object.keys(r).length !== 4 ||
+              !isRegistrationDestination(r.method, r.destination) ||
+              !isSafeRegistrationUrl(r.evidenceUrl) ||
+              typeof r.organizerPublished !== "boolean"
+            )
+              invalid();
+            return {
+              method: r.method,
+              destination: r.destination as string,
+              evidenceUrl: r.evidenceUrl as string,
+              organizerPublished: r.organizerPublished as boolean,
+            };
+          })(),
+        }
+      : {}),
     registrationUri: url(raw.registrationUri),
     activityLanguage: nullableText(raw.activityLanguage, 50),
   };
@@ -161,6 +183,7 @@ export function normalizeInspection(value: unknown, candidateId: string): Editor
     status: text(raw.status, 45),
     title: details.title,
     data: details,
+    registrationSupported: Object.hasOwn(details, "registration"),
     organizerName: nullableText(raw.organizerName),
     organizers: list(raw.organizers, 100, (value) => {
       const item = record(value);

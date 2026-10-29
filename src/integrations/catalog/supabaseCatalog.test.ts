@@ -251,3 +251,55 @@ describe("H2 public RPC adapter (unit fixtures; real PostgREST tested across rep
     }
   });
 });
+
+describe("verified registration v2", () => {
+  const instruction = { method: "WHATSAPP", destination: "+34600111222", action: "COPY_NUMBER" };
+  const item = () =>
+    occurrence({ contractVersion: 2, registration: instruction, sourceUrl: "https://example.org/activity" });
+  it("reads only the explicit v2 endpoint without a fallback", async () => {
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ contractVersion: 2, items: [item()], nextCursor: null }));
+    const repository = new SupabasePublicCatalogRepository(
+      { url: "https://test.supabase.co", key: "sb_publishable_test", contractVersion: 2 },
+      request,
+      () => now,
+    );
+    expect((await repository.list(query)).items[0]).toMatchObject({
+      registration: instruction,
+      registrationUrl: null,
+      sourceUrl: "https://example.org/activity",
+    });
+    expect(request.mock.calls[0][0]).toBe("https://test.supabase.co/rest/v1/rpc/catalog_occurrences_v2");
+    request.mockResolvedValue(new Response(null, { status: 404 }));
+    await expect(repository.list(query)).rejects.toThrow("READ_UNAVAILABLE");
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+  it.each([
+    { ...instruction, action: "OPEN_HTTPS" },
+    { ...instruction, destination: "https://wa.me/34600111222" },
+    { ...instruction, destination: "600111222" },
+    { ...instruction, evidenceUrl: "https://example.org/private" },
+    { method: "WEB", destination: "https://example.org/book?token=private", action: "OPEN_HTTPS" },
+    { method: "EMAIL", destination: "person%0d%0a@example.org", action: "COMPOSE_EMAIL" },
+  ])("rejects unsafe or mismatched public instructions: %j", (registration) => {
+    expect(() =>
+      decodeCatalogPage({ contractVersion: 2, items: [{ ...item(), registration }], nextCursor: null }, query, now, 2),
+    ).toThrow();
+  });
+  it("rejects a legacy envelope in v2 and unsafe source navigation", () => {
+    expect(() => decodeCatalogPage(envelope(), query, now, 2)).toThrow();
+    expect(() =>
+      decodeCatalogPage(
+        {
+          contractVersion: 2,
+          items: [{ ...item(), sourceUrl: "https://example.org/?token=private" }],
+          nextCursor: null,
+        },
+        query,
+        now,
+        2,
+      ),
+    ).toThrow();
+  });
+});

@@ -4,7 +4,12 @@ const baseURL = "http://127.0.0.1:3100";
 
 export default defineConfig({
   testDir: "./e2e",
-  testIgnore: ["supabase-auth.spec.ts", "discovery-review.spec.ts", "public-catalog.spec.ts"],
+  testIgnore: [
+    "supabase-auth.spec.ts",
+    "discovery-review.spec.ts",
+    "public-catalog.spec.ts",
+    "registration-public.spec.ts",
+  ],
   timeout: 45_000,
   expect: { timeout: 15_000 },
   fullyParallel: false,

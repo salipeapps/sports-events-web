@@ -27,6 +27,8 @@ export interface PublicPrice {
 }
 
 export interface PublicOccurrence {
+  registration?: import("./registration").PublicRegistration;
+  sourceUrl?: string;
   id: string;
   title: string;
   organizerName: string | null;

@@ -270,3 +270,49 @@ describe("B1 deployment and request constraints", () => {
       expect(() => validateEditorialCommand(payload)).toThrow();
   });
 });
+
+it("requires a boolean explicit registration attestation when present", () => {
+  expect(validateEditorialCommand({ ...approve, registrationVerified: true })).toMatchObject({
+    registrationVerified: true,
+  });
+  for (const registrationVerified of [false, "true", null, 1])
+    expect(() => validateEditorialCommand({ ...approve, registrationVerified })).toThrow();
+  const raw = {
+    ...inspectionFixture,
+    data: {
+      ...inspectionFixture.data,
+      registration: {
+        method: "WHATSAPP",
+        destination: "+34600111222",
+        evidenceUrl: "https://example.org/current",
+        organizerPublished: true,
+      },
+    },
+  };
+  expect(normalizeInspection(raw, id)).toMatchObject({
+    registrationSupported: true,
+    data: { registration: { method: "WHATSAPP" } },
+  });
+  expect(() =>
+    normalizeInspection(
+      { ...raw, data: { ...raw.data, registration: { ...raw.data.registration, destination: "600111222" } } },
+      id,
+    ),
+  ).toThrow();
+});
+
+it("requires the exact coordinated Engine SHA and explicit registration gate", () => {
+  const proposed = { ...env, EDITORIAL_ENGINE_REVIEWED_SHA: "4dc54c237c91b130144b36b9178eb8d89650f3a1" };
+  expect(editorialB1Enabled(proposed)).toBe(false);
+  expect(editorialB1Enabled({ ...proposed, EDITORIAL_REGISTRATION_ENABLED: "enabled" })).toBe(true);
+  expect(editorialB1Enabled({ ...proposed, EDITORIAL_REGISTRATION_ENABLED: "enabled", APP_ENV: "production" })).toBe(
+    false,
+  );
+  expect(
+    editorialB1Enabled({
+      ...proposed,
+      EDITORIAL_REGISTRATION_ENABLED: "enabled",
+      EDITORIAL_ENGINE_REVIEWED_SHA: "unreviewed",
+    }),
+  ).toBe(false);
+});

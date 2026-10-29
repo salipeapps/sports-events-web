@@ -1,3 +1,4 @@
+import { RegistrationAction } from "./RegistrationAction";
 import type { PublicOccurrence, PublicPrice } from "@/domain/publicCatalog";
 
 const startFormatter = new Intl.DateTimeFormat("es-ES", {
@@ -140,7 +141,15 @@ export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence })
           Ficha actualizada{" "}
           <time dateTime={occurrence.updatedAt}>{dateFormatter.format(new Date(occurrence.updatedAt))}</time>
         </small>
-        {occurrence.registrationUrl && (
+        {occurrence.sourceUrl && (
+          <a href={occurrence.sourceUrl} rel="noreferrer">
+            Ver convocatoria
+          </a>
+        )}
+        {occurrence.registration && (
+          <RegistrationAction registration={occurrence.registration} title={occurrence.title} />
+        )}
+        {!occurrence.registration && occurrence.registrationUrl && (
           <a
             href={occurrence.registrationUrl}
             rel="noreferrer"

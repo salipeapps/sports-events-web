@@ -92,7 +92,13 @@ export function validateEditorialCommand(
   const action = value.action as (typeof actions)[number];
   const common = ["action", "expectedVersion", "expectedRevision", "reason"];
   if (action === "APPROVE") {
-    exactKeys(value, [...common, "verificationUrl", "category"]);
+    exactKeys(value, [
+      ...common,
+      "verificationUrl",
+      "category",
+      ...(Object.hasOwn(value, "registrationVerified") ? ["registrationVerified"] : []),
+    ]);
+    if (Object.hasOwn(value, "registrationVerified") && value.registrationVerified !== true) fail("INVALID_REQUEST");
     if (!isHttpsVerificationUrl(value.verificationUrl) || !categories.includes(value.category as string))
       fail("INVALID_REQUEST");
   } else if (action === "CORRECT") {
@@ -118,7 +124,9 @@ export function editorialB1Enabled(env: NodeJS.ProcessEnv = process.env): boolea
     isApprovedStagingDeployment(env) &&
     env.EDITORIAL_B1_ENABLED === "enabled" &&
     env.DISCOVERY_STAGING_SMOKE_ENABLED !== "enabled" &&
-    env.EDITORIAL_ENGINE_REVIEWED_SHA === "eb4f4f5604a27ec410cdb5342ea5ef89a8b4378c"
+    (env.EDITORIAL_ENGINE_REVIEWED_SHA === "eb4f4f5604a27ec410cdb5342ea5ef89a8b4378c" ||
+      (env.EDITORIAL_REGISTRATION_ENABLED === "enabled" &&
+        env.EDITORIAL_ENGINE_REVIEWED_SHA === "4dc54c237c91b130144b36b9178eb8d89650f3a1"))
   );
 }
 
