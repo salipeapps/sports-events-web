@@ -126,7 +126,7 @@ export function editorialB1Enabled(env: NodeJS.ProcessEnv = process.env): boolea
     env.DISCOVERY_STAGING_SMOKE_ENABLED !== "enabled" &&
     (env.EDITORIAL_ENGINE_REVIEWED_SHA === "eb4f4f5604a27ec410cdb5342ea5ef89a8b4378c" ||
       (env.EDITORIAL_REGISTRATION_ENABLED === "enabled" &&
-        env.EDITORIAL_ENGINE_REVIEWED_SHA === "4dc54c237c91b130144b36b9178eb8d89650f3a1"))
+        env.EDITORIAL_ENGINE_REVIEWED_SHA === "fd593be3d44c48080fd211c2b390e0a055133e3a"))
   );
 }
 
@@ -265,6 +265,7 @@ export async function handleEditorialB1(
 ): Promise<Response> {
   try {
     const config = editorialConfig(deps.env);
+    const registrationContract = deps.env.EDITORIAL_REGISTRATION_ENABLED === "enabled";
     if ((operation !== "import" && !isUuid(candidateId)) || (operation === "import" && candidateId !== null))
       fail("INVALID_REQUEST");
     validateRequest(request, operation, deps.env);
@@ -278,6 +279,13 @@ export async function handleEditorialB1(
         rawBody = await bounded(request, 16384);
         const payload = validateEditorialCommand(JSON.parse(rawBody));
         action = payload.action;
+        if (
+          registrationContract &&
+          ((action === "APPROVE" && payload.registrationVerified !== true) ||
+            (action === "CORRECT" &&
+              (!isRecord(payload.correction) || !Object.hasOwn(payload.correction, "registration"))))
+        )
+          fail("INVALID_REQUEST");
       } else {
         if (!/^(application\/json|text\/csv)(?:;\s*charset=utf-8)?$/i.test(type)) fail("INVALID_REQUEST");
         reason = request.headers.get("x-editorial-reason") ?? "";
@@ -334,7 +342,12 @@ export async function handleEditorialB1(
       return respond({ code: result.code }, upstream.status);
     }
     if (upstream.status !== 200) fail("INCOMPATIBLE_CONTRACT");
-    return respond(operation === "inspect" ? normalizeInspection(result, candidateId!) : normalizeReceipt(result), 200);
+    if (operation === "inspect") {
+      const inspection = normalizeInspection(result, candidateId!);
+      if (registrationContract && !inspection.registrationSupported) fail("INCOMPATIBLE_CONTRACT");
+      return respond(inspection, 200);
+    }
+    return respond(normalizeReceipt(result), 200);
   } catch (error) {
     const err =
       error instanceof EditorialBffError

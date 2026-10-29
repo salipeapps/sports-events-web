@@ -302,7 +302,7 @@ it("requires a boolean explicit registration attestation when present", () => {
 });
 
 it("requires the exact coordinated Engine SHA and explicit registration gate", () => {
-  const proposed = { ...env, EDITORIAL_ENGINE_REVIEWED_SHA: "4dc54c237c91b130144b36b9178eb8d89650f3a1" };
+  const proposed = { ...env, EDITORIAL_ENGINE_REVIEWED_SHA: "fd593be3d44c48080fd211c2b390e0a055133e3a" };
   expect(editorialB1Enabled(proposed)).toBe(false);
   expect(editorialB1Enabled({ ...proposed, EDITORIAL_REGISTRATION_ENABLED: "enabled" })).toBe(true);
   expect(editorialB1Enabled({ ...proposed, EDITORIAL_REGISTRATION_ENABLED: "enabled", APP_ENV: "production" })).toBe(
@@ -315,4 +315,25 @@ it("requires the exact coordinated Engine SHA and explicit registration gate", (
       EDITORIAL_ENGINE_REVIEWED_SHA: "unreviewed",
     }),
   ).toBe(false);
+});
+
+it("never downgrades the explicitly selected registration contract to a legacy Engine", async () => {
+  const deployment = {
+    ...env,
+    EDITORIAL_REGISTRATION_ENABLED: "enabled",
+    EDITORIAL_ENGINE_REVIEWED_SHA: "fd593be3d44c48080fd211c2b390e0a055133e3a",
+  };
+  const ctx = setup("admin", deployment);
+  expect((await ctx.run("command", request("command", approve))).status).toBe(400);
+  expect(
+    (await ctx.run("command", request("command", { ...reject, action: "CORRECT", correction: inspectionFixture.data })))
+      .status,
+  ).toBe(400);
+  expect(ctx.fetcher).not.toHaveBeenCalled();
+  ctx.fetcher.mockResolvedValue(upstream(inspectionFixture));
+  expect((await ctx.run("inspect")).status).toBe(503);
+  ctx.fetcher.mockResolvedValue(
+    upstream({ ...inspectionFixture, data: { ...inspectionFixture.data, registration: null } }),
+  );
+  expect((await ctx.run("inspect")).status).toBe(200);
 });

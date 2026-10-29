@@ -10,7 +10,9 @@ CORRECT permite WEB, WHATSAPP, PHONE y EMAIL con destino por tipo, URL de eviden
 confirmación de que el organizador publica canal/destino para inscripción y permite
 su uso público. Guardar sin esa confirmación conserva el candidato no publicable.
 APPROVE exige una nueva confirmación humana y manda registrationVerified:true; Engine
-valida procedencia, sesión, rol, revisión, hash y transición. La Web no decide publicación.
+valida procedencia, sesión, rol, revisión, hash y transición. La Web no decide publicación. Con el modo multicanal seleccionado, el BFF rechaza
+inspecciones de Engine que omitan registration, CORRECT sin ese campo y APPROVE sin
+confirmación explícita; no degrada silenciosamente al contrato editorial anterior.
 La URI heredada se rotula como información y nunca sustituye el objeto explícito.
 
 El catálogo usa por defecto v1. `PUBLIC_CATALOG_CONTRACT_VERSION=2` selecciona solo
