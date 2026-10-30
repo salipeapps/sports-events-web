@@ -27,13 +27,13 @@ El diseño completo está en `docs/staging-deploy-pipeline.md` del Engine.
 - Nombres de fichero `AAAAMMDDHHMMSS_nombre.sql`. No edites un fichero ya aplicado: añade uno nuevo.
 - Nada de SQL por el panel de Supabase en STAGING: el Engine lo detecta como drift y bloquea.
 - Si el código necesita una migración, el código debe tolerar que todavía no esté aplicada, o la
-  migración se fusiona en un PR previo. Opcional: en Vercel, *Deployment Checks* exigiendo
+  migración se fusiona en un PR previo. Opcional: en Vercel, _Deployment Checks_ exigiendo
   `staging-db` antes de promocionar a producción del proyecto STAGING.
 - Retirar algo que use el código desplegado requiere orden expand → contract.
 
 ## Configuración
 
-- Secreto `MOUMEET_ENGINE_DISPATCH_TOKEN`: token *fine-grained* limitado a
+- Secreto `MOUMEET_ENGINE_DISPATCH_TOKEN`: token _fine-grained_ limitado a
   `raulacden/sports-events-engine` con **Actions: Read and write** y nada más. Sin él, el workflow
   solo avisa y el Engine evaluará el commit en su siguiente ejecución.
 
