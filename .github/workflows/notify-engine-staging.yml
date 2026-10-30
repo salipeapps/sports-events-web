@@ -22,10 +22,10 @@ jobs:
     steps:
       - name: Dispatch the Engine STAGING evaluation on develop
         env:
-          GH_TOKEN: ${{ secrets.ENGINE_DISPATCH_TOKEN }}
+          GH_TOKEN: ${{ secrets.MOUMEET_ENGINE_DISPATCH_TOKEN }}
         run: |
           if [[ -z "$GH_TOKEN" ]]; then
-            echo "::warning::ENGINE_DISPATCH_TOKEN is not configured; the Engine will evaluate this commit on its next run."
+            echo "::warning::MOUMEET_ENGINE_DISPATCH_TOKEN is not configured; the Engine will evaluate this commit on its next run."
             exit 0
           fi
           gh api -X POST repos/raulacden/sports-events-engine/actions/workflows/staging-deploy.yml/dispatches \

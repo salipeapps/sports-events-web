@@ -33,7 +33,7 @@ El diseño completo está en `docs/staging-deploy-pipeline.md` del Engine.
 
 ## Configuración
 
-- Secreto `ENGINE_DISPATCH_TOKEN`: token *fine-grained* limitado a
+- Secreto `MOUMEET_ENGINE_DISPATCH_TOKEN`: token *fine-grained* limitado a
   `raulacden/sports-events-engine` con **Actions: Read and write** y nada más. Sin él, el workflow
   solo avisa y el Engine evaluará el commit en su siguiente ejecución.
 
