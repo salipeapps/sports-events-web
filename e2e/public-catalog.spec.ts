@@ -95,3 +95,71 @@ test("tablet layout and an explicit loading state while the public RPC is pendin
   await expect(page.getByRole("heading", { name: "Consultando las próximas actividades" })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });
+
+test("stable detail URL: excursion, HTTPS consultation CTA, withdrawal and unknown ids return 404", async ({
+  page,
+  request,
+}) => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  await page.goto("/");
+  const first = page.getByRole("article").first();
+  await expect(first).toContainText("Destino");
+  await first.getByRole("link", { name: /Ver ficha completa/ }).click();
+  await expect(page).toHaveURL(`/actividades/${id}`);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("TEST · Actividad 01");
+  await expect(page.getByRole("status").first()).toContainText("No son actividades reales");
+  const detail = page.getByRole("article");
+  await expect(detail).toContainText("Salida");
+  await expect(detail).toContainText("Alboraia");
+  await expect(detail).toContainText("Destino");
+  await expect(detail).toContainText("El destino de la excursión no es el punto de encuentro");
+  await expect(detail).toContainText("Precio por confirmar");
+  await expect(detail).toContainText("no significa que sea gratuita");
+  await expect(detail).toContainText("Europe/Madrid");
+  await expect(detail).toContainText("no reserva plazas");
+  expect((await detail.innerText()).indexOf("Salida")).toBeLessThan((await detail.innerText()).indexOf("Destino"));
+  await expect(detail.getByRole("link", { name: /Consultar inscripción/ })).toHaveAttribute(
+    "href",
+    "https://example.org/inscripcion",
+  );
+  await expect(page.getByText(/Reservar|plazas disponibles/)).toHaveCount(0);
+
+  // An editorial SUSPEND removes the row from the projection: the same URL becomes an honest 404.
+  await request.post(`http://127.0.0.1:3122/test/withdraw/${id}`);
+  const withdrawn = await page.reload();
+  expect(withdrawn?.status()).toBe(404);
+  await expect(page.getByRole("heading", { name: "Esta actividad no está disponible" })).toBeVisible();
+  await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute("content", /noindex/);
+  await page.getByRole("link", { name: "Ver la agenda de actividades" }).click();
+  await expect(page.getByRole("article").first()).toContainText("Actividad 02");
+
+  for (const path of [
+    "/actividades/00000000-0000-4000-8000-000000000028", // private draft fixture
+    "/actividades/00000000-0000-4000-8000-000000000031", // historical fixture
+    "/actividades/00000000-0000-4000-8000-0000000000ff", // unknown
+    "/actividades/not-a-uuid",
+  ]) {
+    const response = await page.goto(path);
+    expect(response?.status(), path).toBe(404);
+    await expect(page.getByText(/Borrador privado|Histórica/)).toHaveCount(0);
+  }
+});
+
+test("detail upstream failure is distinct from withdrawal and leaks nothing; mobile has no overflow", async ({
+  page,
+  request,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const path = "/actividades/00000000-0000-4000-8000-000000000002";
+  await page.goto(path);
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("TEST · Actividad 02");
+  await expect(page.getByRole("article")).toContainText("Gratis · por sesión");
+  await expect(page.getByRole("article")).toContainText("TEST · Ropa cómoda y agua");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await request.post("http://127.0.0.1:3122/test/scenario/error");
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "La ficha no está disponible ahora" })).toBeVisible();
+  await expect(page.getByRole("article")).toHaveCount(0);
+  expect(await page.content()).not.toContain("PRIVATE_SQL_TOKEN_DO_NOT_RENDER");
+  await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute("content", /noindex/);
+});

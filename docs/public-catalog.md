@@ -35,7 +35,7 @@ locales · No son actividades reales**. It has no fallback on error.
 
 ## H2 wire mapping shared with Engine #133
 
-Server composition: `app/page.tsx` → `loadPublicCatalog` → server-only
+Server composition: `app/(home)/page.tsx` → `loadPublicCatalog` → server-only
 `SupabasePublicCatalogRepository` → `POST /rest/v1/rpc/catalog_occurrences_v1`.
 Headers are `apikey` with a publishable key and both profile headers set to `api`;
 no bearer/cookie/session forwarding, including for logged-in visitors. No SELECT of
@@ -162,8 +162,49 @@ No migration or private Engine runtime is needed. In the authorized environment:
 
 WEB #50's consumer can be complete with empty inventory. A genuine publish/suspend
 smoke, formal SQL review and backup recovery remain Engine operational gates;
-they do not require invented public activities. Advanced filters (#51), full
-activity detail (#52), SEO and visitor authentication are outside this change.
+they do not require invented public activities. Advanced filters (#51), SEO and
+visitor authentication are outside this change. The detail page is described below (#52).
+
+## Public detail page — Web #52
+
+`/actividades/{uuid}` → `loadPublicOccurrenceOnce` (request-scoped `React.cache`, so
+metadata and page share one call; never a cross-request cache) → server-only
+`SupabasePublicCatalogRepository.get` → `POST /rest/v1/rpc/catalog_occurrence_v{1|2}`
+with body `{id}`, same anonymous headers, `no-store`, redirect rejection, timeout and
+1 MiB bound as the list. A malformed id never reaches the backend.
+
+| Upstream                                    | Web result                                   | HTTP |
+| ------------------------------------------- | -------------------------------------------- | ---- |
+| `{contractVersion,item}` current            | detail                                       | 200  |
+| 404 `PT404 NOT_FOUND`, malformed id, 400    | "Esta actividad no está disponible"          | 404  |
+| item with expired verification / finished   | same not-found page                          | 404  |
+| 401/403/5xx, network, timeout, bad contract | "La ficha no está disponible ahora", noindex | 200  |
+| `PUBLIC_CATALOG_MODE` disabled/incomplete   | same unavailable state, no request           | 200  |
+
+Unknown, withdrawn (SUSPEND), cancelled and expired occurrences are deliberately
+indistinguishable. Only the **detail** RPC maps 404 to not-found; a 404 from the list
+RPC (e.g. v2 not installed) remains an outage. The home and its `loading.tsx` live in
+the `(home)` route group so the detail route is not wrapped in the home Suspense
+boundary: `notFound()` therefore returns a real HTTP 404 instead of a streamed 200.
+
+Content: category, _Próxima_/_En curso_ derived from instants, organizer, Madrid
+interval (DST-safe), every location role with **Salida** before **Destino** and an
+explicit note that the excursion destination is not the meeting point, current price
+options with transport and conditions ("Precio por confirmar" explicitly does not
+mean free), activity language, Spanish level/requirements or "por confirmar",
+verification/validity/update times and, in v2, the organiser source. Registration:
+v2 channel via `RegistrationAction` (WEB/WHATSAPP copy-only/PHONE/EMAIL); v1 HTTPS
+URL labelled **Consultar inscripción**; nothing when absent. The page never says
+_Reservar_ for a generic link, never shows availability and states that bookings are
+handled by the organiser. Structured data is a schema.org `Event` without `offers`
+or availability, escaped against `</script>`, and omitted in `local-rpc` mode, which
+shows the same "Datos de prueba locales" banner as the home.
+
+Offline evidence: unit tests for adapter/provider/presentation and catalogue E2E
+(stable URL from the card, excursion, HTTPS CTA, SUSPEND simulation → 404, draft/
+historical/unknown/malformed ids → 404, upstream failure without leaks, mobile
+overflow) plus registration E2E on the detail page. This does not prove a real
+STAGING publication rendered in a browser; see Web #54 for that gated test.
 
 ## Validation on 26 October 2026
 

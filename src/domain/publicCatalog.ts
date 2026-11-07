@@ -62,8 +62,17 @@ export interface CatalogPage {
 
 export type CatalogResult = ({ status: "ready" } & CatalogPage) | { status: "disabled" | "unavailable" | "invalid" };
 
+/**
+ * Public detail of one projected occurrence. A missing, withdrawn, suspended, cancelled or expired
+ * occurrence is indistinguishable by design: the projection only ever contains publishable rows.
+ */
+export type OccurrenceResult =
+  | { status: "ready"; occurrence: PublicOccurrence & { status: "upcoming" | "in_progress" } }
+  | { status: "not_found" | "disabled" | "unavailable" };
+
 export interface PublicCatalogRepository {
   list(query: CatalogQuery): Promise<CatalogPage>;
+  get(id: string): Promise<PublicOccurrence & { status: "upcoming" | "in_progress" }>;
 }
 
 /** Date.parse alone normalizes impossible dates such as February 30. */
