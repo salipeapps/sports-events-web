@@ -66,6 +66,33 @@ test("an incomplete UUID is rejected before loading candidate data", async ({ pa
   expect(reads.readCount()).toBe(0);
 });
 
+test("a slow first read explains the cold start and an unanswered read can be retried", async ({ page }) => {
+  // Every read is slow and unanswered until the Engine "warms up" (StrictMode may issue the first read twice).
+  let cold = true;
+  await page.route("**" + inspectionPath, async (route) => {
+    if (cold) {
+      await new Promise((resolve) => setTimeout(resolve, 7000));
+      return route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE" } });
+    }
+    return route.fulfill({ json: candidate });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await expect(page.getByRole("status").filter({ hasText: "Consultando candidatura…" })).toContainText(
+    "puede tardar hasta medio minuto",
+  );
+  // Next.js also renders an empty route-announcer alert, so match ours by text.
+  const readAlert = page.getByRole("alert").filter({ hasText: "no ha respondido a tiempo" });
+  await expect(readAlert).toHaveText(
+    "El servicio editorial no ha respondido a tiempo. Puede estar arrancando: vuelve a intentarlo en unos segundos.",
+  );
+  await expect(page.getByText("Puedes reintentar con la misma clave")).toHaveCount(0);
+  cold = false;
+  await page.getByRole("button", { name: "Reintentar lectura" }).click();
+  await expect(page.getByText(candidate.title, { exact: true })).toBeVisible();
+  await expect(readAlert).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Reintentar lectura" })).toHaveCount(0);
+});
+
 test("locks the submitted decision until its receipt is confirmed and the candidate refreshed", async ({ page }) => {
   const reads = await mockInspection(page);
   const requests: { key: string; payload: unknown }[] = [];

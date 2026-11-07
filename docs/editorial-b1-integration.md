@@ -26,7 +26,11 @@ No se muestran fixtures ni se anuncia éxito antes de recibir el recibo del Engi
 - Protección de origen y Host estrictos en POST, token Auth verificado de
   Supabase, JWT del usuario verificado solo server-side sobre HTTPS,
   validación de body/esquema, lectura acotada, sin redirección/caché,
-  12 s timeout y errores públicos sin SQL/secretos.
+  timeout de 12 s en comandos e importaciones y de 25 s en lecturas (el primer
+  GET tras un arranque en frío del Engine tardó ~14 s en STAGING, #54), y errores
+  públicos sin SQL/secretos. Si la lectura no responde, el inspector lo dice como
+  lectura (no como operación incierta), avisa a los 3 s de que el servicio puede
+  estar arrancando y ofrece «Reintentar lectura».
 - La clave de idempotencia pertenece a la **intención** y se conserva durante
   reintentos inciertos para el mismo payload. El panel solo la renueva al
   cambiar la intención o recibir confirmación; no genera eventos inventados.
