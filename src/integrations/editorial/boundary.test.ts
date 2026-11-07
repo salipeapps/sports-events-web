@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 import type { DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
-import { editorialB1Enabled, editorialConfig, handleEditorialB1, validateEditorialCommand } from "./boundary";
+import {
+  editorialB1Enabled,
+  editorialConfig,
+  handleEditorialB1,
+  upstreamTimeoutMs,
+  validateEditorialCommand,
+} from "./boundary";
 import { inspectionFixture } from "./inspection.fixture";
 import { normalizeInspection } from "./inspection";
 
@@ -417,4 +423,12 @@ it("forwards an organizer-only CORRECT verbatim to admins and never for reviewer
   const forwarded = JSON.parse(admin.fetcher.mock.calls[0][1]?.body as string);
   expect(forwarded).toEqual(payload);
   expect(forwarded.correction.locations.every((location: { verified: boolean }) => !location.verified)).toBe(true);
+});
+
+describe("upstream time budget (#54 cold start)", () => {
+  it("gives idempotent reads room for an Engine cold start and keeps commands short", () => {
+    expect(upstreamTimeoutMs("inspect")).toBe(25_000);
+    expect(upstreamTimeoutMs("command")).toBe(12_000);
+    expect(upstreamTimeoutMs("import")).toBe(12_000);
+  });
 });

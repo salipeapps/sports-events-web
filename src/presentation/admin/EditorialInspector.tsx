@@ -35,6 +35,13 @@ const errors: Record<string, string> = {
   WRITE_UNAVAILABLE: "No se ha podido confirmar la operación. Puedes reintentar con la misma clave.",
   INCOMPATIBLE_CONTRACT: "El servicio editorial ha devuelto una respuesta incompatible.",
 };
+// A read never writes: an unanswered read is not an uncertain decision.
+const readErrors: Record<string, string> = {
+  ...errors,
+  WRITE_UNAVAILABLE:
+    "El servicio editorial no ha respondido a tiempo. Puede estar arrancando: vuelve a intentarlo en unos segundos.",
+};
+const slowReadHintMs = 3000;
 const categories = ["yoga", "running", "hiking", "cycling", "fitness", "swimming", "dance", "other"];
 const categoryLabels: Record<string, string> = {
   yoga: "Yoga",
@@ -71,6 +78,8 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
   const [error, setError] = useState("");
   const [result, setResult] = useState("");
   const [loading, setLoading] = useState(true);
+  const [slowRead, setSlowRead] = useState(false);
+  const [readAttempt, setReadAttempt] = useState(0);
   const [busy, setBusy] = useState(false);
   const [action, setAction] = useState<Action>("REJECT");
   const [reason, setReason] = useState("");
@@ -96,7 +105,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         credentials: "same-origin",
       });
       const data = (await response.json()) as Record<string, unknown>;
-      if (!response.ok) throw new Error(errors[String(data.code)] ?? "No se ha podido inspeccionar el candidato.");
+      if (!response.ok) throw new Error(readErrors[String(data.code)] ?? "No se ha podido inspeccionar el candidato.");
       return data as unknown as EditorialInspection;
     },
     [candidateId],
@@ -118,6 +127,8 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
 
   useEffect(() => {
     const controller = new AbortController();
+    // A cold Engine can take several seconds to answer its first read; say so instead of looking stuck.
+    const hint = setTimeout(() => setSlowRead(true), slowReadHintMs);
     refresh(controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) {
@@ -129,10 +140,23 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : "Lectura no disponible.");
       })
       .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
+        clearTimeout(hint);
+        if (!controller.signal.aborted) {
+          setLoading(false);
+          setSlowRead(false);
+        }
       });
-    return () => controller.abort();
-  }, [refresh, syncForm]);
+    return () => {
+      clearTimeout(hint);
+      controller.abort();
+    };
+  }, [refresh, syncForm, readAttempt]);
+
+  function retryRead() {
+    setError("");
+    setLoading(true);
+    setReadAttempt((attempt) => attempt + 1);
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -254,8 +278,18 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         <Link href="/admin/editorial">Buscar otro candidato</Link>
       </p>
       <p>Las decisiones se ejecutan exclusivamente por el servidor Java. No se muestran datos de prueba como reales.</p>
-      {loading ? <p role="status">Consultando candidatura…</p> : null}
+      {loading ? (
+        <p role="status">
+          Consultando candidatura…
+          {slowRead && " La primera consulta puede tardar hasta medio minuto si el servicio editorial está arrancando."}
+        </p>
+      ) : null}
       {error ? <p role="alert">{error}</p> : null}
+      {!loading && !candidate && error ? (
+        <button type="button" onClick={retryRead}>
+          Reintentar lectura
+        </button>
+      ) : null}
       {result ? <p role="status">{result}</p> : null}
       {candidate && (
         <>
