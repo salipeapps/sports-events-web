@@ -228,3 +228,24 @@ STAGING publication rendered in a browser; see Web #54 for that gated test.
 
 Local browser evidence: `.next-e2e-catalog-live/evidence/result.json` and
 `home-390.png`, `home-768.png`, `home-1440.png` in the same ignored directory.
+
+## Indexability, robots and sitemap — Web #53 (partial)
+
+`indexableOrigin()` returns a canonical origin **only** with `APP_ENV=production`,
+`VERCEL_ENV` absent or `production`, and an HTTPS `APP_ORIGIN` without path, port,
+credentials, `localhost` or `*.vercel.app`. Everything else (STAGING, previews,
+development, incomplete configuration) is non-indexable:
+
+- root layout: `noindex, nofollow` meta outside production; `metadataBase` in production;
+- `/robots.txt`: `Disallow: /` outside production; in production `Allow: /`,
+  `Disallow: /admin, /admin-access, /auth, /api` and the sitemap URL;
+- `/sitemap.xml`: empty outside production; in production the home plus each
+  projected occurrence starting within 31 days (anonymous list RPC, up to 5×100 rows,
+  deduplicated). Filter combinations, suspended/expired/unknown occurrences and
+  private routes are never listed; a read failure keeps only what was read;
+- detail canonical `/actividades/{id}` only on the production origin; unavailable
+  details and filtered/paginated home URLs remain `noindex`.
+
+Admin already sends `X-Robots-Tag: noindex` from the proxy and metadata. Activating
+a production domain, ES/EN interface translations, hreflang and analytics remain
+separate #53 work and require explicit authorization.
