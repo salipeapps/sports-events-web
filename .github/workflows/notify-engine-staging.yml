@@ -23,11 +23,16 @@ jobs:
       - name: Dispatch the Engine STAGING evaluation on develop
         env:
           GH_TOKEN: ${{ secrets.MOUMEET_ENGINE_DISPATCH_TOKEN }}
+          # The Engine repository moved to the salipeapps organization; the old owner path answers 404.
+          ENGINE_REPO: salipeapps/sports-events-engine
         run: |
           if [[ -z "$GH_TOKEN" ]]; then
             echo "::warning::MOUMEET_ENGINE_DISPATCH_TOKEN is not configured; the Engine will evaluate this commit on its next run."
             exit 0
           fi
-          gh api -X POST repos/raulacden/sports-events-engine/actions/workflows/staging-deploy.yml/dispatches \
-            -f ref=develop -f "inputs[mode]=deploy" -f "inputs[web_sha]=$GITHUB_SHA"
-          echo "Engine STAGING evaluation requested for sports-events-web $GITHUB_SHA." >> "$GITHUB_STEP_SUMMARY"
+          if ! gh api -X POST "repos/$ENGINE_REPO/actions/workflows/staging-deploy.yml/dispatches" \
+            -f ref=develop -f "inputs[mode]=deploy" -f "inputs[web_sha]=$GITHUB_SHA"; then
+            echo "::error::Dispatch to $ENGINE_REPO failed. A 404 means MOUMEET_ENGINE_DISPATCH_TOKEN cannot see that repository: it needs access to $ENGINE_REPO with Actions read and write."
+            exit 1
+          fi
+          echo "Engine STAGING evaluation requested in $ENGINE_REPO for sports-events-web $GITHUB_SHA." >> "$GITHUB_STEP_SUMMARY"
