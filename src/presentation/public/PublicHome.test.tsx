@@ -48,7 +48,8 @@ describe("public cards and availability", () => {
     ])
       expect(html).toContain(text);
     expect(html).not.toContain("Gratis");
-    expect(html).not.toContain("href=");
+    // Only the internal detail page is linked: no registration or external link is invented.
+    expect(new Set(html.match(/href="[^"]*"/g))).toEqual(new Set(['href="/actividades/test-occurrence"']));
     expect(html).not.toContain("Verificada");
   });
   it("keeps monthly, per-session, free and unknown prices distinct", () => {

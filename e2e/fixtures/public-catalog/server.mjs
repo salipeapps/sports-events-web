@@ -5,8 +5,10 @@ import { createHash } from "node:crypto";
 let scenario = "populated";
 let rows = [];
 let lastHeaders = {};
+let withdrawn = new Set();
 function reset(next) {
   scenario = next;
+  withdrawn = new Set();
   const now = Date.now();
   rows = Array.from({ length: 31 }, (_, index) => ({
     id: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
@@ -24,18 +26,27 @@ function reset(next) {
     contractVersion: 1,
     organizerName: "TEST · Club de ejemplo",
     startInstant: new Date(index === 30 ? now - 3600_000 : now + 3600_000 + index * 60_000).toISOString(),
-    endInstant: null,
+    endInstant: index === 0 ? new Date(now + 3600_000 + 4 * 3600_000).toISOString() : null,
     timeZone: "Europe/Madrid",
-    registrationUrl: null,
+    registrationUrl: index === 0 ? "https://example.org/inscripcion" : null,
     activityLanguage: index === 1 ? "es" : null,
     category: "running",
     level: { es: index === 1 ? "Iniciación" : null, en: null },
-    requirements: { es: null, en: null },
+    requirements: { es: index === 1 ? "TEST · Ropa cómoda y agua" : null, en: null },
     lastVerifiedAt: new Date(now - 86_400_000).toISOString(),
     verifiedUntil: new Date(now + 6 * 86_400_000).toISOString(),
     locations:
       index === 0
         ? [
+            {
+              role: "destination",
+              municipality: "Serra",
+              neighborhood: null,
+              pointName: "TEST · Destino de la excursión",
+              address: null,
+              latitude: null,
+              longitude: null,
+            },
             {
               role: "departure",
               municipality: "Alboraia",
@@ -91,12 +102,15 @@ createServer(async (request, response) => {
     reset(request.url.split("/").at(-1));
     return reply({ ok: true });
   }
-  const version = request.url === "/rest/v1/rpc/catalog_occurrences_v2" ? 2 : 1;
-  if (
-    !["/rest/v1/rpc/catalog_occurrences_v1", "/rest/v1/rpc/catalog_occurrences_v2"].includes(request.url) ||
-    request.method !== "POST"
-  )
-    return reply({}, 404);
+  // Simulates an editorial SUSPEND: the projection no longer contains the row.
+  if (request.url?.startsWith("/test/withdraw/") && request.method === "POST") {
+    withdrawn.add(request.url.split("/").at(-1));
+    return reply({ ok: true });
+  }
+  const rpc = /^\/rest\/v1\/rpc\/(catalog_occurrences?)_v([12])$/.exec(request.url ?? "");
+  if (!rpc || request.method !== "POST") return reply({}, 404);
+  const version = Number(rpc[2]);
+  const detail = rpc[1] === "catalog_occurrence";
   lastHeaders = {
     authorization: request.headers.authorization ?? null,
     cookie: request.headers.cookie ?? null,
@@ -114,6 +128,19 @@ createServer(async (request, response) => {
   let body = "";
   for await (const chunk of request) body += chunk;
   const query = JSON.parse(body);
+  if (detail) {
+    const index = rows.findIndex((row) => row.id === query.id);
+    const row = rows[index];
+    if (
+      scenario === "empty" ||
+      !row ||
+      row.status !== "published" ||
+      withdrawn.has(row.id) ||
+      Date.parse(row.startInstant) <= Date.now()
+    )
+      return reply({ code: "PT404", message: "NOT_FOUND" }, 404);
+    return reply({ contractVersion: version, item: publicItem(row, index, version) });
+  }
   const context = createHash("sha256")
     .update(JSON.stringify([query.desde, query.hasta]))
     .digest("hex");
@@ -137,29 +164,34 @@ createServer(async (request, response) => {
       : rows.filter(
           (row) =>
             row.status === "published" &&
+            !withdrawn.has(row.id) &&
             Date.parse(row.startInstant) >= Math.max(from, Date.now()) &&
             Date.parse(row.startInstant) < to,
         );
-  const items = eligible.slice(offset, offset + query.limit).map((row) => ({
-    ...Object.fromEntries(Object.entries(row).filter(([key]) => key !== "status")),
-    titleTranslations: { es: row.title, en: null },
-    status: "upcoming",
-  }));
+  const items = eligible.slice(offset, offset + query.limit).map((row) => publicItem(row, rows.indexOf(row), version));
   const nextCursor =
     offset + query.limit < eligible.length
       ? Buffer.from(JSON.stringify({ context, offset: offset + query.limit })).toString("base64url")
       : null;
-  if (version === 2)
-    items.forEach((item, index) => {
-      delete item.registrationUrl;
-      item.contractVersion = 2;
-      item.sourceUrl = "https://example.org/activity";
-      item.registration = [
-        { method: "WEB", destination: "https://example.org/book", action: "OPEN_HTTPS" },
-        { method: "WHATSAPP", destination: "+34600111222", action: "COPY_NUMBER" },
-        { method: "PHONE", destination: "+34600111333", action: "CALL" },
-        { method: "EMAIL", destination: "reservas@example.org", action: "COMPOSE_EMAIL" },
-      ][index % 4];
-    });
   reply({ contractVersion: version, items, nextCursor });
 }).listen(3122, "127.0.0.1");
+
+function publicItem(row, index, version) {
+  const item = {
+    ...Object.fromEntries(Object.entries(row).filter(([key]) => key !== "status")),
+    titleTranslations: { es: row.title, en: null },
+    status: "upcoming",
+  };
+  if (version === 2) {
+    delete item.registrationUrl;
+    item.contractVersion = 2;
+    item.sourceUrl = "https://example.org/activity";
+    item.registration = [
+      { method: "WEB", destination: "https://example.org/book", action: "OPEN_HTTPS" },
+      { method: "WHATSAPP", destination: "+34600111222", action: "COPY_NUMBER" },
+      { method: "PHONE", destination: "+34600111333", action: "CALL" },
+      { method: "EMAIL", destination: "reservas@example.org", action: "COMPOSE_EMAIL" },
+    ][index % 4];
+  }
+  return item;
+}

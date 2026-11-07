@@ -1,103 +1,46 @@
 import { RegistrationAction } from "./RegistrationAction";
-import type { PublicOccurrence, PublicPrice } from "@/domain/publicCatalog";
+import type { PublicOccurrence } from "@/domain/publicCatalog";
+import {
+  categoryLabel,
+  currentPrices,
+  languageLabel,
+  locationRoleLabels,
+  locationText,
+  madridShortDate,
+  madridStart,
+  occurrenceHref,
+  orderedLocations,
+  priceLabel,
+} from "./occurrencePresentation";
 
-const startFormatter = new Intl.DateTimeFormat("es-ES", {
-  timeZone: "Europe/Madrid",
-  weekday: "long",
-  day: "numeric",
-  month: "long",
-  hour: "2-digit",
-  minute: "2-digit",
-});
-const dateFormatter = new Intl.DateTimeFormat("es-ES", { timeZone: "Europe/Madrid", day: "numeric", month: "short" });
-const localDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Madrid",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-const categories: Record<string, string> = {
-  yoga: "Yoga",
-  running: "Running",
-  hiking: "Senderismo",
-  cycling: "Ciclismo",
-  fitness: "Fitness",
-  swimming: "Natación",
-  dance: "Baile",
-  other: "Otros deportes",
-};
-const scopes = {
-  per_session: "por sesión",
-  first_session_only: "primera sesión",
-  per_month: "al mes",
-  per_year: "al año",
-  membership: "afiliación",
-  transport: "transporte",
-  other: "otra modalidad",
-  unknown: "periodicidad por confirmar",
-};
-
-export function priceLabel(price: PublicPrice): string {
-  if (price.type === "unknown") return "Precio por confirmar";
-  if (price.type === "free") return `Gratis · ${scopes[price.scope]}`;
-  if (price.type === "donation" && price.amount === null) return `Donación voluntaria · ${scopes[price.scope]}`;
-  if (price.amount === null || price.currency === null) return "Precio por confirmar";
-  const amount = new Intl.NumberFormat("es-ES", { style: "currency", currency: price.currency }).format(price.amount);
-  const prefix = {
-    from: "Desde ",
-    donation: "Donación ",
-    trial: "Prueba ",
-    early_bird: "Anticipada ",
-    membership: "Cuota ",
-    subscription: "Suscripción ",
-    fixed: "",
-  }[price.type];
-  return `${prefix}${amount} · ${scopes[price.scope]}`;
-}
+export { priceLabel } from "./occurrencePresentation";
 
 export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence }) {
   const start = new Date(occurrence.startInstant);
-  const localDate = localDateFormatter.format(start);
-  const prices = occurrence.prices.filter(
-    (price) => (!price.validFrom || price.validFrom <= localDate) && (!price.validTo || price.validTo >= localDate),
-  );
-  const language = occurrence.activityLanguage
-    ? ({ es: "Español", en: "Inglés", ca: "Valenciano", other: "Otro idioma" }[occurrence.activityLanguage] ??
-      occurrence.activityLanguage)
-    : "Idioma por confirmar";
+  const prices = currentPrices(occurrence);
+  const href = occurrenceHref(occurrence.id);
   return (
     <article className="public-occurrence" aria-labelledby={`activity-${occurrence.id}`}>
       <div className="public-card-top">
-        <span>
-          {occurrence.category ? (categories[occurrence.category] ?? occurrence.category) : "Categoría por confirmar"}
-        </span>
+        <span>{categoryLabel(occurrence.category)}</span>
         <span className="public-freshness">Próxima</span>
       </div>
-      <h3 id={`activity-${occurrence.id}`}>{occurrence.title}</h3>
+      <h3 id={`activity-${occurrence.id}`}>
+        <a className="public-card-title" href={href}>
+          {occurrence.title}
+        </a>
+      </h3>
       <p className="public-organizer">{occurrence.organizerName ?? "Organizador por confirmar"}</p>
       <time className="public-start" dateTime={occurrence.startInstant}>
-        {startFormatter.format(start)} h
+        {madridStart.format(start)} h
       </time>
       <p className="public-timezone">Hora local · Europe/Madrid</p>
       <dl className="public-card-facts">
         {occurrence.locations.length ? (
-          occurrence.locations.map((location, index) => (
+          orderedLocations(occurrence.locations).map((location, index) => (
             <div key={index}>
-              <dt>
-                {
-                  {
-                    activity: "Lugar",
-                    meeting_point: "Punto de encuentro",
-                    departure: "Salida",
-                    destination: "Destino",
-                  }[location.role]
-                }
-              </dt>
-              <dd>
-                {[location.pointName, location.address, location.neighborhood, location.municipality]
-                  .filter(Boolean)
-                  .join(" · ") || "Lugar por confirmar"}
-              </dd>
+              <dt>{locationRoleLabels[location.role]}</dt>
+              <dd>{locationText(location)}</dd>
             </div>
           ))
         ) : (
@@ -122,7 +65,7 @@ export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence })
         <div>
           <dt>Idioma / nivel</dt>
           <dd>
-            {language} · {occurrence.level?.es ?? "Nivel por confirmar"}
+            {languageLabel(occurrence.activityLanguage)} · {occurrence.level?.es ?? "Nivel por confirmar"}
           </dd>
         </div>
       </dl>
@@ -130,17 +73,18 @@ export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence })
         {occurrence.lastVerifiedAt && occurrence.verifiedUntil && (
           <small>
             Verificada{" "}
-            <time dateTime={occurrence.lastVerifiedAt}>
-              {startFormatter.format(new Date(occurrence.lastVerifiedAt))}
-            </time>
+            <time dateTime={occurrence.lastVerifiedAt}>{madridStart.format(new Date(occurrence.lastVerifiedAt))}</time>
             {" · "}Vigente hasta{" "}
-            <time dateTime={occurrence.verifiedUntil}>{startFormatter.format(new Date(occurrence.verifiedUntil))}</time>
+            <time dateTime={occurrence.verifiedUntil}>{madridStart.format(new Date(occurrence.verifiedUntil))}</time>
           </small>
         )}
         <small>
           Ficha actualizada{" "}
-          <time dateTime={occurrence.updatedAt}>{dateFormatter.format(new Date(occurrence.updatedAt))}</time>
+          <time dateTime={occurrence.updatedAt}>{madridShortDate.format(new Date(occurrence.updatedAt))}</time>
         </small>
+        <a href={href} aria-label={`Ver ficha completa: ${occurrence.title}`}>
+          Ver ficha completa <span aria-hidden="true">→</span>
+        </a>
         {occurrence.sourceUrl && (
           <a href={occurrence.sourceUrl} rel="noreferrer">
             Ver convocatoria

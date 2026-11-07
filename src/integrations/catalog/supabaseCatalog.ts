@@ -18,7 +18,7 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const cursorPattern = /^[A-Za-z0-9_-]{1,2048}$/;
 
 export class CatalogReadError extends Error {
-  constructor(public readonly code: "INVALID_REQUEST" | "READ_UNAVAILABLE" | "INCOMPATIBLE_CONTRACT") {
+  constructor(public readonly code: "INVALID_REQUEST" | "NOT_FOUND" | "READ_UNAVAILABLE" | "INCOMPATIBLE_CONTRACT") {
     super(code);
   }
 }
@@ -264,6 +264,30 @@ export function decodeCatalogPage(value: unknown, query: CatalogQuery, now: Date
   };
 }
 
+/**
+ * Detail envelope `{contractVersion, item}`. The database already restricts the projection to
+ * published, verified and current rows; this read-time guard additionally treats a stale, finished
+ * or mismatched item as not found instead of rendering it as a bookable activity.
+ */
+export function decodeCatalogDetail(
+  value: unknown,
+  id: string,
+  now: Date,
+  version: 1 | 2 = 1,
+): PublicOccurrence & { status: "upcoming" | "in_progress" } {
+  const data = record(value);
+  if (data.contractVersion !== version || Object.hasOwn(data, "items")) return incompatible();
+  const item = occurrence(data.item, version);
+  if (item.id.toLowerCase() !== id.toLowerCase()) return incompatible();
+  const time = now.getTime();
+  const start = Date.parse(item.startInstant);
+  const finish = item.endInstant === null ? start : Date.parse(item.endInstant);
+  if (Date.parse(item.lastVerifiedAt) > time || Date.parse(item.verifiedUntil) <= time || finish <= time)
+    throw new CatalogReadError("NOT_FOUND");
+  // Derive the visible state from instants so a cached "upcoming" label never outlives the start.
+  return { ...item, status: start > time ? "upcoming" : "in_progress" };
+}
+
 async function readBoundedJson(response: Response): Promise<unknown> {
   if (Number(response.headers.get("content-length")) > maxBytes || !response.body) {
     await response.body?.cancel();
@@ -319,30 +343,54 @@ export class SupabasePublicCatalogRepository implements PublicCatalogRepository 
 
   async list(query: CatalogQuery): Promise<CatalogPage> {
     validateCatalogQuery(query);
+    const version = this.config.contractVersion ?? 1;
+    return this.post(`catalog_occurrences_v${version}`, query, (json) =>
+      decodeCatalogPage(json, query, this.clock(), version),
+    );
+  }
+
+  /** Detail RPC. Unknown and no-longer-public occurrences both surface as NOT_FOUND. */
+  async get(id: string): Promise<PublicOccurrence & { status: "upcoming" | "in_progress" }> {
+    if (!uuid.test(id)) throw new CatalogReadError("NOT_FOUND");
+    const version = this.config.contractVersion ?? 1;
+    return this.post(
+      `catalog_occurrence_v${version}`,
+      { id },
+      (json) => decodeCatalogDetail(json, id, this.clock(), version),
+      true,
+    );
+  }
+
+  /** `detail`: only the detail RPC's 404 means "not public"; a missing list RPC is an outage. */
+  private async post<T>(rpc: string, body: unknown, decode: (json: unknown) => T, detail = false): Promise<T> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 10_000);
     try {
-      const response = await this.request(
-        `${this.config.url}/rest/v1/rpc/catalog_occurrences_v${this.config.contractVersion ?? 1}`,
-        {
-          method: "POST",
-          headers: {
-            apikey: this.config.key,
-            "Content-Type": "application/json",
-            "Accept-Profile": "api",
-            "Content-Profile": "api",
-          },
-          body: JSON.stringify(query),
-          cache: "no-store",
-          redirect: "error",
-          signal: controller.signal,
+      const response = await this.request(`${this.config.url}/rest/v1/rpc/${rpc}`, {
+        method: "POST",
+        headers: {
+          apikey: this.config.key,
+          "Content-Type": "application/json",
+          "Accept-Profile": "api",
+          "Content-Profile": "api",
         },
-      );
+        body: JSON.stringify(body),
+        cache: "no-store",
+        redirect: "error",
+        signal: controller.signal,
+      });
       if (!response.ok) {
         await response.body?.cancel();
-        throw new CatalogReadError(response.status === 400 ? "INVALID_REQUEST" : "READ_UNAVAILABLE");
+        // 401/403/5xx and anything unexpected fail closed; no fixture or cached fallback exists.
+        throw new CatalogReadError(
+          response.status === 400
+            ? "INVALID_REQUEST"
+            : response.status === 404 && detail
+              ? "NOT_FOUND"
+              : "READ_UNAVAILABLE",
+        );
       }
-      return decodeCatalogPage(await readBoundedJson(response), query, this.clock(), this.config.contractVersion ?? 1);
+      return decode(await readBoundedJson(response));
     } catch (error) {
       if (error instanceof CatalogReadError) throw error;
       throw new CatalogReadError("READ_UNAVAILABLE");

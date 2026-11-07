@@ -1,7 +1,7 @@
 import type { CatalogResult } from "@/domain/publicCatalog";
-import Link from "next/link";
 import { catalogHref, type CatalogSelection } from "./catalogQuery";
 import { OccurrenceCard } from "./OccurrenceCard";
+import { PublicFooter, PublicHeader } from "./PublicChrome";
 
 export function PublicHome({
   result,
@@ -26,15 +26,7 @@ export function PublicHome({
       <a className="public-skip" href="#activities">
         Saltar a las actividades
       </a>
-      <header className="public-header">
-        <Link className="public-brand" href="/" prefetch={false} aria-label="Sports Events, inicio">
-          <span aria-hidden="true" className="public-brand-mark">
-            ↗
-          </span>{" "}
-          Sports Events
-        </Link>
-        <span className="public-header-note">Deporte para participar</span>
-      </header>
+      <PublicHeader />
       <main>
         <section className="public-hero" aria-labelledby="public-title">
           <div className="public-hero-inner">
@@ -163,10 +155,7 @@ export function PublicHome({
           )}
         </section>
       </main>
-      <footer className="public-footer">
-        <strong>Sports Events</strong>
-        <span>Valencia y alrededores · Horarios en Europe/Madrid</span>
-      </footer>
+      <PublicFooter />
     </div>
   );
 }

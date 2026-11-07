@@ -1,7 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
-import { decodeCatalogPage, SupabasePublicCatalogRepository, validateCatalogQuery } from "./supabaseCatalog";
+import {
+  decodeCatalogDetail,
+  decodeCatalogPage,
+  SupabasePublicCatalogRepository,
+  validateCatalogQuery,
+} from "./supabaseCatalog";
 import type { CatalogQuery } from "@/domain/publicCatalog";
 
 const now = new Date("2026-10-22T10:00:00Z");
@@ -301,5 +306,118 @@ describe("verified registration v2", () => {
         2,
       ),
     ).toThrow();
+  });
+});
+
+describe("public detail RPC (#52)", () => {
+  const id = "00000000-0000-4000-8000-000000000001";
+  const repository = (request: typeof fetch, version: 1 | 2 = 1, clock = () => now) =>
+    new SupabasePublicCatalogRepository(
+      { url: "https://test.supabase.co", key: "sb_publishable_test", contractVersion: version },
+      request,
+      clock,
+    );
+  it("calls only the exact detail RPC anonymously and without cache", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json({ contractVersion: 1, item: occurrence() }));
+    const item = await repository(request).get(id);
+    expect(item).toMatchObject({ id, status: "upcoming", title: "TEST · Actividad revisada" });
+    const [url, options] = request.mock.calls[0];
+    expect(url).toBe("https://test.supabase.co/rest/v1/rpc/catalog_occurrence_v1");
+    expect(options).toMatchObject({
+      method: "POST",
+      cache: "no-store",
+      redirect: "error",
+      body: JSON.stringify({ id }),
+    });
+    expect(options?.headers).not.toHaveProperty("Authorization");
+  });
+  it("never contacts the backend for a malformed identifier", async () => {
+    const request = vi.fn<typeof fetch>();
+    for (const value of ["", "abc", `${id}/../x`, "00000000-0000-4000-8000-00000000000g", `${id}?select=*`])
+      await expect(repository(request).get(value)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(request).not.toHaveBeenCalled();
+  });
+  it.each([
+    [404, "NOT_FOUND"],
+    [400, "INVALID_REQUEST"],
+    [401, "READ_UNAVAILABLE"],
+    [403, "READ_UNAVAILABLE"],
+    [500, "READ_UNAVAILABLE"],
+    [503, "READ_UNAVAILABLE"],
+  ])("maps HTTP %s to %s without exposing the upstream body", async (status, code) => {
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ message: "PRIVATE_SQL_DETAIL" }, { status }));
+    const error = await repository(request)
+      .get(id)
+      .catch((reason: unknown) => reason);
+    expect(error).toMatchObject({ code });
+    expect(String((error as Error).message)).not.toContain("PRIVATE");
+  });
+  it("fails closed on network errors", async () => {
+    const request = vi.fn<typeof fetch>().mockRejectedValue(new TypeError("private socket detail"));
+    await expect(repository(request).get(id)).rejects.toMatchObject({ code: "READ_UNAVAILABLE" });
+  });
+  it("strips private fields and rejects list envelopes, version or identity mismatches", () => {
+    const item = decodeCatalogDetail(
+      { contractVersion: 1, item: occurrence({ acceptedCandidateId: "private", evidence: "private" }) },
+      id,
+      now,
+    );
+    expect(JSON.stringify(item)).not.toContain("private");
+    expect(() => decodeCatalogDetail({ contractVersion: 1, items: [occurrence()], nextCursor: null }, id, now)).toThrow(
+      "INCOMPATIBLE_CONTRACT",
+    );
+    expect(() => decodeCatalogDetail({ contractVersion: 2, item: occurrence() }, id, now)).toThrow();
+    expect(() =>
+      decodeCatalogDetail(
+        { contractVersion: 1, item: occurrence({ id: "00000000-0000-4000-8000-000000000002" }) },
+        id,
+        now,
+      ),
+    ).toThrow("INCOMPATIBLE_CONTRACT");
+    expect(() =>
+      decodeCatalogDetail({ contractVersion: 1, item: occurrence({ status: "cancelled" }) }, id, now),
+    ).toThrow("INCOMPATIBLE_CONTRACT");
+  });
+  it("treats expired verification, finished or started-without-end occurrences as not found", () => {
+    const detail = (extra: Record<string, unknown>) =>
+      decodeCatalogDetail({ contractVersion: 1, item: occurrence(extra) }, id, now);
+    expect(() => detail({ verifiedUntil: "2026-10-22T10:00:00Z" })).toThrow("NOT_FOUND");
+    expect(() => detail({ lastVerifiedAt: "2026-10-22T10:00:01Z", verifiedUntil: "2026-10-29T10:00:00Z" })).toThrow(
+      "NOT_FOUND",
+    );
+    expect(() => detail({ startInstant: "2026-10-22T09:00:00Z" })).toThrow("NOT_FOUND");
+    expect(() =>
+      detail({ startInstant: "2026-10-22T08:00:00Z", endInstant: "2026-10-22T09:59:59Z", status: "in_progress" }),
+    ).toThrow("NOT_FOUND");
+  });
+  it("derives in-progress from instants instead of trusting a stale label", () => {
+    const item = decodeCatalogDetail(
+      {
+        contractVersion: 1,
+        item: occurrence({ startInstant: "2026-10-22T09:00:00Z", endInstant: "2026-10-22T12:00:00Z" }),
+      },
+      id,
+      now,
+    );
+    expect(item.status).toBe("in_progress");
+  });
+  it("reads v2 detail with verified registration and source, without a v1 fallback", async () => {
+    const registration = { method: "PHONE", destination: "+34600111333", action: "CALL" };
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        contractVersion: 2,
+        item: occurrence({ contractVersion: 2, registration, sourceUrl: "https://example.org/activity" }),
+      }),
+    );
+    expect(await repository(request, 2).get(id)).toMatchObject({
+      registration,
+      registrationUrl: null,
+      sourceUrl: "https://example.org/activity",
+    });
+    expect(request.mock.calls[0][0]).toBe("https://test.supabase.co/rest/v1/rpc/catalog_occurrence_v2");
+    request.mockResolvedValue(Response.json({ contractVersion: 1, item: occurrence() }));
+    await expect(repository(request, 2).get(id)).rejects.toMatchObject({ code: "INCOMPATIBLE_CONTRACT" });
   });
 });
