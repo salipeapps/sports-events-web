@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { getPublicCatalogConfig } from "@/config/publicCatalog";
+import { indexableOrigin } from "@/config/seo";
 import { loadPublicOccurrenceOnce } from "@/data/publicCatalogProvider";
 import {
   OccurrenceDetail,
@@ -32,6 +33,8 @@ export async function generateMetadata({ params }: Params): Promise<Metadata> {
     ]
       .filter(Boolean)
       .join(" · "),
+    // Canonical only on the authorized production origin (metadataBase is set by the root layout).
+    ...(indexableOrigin() ? { alternates: { canonical: `/actividades/${occurrence.id}` } } : {}),
   };
 }
 

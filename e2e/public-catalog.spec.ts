@@ -213,7 +213,7 @@ test("combined filters: shareable URL, reset, filtered pagination and explicit z
   await expect(page.getByRole("article")).toHaveCount(24);
 });
 
-test("period presets keep filters, invalid filters are rejected and unfiltered home stays indexable", async ({
+test("period presets keep filters, invalid filters are rejected and only filtered URLs add their own noindex", async ({
   page,
 }) => {
   await page.goto("/?categoria=yoga");
@@ -229,6 +229,10 @@ test("period presets keep filters, invalid filters are rejected and unfiltered h
     await page.goto(path);
     await expect(page.getByRole("heading", { name: "No podemos mostrar esta búsqueda" }), path).toBeVisible();
   }
+  // Outside production the root layout already emits "noindex, nofollow" (#53). Filtered URLs add their own
+  // "noindex, follow"; the bare home must only carry the environment gate (indexable in production).
+  await page.goto("/?categoria=yoga");
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, follow");
   await page.goto("/");
-  await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+  await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
 });
