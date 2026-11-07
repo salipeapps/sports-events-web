@@ -402,3 +402,19 @@ describe("registration approval preserves the saved evidence URI", () => {
     );
   });
 });
+
+it("forwards an organizer-only CORRECT verbatim to admins and never for reviewers", async () => {
+  const correction = {
+    ...inspectionFixture.data,
+    organizerId: "f5225129-1df5-4a37-b12f-41aa27c83943",
+  };
+  const payload = { ...reject, action: "CORRECT", correction };
+  const reviewer = setup("reviewer");
+  expect((await reviewer.run("command", request("command", payload))).status).toBe(403);
+  expect(reviewer.fetcher).not.toHaveBeenCalled();
+  const admin = setup("admin");
+  expect((await admin.run("command", request("command", payload))).status).toBe(200);
+  const forwarded = JSON.parse(admin.fetcher.mock.calls[0][1]?.body as string);
+  expect(forwarded).toEqual(payload);
+  expect(forwarded.correction.locations.every((location: { verified: boolean }) => !location.verified)).toBe(true);
+});

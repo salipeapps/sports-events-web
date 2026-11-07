@@ -5,8 +5,17 @@ import { useCallback, useEffect, useRef, useState, type FormEvent } from "react"
 import Link from "next/link";
 import type { AdminRole } from "@/domain/adminAccess";
 import type { EditorialInspection } from "@/domain/editorial";
+import {
+  buildCorrection,
+  canSubmitAction,
+  commandAction,
+  describeLocation,
+  isCorrectionAction,
+  type CorrectionChange,
+  type EditorialAction,
+} from "./editorialCorrection";
 
-type Action = "APPROVE" | "REJECT" | "PUBLISH" | "SUSPEND" | "CORRECT";
+type Action = EditorialAction;
 const errors: Record<string, string> = {
   NOT_CONFIGURED: "El circuito editorial todavía no está habilitado en este entorno.",
   INVALID_REQUEST: "La petición no es válida.",
@@ -14,6 +23,9 @@ const errors: Record<string, string> = {
   FORBIDDEN: "No tienes permiso para realizar esta operación.",
   NOT_FOUND: "No se encuentra esta candidatura.",
   CONFLICT: "El candidato ha cambiado. Actualiza sus datos antes de decidir.",
+  CONFLICT_REFRESHED: "El candidato ha cambiado. Se han recargado sus datos: revísalos y confirma de nuevo.",
+  UNPRESERVABLE:
+    "Este candidato conserva un enlace de inscripción que no se puede reenviar con exactitud. Solicita la corrección al operador.",
   RATE_LIMITED: "Demasiadas solicitudes. Inténtalo más tarde.",
   WRITE_UNAVAILABLE: "No se ha podido confirmar la operación. Puedes reintentar con la misma clave.",
   INCOMPATIBLE_CONTRACT: "El servicio editorial ha devuelto una respuesta incompatible.",
@@ -66,7 +78,8 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
   const [evidenceUrl, setEvidenceUrl] = useState("");
   const [organizerPublished, setOrganizerPublished] = useState(false);
   const [registrationVerified, setRegistrationVerified] = useState(false);
-  const [locationConfirmed, setLocationConfirmed] = useState(false);
+  // Indexes of the locations the admin has explicitly checked against the official source.
+  const [verifiedLocations, setVerifiedLocations] = useState<number[]>([]);
   // Do not change the idempotency key for an uncertain outcome and unchanged payload.
   const pending = useRef<{ fingerprint: string; key: string } | null>(null);
 
@@ -84,20 +97,26 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
     [candidateId],
   );
 
+  // Resynchronises every form field with a fresh read so no stale intent survives a new version.
+  const syncForm = useCallback((value: EditorialInspection) => {
+    setCandidate(value);
+    setOrganizerId(value.data.organizerId ?? "");
+    setRegistrationUri(value.correctionBase?.registrationUri ?? value.data.registrationUri ?? "");
+    setRegistrationMethod(value.data.registration?.method ?? "");
+    setDestination(value.data.registration?.destination ?? "");
+    setEvidenceUrl(value.data.registration?.evidenceUrl ?? "");
+    setOrganizerPublished(value.data.registration?.organizerPublished ?? false);
+    setVerificationUrl(value.data.registration?.evidenceUrl ?? "");
+    setRegistrationVerified(false);
+    setVerifiedLocations([]);
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     refresh(controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) {
-          setCandidate(value);
-          setOrganizerId(value.data.organizerId ?? "");
-          setRegistrationUri(value.data.registrationUri ?? "");
-          setRegistrationMethod(value.data.registration?.method ?? "");
-          setDestination(value.data.registration?.destination ?? "");
-          setEvidenceUrl(value.data.registration?.evidenceUrl ?? "");
-          setOrganizerPublished(value.data.registration?.organizerPublished ?? false);
-          setVerificationUrl(value.data.registration?.evidenceUrl ?? "");
-          setRegistrationVerified(false);
+          syncForm(value);
           setError("");
         }
       })
@@ -108,14 +127,14 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [refresh]);
+  }, [refresh, syncForm]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!candidate || busy || !reason.trim()) return;
-    if (role !== "admin" && action !== "APPROVE" && action !== "REJECT") return;
+    if (!canSubmitAction(role, action)) return;
     const payload: Record<string, unknown> = {
-      action,
+      action: commandAction(action),
       expectedVersion: candidate.candidateVersion,
       expectedRevision: candidate.revision,
       reason: reason.trim(),
@@ -128,24 +147,47 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       payload.verificationUrl = verificationUrl;
       payload.category = category;
     }
-    if (action === "CORRECT") {
-      if (!locationConfirmed || !organizerId || candidate.data.locations.length === 0) return;
-      if (
-        candidate.registrationSupported &&
-        (!isRegistrationDestination(registrationMethod, destination) || !isSafeRegistrationUrl(evidenceUrl))
-      ) {
-        setError("Revisa el canal, destino y URL de evidencia pública.");
+    if (isCorrectionAction(action)) {
+      if (!candidate.correctionBase) {
+        setError(errors.UNPRESERVABLE);
         return;
       }
-      payload.correction = {
-        ...candidate.data,
-        organizerId,
-        registrationUri: candidate.registrationSupported ? candidate.data.registrationUri : registrationUri,
-        ...(candidate.registrationSupported
-          ? { registration: { method: registrationMethod, destination, evidenceUrl, organizerPublished } }
-          : {}),
-        locations: candidate.data.locations.map((location) => ({ ...location, verified: true })),
-      };
+      let change: CorrectionChange;
+      if (action === "CORRECT_ORGANIZER") {
+        if (!organizerId) return;
+        if (organizerId === candidate.correctionBase.organizerId) {
+          setError("El organizador seleccionado ya está asociado a este candidato.");
+          return;
+        }
+        change = { kind: "ORGANIZER", organizerId };
+      } else if (action === "CORRECT_REGISTRATION") {
+        if (candidate.registrationSupported) {
+          if (!isRegistrationDestination(registrationMethod, destination) || !isSafeRegistrationUrl(evidenceUrl)) {
+            setError("Revisa el canal, destino y URL de evidencia pública.");
+            return;
+          }
+          change = {
+            kind: "REGISTRATION",
+            registration: { method: registrationMethod, destination, evidenceUrl, organizerPublished },
+          };
+        } else {
+          if (!registrationUri) return;
+          change = { kind: "REGISTRATION_URI", registrationUri };
+        }
+      } else {
+        if (verifiedLocations.length === 0) {
+          setError("Marca expresamente cada ubicación que hayas comprobado.");
+          return;
+        }
+        change = { kind: "LOCATIONS", verifiedIndexes: verifiedLocations };
+      }
+      // Start from the exact Engine snapshot, never from the display-normalised data.
+      const correction = buildCorrection(candidate.correctionBase, change);
+      if (!correction) {
+        setError("No hay cambios confirmados que guardar.");
+        return;
+      }
+      payload.correction = correction;
     }
     const fingerprint = JSON.stringify(payload);
     if (!pending.current || pending.current.fingerprint !== fingerprint)
@@ -166,6 +208,14 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       if (!response.ok) {
         const code = String(value.code ?? "");
         if (["INVALID_REQUEST", "FORBIDDEN", "NOT_FOUND", "CONFLICT"].includes(code)) pending.current = null;
+        if (code === "CONFLICT") {
+          // Reload version, revision and data before allowing another intent; a retry would only conflict again.
+          const fresh = await refresh().catch(() => null);
+          if (fresh) {
+            syncForm(fresh);
+            throw new Error(errors.CONFLICT_REFRESHED);
+          }
+        }
         throw new Error(errors[code] ?? "Error al enviar la decisión.");
       }
       // A successful receipt is mandatory; never infer success from a timeout or 2xx without a receipt.
@@ -173,17 +223,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         throw new Error(errors.INCOMPATIBLE_CONTRACT);
       pending.current = null;
       setResult("Decisión confirmada por Engine: " + String(value.status));
-      const updated = await refresh();
-      setCandidate(updated);
-      setOrganizerId(updated.data.organizerId ?? "");
-      setRegistrationUri(updated.data.registrationUri ?? "");
-      setRegistrationMethod(updated.data.registration?.method ?? "");
-      setDestination(updated.data.registration?.destination ?? "");
-      setEvidenceUrl(updated.data.registration?.evidenceUrl ?? "");
-      setOrganizerPublished(updated.data.registration?.organizerPublished ?? false);
-      setVerificationUrl(updated.data.registration?.evidenceUrl ?? "");
-      setRegistrationVerified(false);
-      setLocationConfirmed(false);
+      syncForm(await refresh());
       setReason("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : errors.WRITE_UNAVAILABLE);
@@ -223,9 +263,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                 ? "Por confirmar"
                 : candidate.data.locations.map((location, index) => (
                     <p key={index}>
-                      {[location.municipality, location.neighborhood, location.pointName, location.address]
-                        .filter(Boolean)
-                        .join(" · ") || "Por confirmar"}
+                      {describeLocation(location)}
                       {location.latitude !== null && ` (${location.latitude}, ${location.longitude})`}
                       {location.verified ? " · Verificada" : " · Pendiente de verificar"}
                     </p>
@@ -305,7 +343,10 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
               id="editorial-action"
               value={action}
               disabled={busy}
-              onChange={(e) => setAction(e.target.value as Action)}
+              onChange={(e) => {
+                setAction(e.target.value as Action);
+                setError("");
+              }}
             >
               <option value="REJECT" disabled={role === "reviewer" && candidate.publicationStatus === "published"}>
                 Rechazar candidato
@@ -320,7 +361,16 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
               >
                 Aprobar candidato
               </option>
-              {role === "admin" && <option value="CORRECT">Confirmar organizador, inscripción y ubicación</option>}
+              {role === "admin" && <option value="CORRECT_ORGANIZER">Asociar o cambiar organizador</option>}
+              {role === "admin" && <option value="CORRECT_REGISTRATION">Actualizar inscripción</option>}
+              {role === "admin" && (
+                <option
+                  value="VERIFY_LOCATION"
+                  disabled={candidate.data.locations.every((location) => location.verified)}
+                >
+                  Verificar ubicación
+                </option>
+              )}
               {role === "admin" && (
                 <option
                   value="PUBLISH"
@@ -344,7 +394,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
               disabled={busy}
               onChange={(e) => setReason(e.target.value)}
             />
-            {action === "CORRECT" && role === "admin" && (
+            {action === "CORRECT_ORGANIZER" && role === "admin" && (
               <>
                 <label htmlFor="editorial-organizer">Organizador comprobado</label>
                 <select
@@ -370,6 +420,11 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                 {candidate.moreOrganizers && (
                   <p>La lista es parcial. Si no aparece el organizador, solicita su selección al operador.</p>
                 )}
+                <p>Solo se modificará el organizador; inscripción, horario, precios y ubicaciones se conservan.</p>
+              </>
+            )}
+            {action === "CORRECT_REGISTRATION" && role === "admin" && (
+              <>
                 {candidate.registrationSupported ? (
                   <>
                     <label htmlFor="editorial-registration-method">Canal de inscripción</label>
@@ -435,18 +490,38 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                     />
                   </>
                 )}
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={locationConfirmed}
-                    onChange={(event) => setLocationConfirmed(event.target.checked)}
-                    disabled={busy || candidate.data.locations.length === 0}
-                    required
-                  />
-                  He comprobado todas las ubicaciones mostradas en la convocatoria oficial.
-                </label>
-                <p>Guardar esta revisión retira cualquier publicación activa y exige una nueva aprobación.</p>
+                <p>Solo se modificará la inscripción; organizador, horario, precios y ubicaciones se conservan.</p>
               </>
+            )}
+            {action === "VERIFY_LOCATION" && role === "admin" && (
+              <fieldset disabled={busy}>
+                <legend>Ubicaciones comprobadas en la convocatoria oficial</legend>
+                {candidate.data.locations.map((location, index) => (
+                  <label key={index}>
+                    <input
+                      type="checkbox"
+                      checked={location.verified || verifiedLocations.includes(index)}
+                      disabled={location.verified}
+                      onChange={(event) =>
+                        setVerifiedLocations((current) =>
+                          event.target.checked
+                            ? [...current.filter((entry) => entry !== index), index].sort((x, y) => x - y)
+                            : current.filter((entry) => entry !== index),
+                        )
+                      }
+                    />
+                    He comprobado esta ubicación: {describeLocation(location)}
+                    {location.verified ? " (ya verificada)" : ""}
+                  </label>
+                ))}
+                <p>Solo se marcarán como verificadas las ubicaciones seleccionadas; el resto no cambia.</p>
+              </fieldset>
+            )}
+            {isCorrectionAction(action) && role === "admin" && !candidate.correctionBase && (
+              <p>{errors.UNPRESERVABLE}</p>
+            )}
+            {isCorrectionAction(action) && role === "admin" && (
+              <p>Guardar esta revisión retira cualquier publicación activa y exige una nueva aprobación.</p>
             )}
             {candidate.registrationSupported && candidate.data.registration && (
               <p>
@@ -496,9 +571,10 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                 </select>
               </>
             )}
-            {candidate.publicationStatus === "published" && ["APPROVE", "REJECT", "CORRECT"].includes(action) && (
-              <p>Esta decisión retirará la actividad del catálogo y exigirá una nueva publicación.</p>
-            )}
+            {candidate.publicationStatus === "published" &&
+              (action === "APPROVE" || action === "REJECT" || isCorrectionAction(action)) && (
+                <p>Esta decisión retirará la actividad del catálogo y exigirá una nueva publicación.</p>
+              )}
             <button
               type="submit"
               disabled={busy || !reason.trim() || (role === "reviewer" && candidate.publicationStatus === "published")}

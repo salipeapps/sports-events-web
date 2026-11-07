@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { inspectionFixture } from "../src/integrations/editorial/inspection.fixture";
 import { normalizeInspection } from "../src/integrations/editorial/inspection";
+import type { EditorialInspection } from "../src/domain/editorial";
 
 test.skip(process.env.ADMIN_DEV_AUTH_MODE === "disabled", "This suite requires the explicit development-only Admin.");
 
@@ -16,6 +17,11 @@ const candidate = {
   conflictCount: 0,
   moreConflicts: false,
 };
+
+/** Mirrors the BFF: canonical test URLs keep the exact write snapshot equal to the display data. */
+function withData<T extends EditorialInspection>(inspection: T, data: EditorialInspection["data"]): T {
+  return { ...inspection, data, correctionBase: data };
+}
 
 function receipt(commandKey: string, status = "APPROVED") {
   return { commandKey, candidateIds: [candidateId], status };
@@ -138,7 +144,7 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
   expect(reads.readCount()).toBe(initialReads);
 
   // Returning to the unchanged payload must retain the key of the uncertain command.
-  await action.selectOption("CORRECT");
+  await action.selectOption("CORRECT_ORGANIZER");
   await action.selectOption("REJECT");
   await page.getByRole("button", { name: "Confirmar decisión" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toHaveText(
@@ -151,56 +157,214 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
   expect(reads.readCount()).toBe(initialReads + 1);
 });
 
-test("reviews real-shaped details and completes missing organizer/location through CORRECT", async ({ page }) => {
-  let current = { ...candidate, organizerName: null, data: { ...candidate.data, organizerId: null } };
+const valenciaOrganizerId = "f5225129-1df5-4a37-b12f-41aa27c83943";
+const unassigned = withData(
+  {
+    ...candidate,
+    organizerName: null,
+    organizers: [...candidate.organizers, { id: valenciaOrganizerId, name: "S.D. Correcaminos" }],
+  },
+  {
+    ...candidate.data,
+    organizerId: null,
+    locations: [
+      candidate.data.locations[0],
+      { ...candidate.data.locations[0], pointName: "Eixida en la Plaça Marató", verified: false },
+    ],
+  },
+);
+
+async function mockCorrection(page: Page, initial: EditorialInspection = unassigned) {
+  let current: EditorialInspection = initial;
+  const commands: { key: string; payload: Record<string, unknown> }[] = [];
+  let respond: (count: number) => { status: number; json: unknown } | null = () => null;
   await page.route("**" + inspectionPath, (route) => route.fulfill({ json: current }));
-  let payload: Record<string, unknown> | undefined;
   await page.route("**" + inspectionPath + "/commands", (route) => {
-    payload = route.request().postDataJSON();
-    current = { ...current, revision: 1 };
-    return route.fulfill({ json: receipt(route.request().headers()["idempotency-key"], "in_review") });
+    const key = route.request().headers()["idempotency-key"];
+    const payload = route.request().postDataJSON();
+    commands.push({ key, payload });
+    const override = respond(commands.length);
+    if (override) return route.fulfill(override);
+    current = withData({ ...current, revision: current.revision + 1 }, payload.correction);
+    return route.fulfill({ json: receipt(key, "in_review") });
   });
+  return {
+    commands,
+    respondWith: (fn: typeof respond) => (respond = fn),
+    /** Simulates a concurrent change by another editor. */
+    advance: () => (current = { ...current, revision: current.revision + 1 }),
+  };
+}
+
+test("reviews real-shaped details and associates only the organizer without verifying locations", async ({ page }) => {
+  const mock = await mockCorrection(page);
   await page.goto("/admin/editorial/" + candidateId);
   await expect(page.getByText("2030-05-01T12:00:00", { exact: true })).toBeVisible();
-  await expect(page.getByText(/Parque del Turia/)).toBeVisible();
+  await expect(page.getByText(/Parque del Turia/).first()).toBeVisible();
   await expect(page.getByRole("link", { name: "Revisar convocatoria oficial" })).toHaveAttribute(
     "href",
     "https://example.org/current",
   );
-  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT");
-  await page.getByLabel("Organizador comprobado").selectOption(inspectionFixture.organizers[0].id);
-  await page.getByLabel("Enlace de inscripción comprobado").fill("https://example.org/confirmed-booking");
-  await page.getByLabel("He comprobado todas las ubicaciones mostradas en la convocatoria oficial.").check();
-  await page.getByLabel("Motivo obligatorio").fill("Organizador y ubicación contrastados en la convocatoria vigente");
+  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_ORGANIZER");
+  // Organizer association requires neither a location confirmation nor registration fields.
+  await expect(page.getByLabel(/He comprobado/)).toHaveCount(0);
+  await expect(page.getByLabel("Enlace de inscripción comprobado")).toHaveCount(0);
+  await page.getByLabel("Organizador comprobado").selectOption(valenciaOrganizerId);
+  await page.getByLabel("Motivo obligatorio").fill("Organizador contrastado en la convocatoria vigente");
   await page.getByRole("button", { name: "Confirmar decisión" }).click();
   await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toContainText(
     "in_review",
   );
-  expect(payload).toMatchObject({
+  expect(mock.commands).toHaveLength(1);
+  expect(mock.commands[0].payload).toEqual({
     action: "CORRECT",
     expectedVersion: 1,
     expectedRevision: 0,
+    reason: "Organizador contrastado en la convocatoria vigente",
+    correction: { ...unassigned.data, organizerId: valenciaOrganizerId },
+  });
+  await expect(page.getByText("Pendiente de verificar")).toHaveCount(2);
+});
+
+test("verifies only the location explicitly confirmed by the admin", async ({ page }) => {
+  const mock = await mockCorrection(page);
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("VERIFY_LOCATION");
+  await expect(page.getByLabel("Organizador comprobado")).toHaveCount(0);
+  await page.getByLabel("Motivo obligatorio").fill("Salida comprobada en el reglamento");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Marca expresamente cada ubicación que hayas comprobado." }),
+  ).toBeVisible();
+  expect(mock.commands).toHaveLength(0);
+  await page.getByLabel(/He comprobado esta ubicación: .*Eixida en la Plaça Marató/).check();
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toBeVisible();
+  expect(mock.commands[0].payload).toEqual({
+    action: "CORRECT",
+    expectedVersion: 1,
+    expectedRevision: 0,
+    reason: "Salida comprobada en el reglamento",
     correction: {
-      organizerId: inspectionFixture.organizers[0].id,
-      registrationUri: "https://example.org/confirmed-booking",
-      locations: [{ verified: true }],
+      ...unassigned.data,
+      locations: [unassigned.data.locations[0], { ...unassigned.data.locations[1], verified: true }],
     },
   });
-  expect(payload).not.toHaveProperty("actor");
-  expect(payload).not.toHaveProperty("role");
+  await expect(page.getByText("Pendiente de verificar")).toHaveCount(1);
+  await expect(page.getByLabel(/He comprobado esta ubicación: .*Eixida/)).toBeDisabled();
+});
+
+test("updates only the legacy registration link", async ({ page }) => {
+  const mock = await mockCorrection(page);
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_REGISTRATION");
+  await expect(page.getByLabel("Organizador comprobado")).toHaveCount(0);
+  await page.getByLabel("Enlace de inscripción comprobado").fill("https://example.org/confirmed-booking");
+  await page.getByLabel("Motivo obligatorio").fill("Enlace publicado por el organizador");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toBeVisible();
+  expect(mock.commands[0].payload.correction).toEqual({
+    ...unassigned.data,
+    registrationUri: "https://example.org/confirmed-booking",
+  });
+});
+
+test("an organizer correction is retried idempotently and a version conflict resyncs the form", async ({ page }) => {
+  const mock = await mockCorrection(page);
+  mock.respondWith((count) => {
+    if (count === 1) return { status: 503, json: { code: "WRITE_UNAVAILABLE" } };
+    if (count !== 3) return null;
+    mock.advance();
+    return { status: 409, json: { code: "CONFLICT" } };
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_ORGANIZER");
+  await page.getByLabel("Organizador comprobado").selectOption(valenciaOrganizerId);
+  await page.getByLabel("Motivo obligatorio").fill("Organizador contrastado");
+  const submit = page.getByRole("button", { name: "Confirmar decisión" });
+  await submit.click();
+  await expect(page.getByRole("alert").filter({ hasText: "No se ha podido confirmar la operación" })).toBeVisible();
+  await submit.click();
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toBeVisible();
+  expect(mock.commands[1]).toEqual(mock.commands[0]);
+
+  // Another editor changes the candidate: the 409 reloads it and clears the stale confirmation.
+  await page.getByLabel("Decisión", { exact: true }).selectOption("VERIFY_LOCATION");
+  const location = page.getByLabel(/He comprobado esta ubicación: .*Parque del Turia/);
+  await location.check();
+  await page.getByLabel("Motivo obligatorio").fill("Ubicación comprobada");
+  await submit.click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Se han recargado sus datos: revísalos y confirma de nuevo." }),
+  ).toBeVisible();
+  expect(mock.commands[2].payload).toMatchObject({ expectedVersion: 1, expectedRevision: 1 });
+  await expect(page.getByText("2", { exact: true })).toBeVisible();
+  await expect(location).not.toBeChecked();
+  await location.check();
+  await submit.click();
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toBeVisible();
+  expect(mock.commands).toHaveLength(4);
+  expect(mock.commands[3].payload).toMatchObject({ expectedVersion: 1, expectedRevision: 2 });
+  expect(mock.commands[3].key).not.toBe(mock.commands[2].key);
+});
+
+test("organizer-only CORRECT preserves the exact Engine registration link", async ({ page }) => {
+  for (const registrationUri of ["https://example.org", "https://example.org/a/../booking"]) {
+    const raw = { ...inspectionFixture, data: { ...inspectionFixture.data, organizerId: null, registrationUri } };
+    const inspection = { ...normalizeInspection(raw, candidateId), organizers: unassigned.organizers };
+    expect(inspection.data.registrationUri).not.toBe(registrationUri);
+    const mock = await mockCorrection(page, inspection);
+    await page.goto("/admin/editorial/" + candidateId);
+    await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_ORGANIZER");
+    await page.getByLabel("Organizador comprobado").selectOption(valenciaOrganizerId);
+    await page.getByLabel("Motivo obligatorio").fill("Organizador contrastado");
+    await page.getByRole("button", { name: "Confirmar decisión" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toBeVisible();
+    expect(mock.commands[0].payload.correction).toEqual({ ...raw.data, organizerId: valenciaOrganizerId });
+    await page.unrouteAll();
+  }
+});
+
+test("blocks corrections when the Engine registration link cannot be preserved exactly", async ({ page }) => {
+  const raw = {
+    ...inspectionFixture,
+    data: { ...inspectionFixture.data, registrationUri: "https://example.org/book?token=abc" },
+  };
+  const inspection = normalizeInspection(raw, candidateId);
+  expect(inspection.correctionBase).toBeNull();
+  const mock = await mockCorrection(page, { ...inspection, organizers: unassigned.organizers });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_ORGANIZER");
+  await expect(page.getByText(/no se puede reenviar con exactitud/)).toBeVisible();
+  await page.getByLabel("Organizador comprobado").selectOption(valenciaOrganizerId);
+  await page.getByLabel("Motivo obligatorio").fill("Organizador contrastado");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: /no se puede reenviar con exactitud/ })).toBeVisible();
+  expect(mock.commands).toHaveLength(0);
+  expect(JSON.stringify(inspection)).not.toContain("token=abc");
+});
+
+test("rejects re-associating the organizer that is already set", async ({ page }) => {
+  const mock = await mockCorrection(page, candidate);
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_ORGANIZER");
+  await expect(page.getByLabel("Organizador comprobado")).toHaveValue(candidate.data.organizerId!);
+  await page.getByLabel("Motivo obligatorio").fill("Sin cambios");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "El organizador seleccionado ya está asociado a este candidato." }),
+  ).toBeVisible();
+  expect(mock.commands).toHaveLength(0);
 });
 
 test("shows the known end date for a candidate without scheduled times", async ({ page }) => {
   await page.route("**" + inspectionPath, (route) =>
     route.fulfill({
-      json: {
-        ...candidate,
-        data: {
-          ...candidate.data,
-          schedule: null,
-          calendarDates: { startDate: "2030-05-01", endDate: "2030-05-03", precision: "DATE_ONLY" },
-        },
-      },
+      json: withData(candidate, {
+        ...candidate.data,
+        schedule: null,
+        calendarDates: { startDate: "2030-05-01", endDate: "2030-05-03", precision: "DATE_ONLY" },
+      }),
     }),
   );
   await page.goto("/admin/editorial/" + candidateId);
@@ -210,29 +374,20 @@ test("shows the known end date for a candidate without scheduled times", async (
 
 for (const evidenceUrl of ["https://example.org", "https://example.org/", "https://example.org/a/../booking"]) {
   test(`corrects WhatsApp and preserves evidence on refresh: ${evidenceUrl}`, async ({ page }) => {
-    let inspection = {
-      ...candidate,
-      registrationSupported: true,
-      data: {
-        ...candidate.data,
-        registration: null as null | {
-          method: string;
-          destination: string;
-          evidenceUrl: string;
-          organizerPublished: boolean;
-        },
-      },
-    };
+    let inspection: EditorialInspection = withData(
+      { ...candidate, registrationSupported: true },
+      { ...candidate.data, registration: null },
+    );
     const payloads: Record<string, unknown>[] = [];
     await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
     await page.route("**" + inspectionPath + "/commands", (route) => {
       const payload = route.request().postDataJSON();
       payloads.push(payload);
-      if (payload.action === "CORRECT") inspection = { ...inspection, revision: 1, data: payload.correction };
+      if (payload.action === "CORRECT") inspection = withData({ ...inspection, revision: 1 }, payload.correction);
       return route.fulfill({ json: receipt(route.request().headers()["idempotency-key"]) });
     });
     await page.goto("/admin/editorial/" + candidateId);
-    await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT");
+    await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_REGISTRATION");
     await page.getByLabel("Motivo obligatorio").fill("Canal y número publicados por el organizador");
     await page.getByLabel("Canal de inscripción", { exact: true }).selectOption("WHATSAPP");
     const destination = page.getByLabel("Destino de inscripción publicado", { exact: true });
@@ -242,7 +397,6 @@ for (const evidenceUrl of ["https://example.org", "https://example.org/", "https
     await page
       .getByLabel("El organizador publica este canal y destino para inscripción y autoriza su uso público.")
       .check();
-    await page.getByLabel("He comprobado todas las ubicaciones mostradas en la convocatoria oficial.").check();
     await page.getByRole("button", { name: "Confirmar decisión" }).click();
     await expect(page.getByText("Inscripción: WHATSAPP", { exact: false })).toBeVisible();
     expect((payloads[0].correction as { registration: unknown }).registration).toEqual({
@@ -250,6 +404,11 @@ for (const evidenceUrl of ["https://example.org", "https://example.org/", "https
       destination: "+34600111222",
       evidenceUrl: evidenceUrl,
       organizerPublished: true,
+    });
+    // Only the registration changes: organizer, schedule, prices and unverified locations are preserved.
+    expect(payloads[0].correction).toEqual({
+      ...candidate.data,
+      registration: { method: "WHATSAPP", destination: "+34600111222", evidenceUrl, organizerPublished: true },
     });
     expect(JSON.stringify(payloads)).not.toContain("wa.me");
     await expect(page.getByLabel("URL oficial verificada (HTTPS, sin query)")).toHaveCount(0);

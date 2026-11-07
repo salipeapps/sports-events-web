@@ -41,6 +41,8 @@ export interface EditorialInspection {
   status: string;
   title: string;
   data: EditorialData;
+  /** Exact Engine values to start a CORRECT from; `null` when they cannot be preserved safely. */
+  correctionBase: EditorialData | null;
   organizerName: string | null;
   organizers: { id: string; name: string }[];
   moreOrganizers: boolean;
