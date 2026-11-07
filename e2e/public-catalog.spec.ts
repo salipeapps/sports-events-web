@@ -170,6 +170,8 @@ test("combined filters: shareable URL, reset, filtered pagination and explicit z
   await form.getByLabel("Categoría").selectOption("yoga");
   await form.getByRole("button", { name: "Aplicar filtros" }).click();
   await expect(page).toHaveURL(/categoria=yoga/);
+  // Empty optional fields stay out of the shareable URL.
+  await expect(page).not.toHaveURL(/municipio=|idioma=|precio=/);
   await expect(page.getByRole("article")).toHaveCount(5);
   for (const card of await page.getByRole("article").all()) await expect(card).toContainText("Yoga");
   await expect(page.getByLabel("Filtros activos")).toContainText("Yoga");
@@ -235,4 +237,64 @@ test("period presets keep filters, invalid filters are rejected and only filtere
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, follow");
   await page.goto("/");
   await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", "noindex, nofollow");
+});
+
+test("mobile filters start collapsed and the detail keeps the visitor's search on the way back", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const month = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Madrid",
+    year: "numeric",
+    month: "2-digit",
+  }).format(new Date());
+  await page.goto(`/?month=${month}`);
+  const form = page.getByRole("form", { name: "Filtrar actividades" });
+  const toggle = page.locator(".public-filter-panel > summary");
+  await expect(toggle).toHaveText("Filtrar actividades");
+  await expect(form).toBeHidden();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await testInfo.attach("public-filters-mobile-collapsed", {
+    body: await page.screenshot({ path: testInfo.outputPath("filters-collapsed.png") }),
+    contentType: "image/png",
+  });
+  await toggle.click();
+  await form.getByLabel("Categoría").selectOption("yoga");
+  await form.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(new RegExp(`month=${month}`));
+  await expect(page).toHaveURL(/categoria=yoga/);
+  await expect(page).not.toHaveURL(/municipio=|idioma=|precio=/);
+  await expect(toggle).toContainText("1 activo");
+  await testInfo.attach("public-filters-mobile-active", {
+    body: await page.screenshot({ path: testInfo.outputPath("filters-active.png") }),
+    contentType: "image/png",
+  });
+  await expect(form).toBeHidden();
+  const search = new URL(page.url()).search;
+
+  await page
+    .getByRole("article")
+    .first()
+    .getByRole("link", { name: /Ver ficha completa/ })
+    .click();
+  await expect(page).toHaveURL(/\/actividades\//);
+  await page.keyboard.press("Tab");
+  await expect(page.getByRole("link", { name: "Saltar al contenido" })).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("main")).toBeFocused();
+  await page.getByRole("link", { name: "Volver a la agenda" }).click();
+  await expect(page).toHaveURL(`/${search}#activities`);
+  await expect(page.getByLabel("Filtros activos")).toContainText("Yoga");
+
+  // Without a catalogue referrer the link falls back to the plain agenda.
+  await page.goto("/actividades/00000000-0000-4000-8000-000000000002");
+  await page.getByRole("link", { name: "Volver a la agenda" }).click();
+  await expect(page).toHaveURL("/#activities");
+});
+
+test("desktop keeps the filters expanded without a toggle", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/");
+  await expect(page.getByRole("form", { name: "Filtrar actividades" })).toBeVisible();
+  await expect(page.locator(".public-filter-panel > summary")).toBeHidden();
 });

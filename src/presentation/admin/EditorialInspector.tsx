@@ -24,6 +24,11 @@ const errors: Record<string, string> = {
   NOT_FOUND: "No se encuentra esta candidatura.",
   CONFLICT: "El candidato ha cambiado. Actualiza sus datos antes de decidir.",
   CONFLICT_REFRESHED: "El candidato ha cambiado. Se han recargado sus datos: revísalos y confirma de nuevo.",
+  // Engine answers 409 for every unmet approval precondition, not only for a concurrent change.
+  APPROVE_CONFLICT_REFRESHED:
+    "El Engine no ha aceptado la aprobación: el candidato ha cambiado o todavía no cumple las condiciones para publicarse (inscripción autorizada por el organizador, alguna ubicación verificada, horario futuro y sin conflictos ni avisos pendientes). Se han recargado sus datos: revísalos antes de confirmar de nuevo.",
+  APPROVE_WITHOUT_REGISTRATION:
+    "Este candidato no tiene una inscripción con evidencia del organizador. Corrige la inscripción antes de aprobar.",
   UNPRESERVABLE:
     "Este candidato conserva un enlace de inscripción que no se puede reenviar con exactitud. Solicita la corrección al operador.",
   RATE_LIMITED: "Demasiadas solicitudes. Inténtalo más tarde.",
@@ -141,10 +146,18 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
     };
     if (action === "APPROVE") {
       if (candidate.registrationSupported) {
-        if (!registrationVerified || !candidate.data.registration?.organizerPublished) return;
+        const registration = candidate.data.registration;
+        if (!registration) {
+          setError(errors.APPROVE_WITHOUT_REGISTRATION);
+          return;
+        }
+        if (!registrationVerified || !registration.organizerPublished) return;
         payload.registrationVerified = true;
+        // Engine only accepts the exact audited evidence URI; any other value is rejected as a conflict.
+        payload.verificationUrl = registration.evidenceUrl;
+      } else {
+        payload.verificationUrl = verificationUrl;
       }
-      payload.verificationUrl = verificationUrl;
       payload.category = category;
     }
     if (isCorrectionAction(action)) {
@@ -213,7 +226,9 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
           const fresh = await refresh().catch(() => null);
           if (fresh) {
             syncForm(fresh);
-            throw new Error(errors.CONFLICT_REFRESHED);
+            throw new Error(
+              payload.action === "APPROVE" ? errors.APPROVE_CONFLICT_REFRESHED : errors.CONFLICT_REFRESHED,
+            );
           }
         }
         throw new Error(errors[code] ?? "Error al enviar la decisión.");
@@ -546,14 +561,32 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                   </label>
                 )}
                 <label htmlFor="editorial-url">URL oficial verificada (HTTPS, sin query)</label>
-                <input
-                  id="editorial-url"
-                  type="url"
-                  required
-                  value={verificationUrl}
-                  disabled={busy}
-                  onChange={(e) => setVerificationUrl(e.target.value)}
-                />
+                {candidate.registrationSupported ? (
+                  <>
+                    <input
+                      id="editorial-url"
+                      type="url"
+                      readOnly
+                      value={candidate.data.registration?.evidenceUrl ?? ""}
+                      disabled={busy}
+                      aria-describedby="editorial-url-hint"
+                    />
+                    <small id="editorial-url-hint">
+                      {candidate.data.registration
+                        ? "Es la evidencia de inscripción registrada y es la única que acepta el Engine. Para cambiarla, usa «Actualizar inscripción»."
+                        : errors.APPROVE_WITHOUT_REGISTRATION}
+                    </small>
+                  </>
+                ) : (
+                  <input
+                    id="editorial-url"
+                    type="url"
+                    required
+                    value={verificationUrl}
+                    disabled={busy}
+                    onChange={(e) => setVerificationUrl(e.target.value)}
+                  />
+                )}
                 <label htmlFor="editorial-category">Categoría</label>
                 <select
                   id="editorial-category"

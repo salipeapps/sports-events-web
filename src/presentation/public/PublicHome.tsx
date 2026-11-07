@@ -9,6 +9,7 @@ import {
   type CatalogScope,
   type CatalogSelection,
 } from "./catalogQuery";
+import { CleanGetForm } from "./CleanGetForm";
 import { OccurrenceCard } from "./OccurrenceCard";
 import { PublicFooter, PublicHeader } from "./PublicChrome";
 import { categoryLabel, languageLabel } from "./occurrencePresentation";
@@ -29,8 +30,23 @@ function activeFilterLabels(filters: CatalogFilters): string[] {
 
 function FilterForm({ selection }: { selection: CatalogSelection }) {
   const { filters } = selection;
+  const active = activeFilterLabels(filters).length;
+  // Collapsed on phones so results start on the first screen; always expanded on wider screens (catalog.css).
   return (
-    <form className="public-filters" method="get" action="/#activities" aria-label="Filtrar actividades">
+    <details className="public-filter-panel">
+      <summary>
+        Filtrar actividades
+        {active > 0 && <span className="public-filter-count">{active === 1 ? "1 activo" : `${active} activos`}</span>}
+      </summary>
+      <FilterFields selection={selection} />
+    </details>
+  );
+}
+
+function FilterFields({ selection }: { selection: CatalogSelection }) {
+  const { filters } = selection;
+  return (
+    <CleanGetForm className="public-filters" action="/#activities" aria-label="Filtrar actividades">
       {selection.month && <input type="hidden" name="month" value={selection.month} />}
       {selection.period && <input type="hidden" name="periodo" value={selection.period} />}
       <div>
@@ -93,7 +109,7 @@ function FilterForm({ selection }: { selection: CatalogSelection }) {
           <a href={catalogHref({ month: selection.month, period: selection.period })}>Limpiar filtros</a>
         )}
       </div>
-    </form>
+    </CleanGetForm>
   );
 }
 

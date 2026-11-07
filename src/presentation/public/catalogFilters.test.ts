@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { catalogHref, parseFilters, periodRange, selectCatalog } from "./catalogQuery";
+import { catalogHref, catalogReturnHref, parseFilters, periodRange, selectCatalog } from "./catalogQuery";
 
 // Thursday 22/10/2026 12:00 Madrid (CEST).
 const thursday = new Date("2026-10-22T10:00:00.000Z");
@@ -97,5 +97,22 @@ describe("server-side filters supported by the H2 RPC (#51)", () => {
     expect(catalogHref({ period: "hoy" })).toBe("/?periodo=hoy#activities");
     expect(catalogHref({ month: "2026-11" })).toBe("/?month=2026-11#activities");
     expect(catalogHref(null)).toBe("/#activities");
+  });
+});
+
+describe("return to the catalogue search (#54 QA)", () => {
+  const origin = "https://sports-events-web-staging.vercel.app";
+  it("keeps month, filters and page from a same-origin home referrer", () => {
+    expect(
+      catalogReturnHref(`${origin}/?month=2026-11&categoria=running&municipio=Val%C3%A8ncia#activities`, origin),
+    ).toBe("/?month=2026-11&categoria=running&municipio=Val%C3%A8ncia#activities");
+    expect(catalogReturnHref(`${origin}/`, origin)).toBe("/#activities");
+  });
+  it("ignores other origins, other paths and malformed referrers", () => {
+    expect(catalogReturnHref("https://evil.example/?categoria=running", origin)).toBeNull();
+    expect(catalogReturnHref(`${origin}/actividades/00000000-0000-4000-8000-000000000001`, origin)).toBeNull();
+    expect(catalogReturnHref(`${origin}/admin?month=2026-11`, origin)).toBeNull();
+    expect(catalogReturnHref("not a url", origin)).toBeNull();
+    expect(catalogReturnHref("", origin)).toBeNull();
   });
 });

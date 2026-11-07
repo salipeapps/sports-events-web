@@ -84,8 +84,10 @@ credenciales, políticas ni hosting; esas modificaciones requieren autorización
    organizador, inscripción y ubicación**, elegir Fundación Deportiva Municipal
    València, confirmar la ubicación y guardar con motivo. El comando es CORRECT;
    no publica. Preservar el UUID; no crear una importación duplicada.
-3. Aprobar con URL oficial, categoría running y motivo; publicar con un segundo
-   comando admin. Reviewer puede revisar/aprobar candidatos sin publicación;
+3. Aprobar con categoría running y motivo; publicar con un segundo
+   comando admin. Con contrato de inscripción, la URL oficial es la evidencia de
+   inscripción registrada y aparece en solo lectura: el Engine rechaza cualquier
+   otra con `CONFLICT`. Para cambiarla hay que usar «Actualizar inscripción». Reviewer puede revisar/aprobar candidatos sin publicación;
    no puede publicar, suspender ni retirar publicaciones activas por otra acción.
 4. Leer `api.catalog_occurrences_v1` para noviembre y abrir
    `/?month=2026-11#activities`: la tarjeta debe existir una sola vez. El filtro

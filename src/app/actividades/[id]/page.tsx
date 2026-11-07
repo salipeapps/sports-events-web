@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
@@ -10,6 +9,7 @@ import {
   occurrenceStructuredData,
   serializeStructuredData,
 } from "@/presentation/public/OccurrenceDetail";
+import { BackToCatalog } from "@/presentation/public/BackToCatalog";
 import { PublicFooter, PublicHeader } from "@/presentation/public/PublicChrome";
 import { categoryLabel, madridStart } from "@/presentation/public/occurrencePresentation";
 import "../../catalog.css";
@@ -45,12 +45,13 @@ export default async function OccurrencePage({ params }: Params) {
   const demo = process.env.PUBLIC_CATALOG_MODE === "local-rpc" && getPublicCatalogConfig() !== null;
   return (
     <div className="public-catalog">
+      <a className="public-skip" href="#content">
+        Saltar al contenido
+      </a>
       <PublicHeader />
-      <main className="public-detail-page">
+      <main className="public-detail-page" id="content" tabIndex={-1}>
         <nav aria-label="Ruta de navegación">
-          <Link className="public-back" href="/#activities" prefetch={false}>
-            <span aria-hidden="true">←</span> Volver a la agenda
-          </Link>
+          <BackToCatalog />
         </nav>
         {demo && (
           <p className="public-demo" role="status">

@@ -250,6 +250,16 @@ the exact range and filters. "Limpiar filtros" keeps the period. A filtered sear
 with no rows shows "No hay actividades que cumplan estos filtros". Any URL with
 query parameters is `noindex, follow`; the bare home stays indexable.
 
+After the STAGING pilot QA (#54): the filter form drops empty fields from the
+submitted URL (no `idioma=&precio=`; without JavaScript empty fields are still
+accepted as "no filter"), and on phones (≤ 680 px) the filters start collapsed
+behind a "Filtrar actividades" toggle that shows how many are active, so results
+appear on the first screen. Wider screens keep them expanded where the browser
+supports `::details-content`; otherwise the toggle stays as the fallback. The
+detail page has a "Saltar al contenido" link, and "Volver a la agenda" returns to
+the same-origin home search the visitor came from (month, period, filters, page),
+falling back to `/#activities`.
+
 **Not implementable in Web alone (Engine contract gaps for #51):** free-text search
 (activity/organizer/place), several values in one dimension (OR), "gratis" and
 maximum price, neighbourhood, level, accent-insensitive municipality ("Valencia" vs
