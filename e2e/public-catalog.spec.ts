@@ -163,3 +163,72 @@ test("detail upstream failure is distinct from withdrawal and leaks nothing; mob
   expect(await page.content()).not.toContain("PRIVATE_SQL_TOKEN_DO_NOT_RENDER");
   await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute("content", /noindex/);
 });
+
+test("combined filters: shareable URL, reset, filtered pagination and explicit zero results", async ({ page }) => {
+  await page.goto("/");
+  const form = page.getByRole("form", { name: "Filtrar actividades" });
+  await form.getByLabel("Categoría").selectOption("yoga");
+  await form.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page).toHaveURL(/categoria=yoga/);
+  await expect(page.getByRole("article")).toHaveCount(5);
+  for (const card of await page.getByRole("article").all()) await expect(card).toContainText("Yoga");
+  await expect(page.getByLabel("Filtros activos")).toContainText("Yoga");
+
+  // AND across dimensions; municipality is case-insensitive and ignores excursion destinations.
+  await form.getByLabel("Municipio").fill("valència");
+  await form.getByRole("button", { name: "Aplicar filtros" }).click();
+  await expect(page.getByRole("article")).toHaveCount(1);
+  await expect(page.getByRole("article")).toContainText("Russafa");
+  const shared = page.url();
+  await page.goto(shared);
+  await expect(page.getByRole("article")).toHaveCount(1);
+  await expect(form.getByLabel("Municipio")).toHaveValue("valència");
+  await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute("content", /noindex/);
+
+  await page.goto("/?municipio=Serra");
+  await expect(page.getByRole("heading", { name: "No hay actividades que cumplan estos filtros" })).toBeVisible();
+
+  await page.goto("/?categoria=yoga&idioma=es");
+  await expect(page.getByRole("heading", { name: "No hay actividades que cumplan estos filtros" })).toBeVisible();
+  await expect(page.getByText("0 actividades en esta página")).toBeVisible();
+  await page.getByRole("link", { name: "Limpiar filtros" }).first().click();
+  await expect(page).not.toHaveURL(/categoria|idioma/);
+  await expect(page.getByRole("article")).toHaveCount(24);
+
+  await page.goto("/?precio=sesion");
+  await expect(page.getByRole("article")).toHaveCount(1);
+  await expect(page.getByRole("article")).toContainText("10,00");
+
+  // "Sin precio por sesión" is not "gratis": 26 rows, paginated with the filter preserved in the cursor link.
+  await page.goto("/?precio=sin-sesion");
+  await expect(page.getByRole("article")).toHaveCount(24);
+  const firstPage = await page.getByRole("article").allInnerTexts();
+  await page.getByRole("link", { name: "Ver más actividades" }).click();
+  await expect(page).toHaveURL(/precio=sin-sesion/);
+  await expect(page).toHaveURL(/cursor=/);
+  await expect(page.getByRole("article")).toHaveCount(2);
+  for (const text of await page.getByRole("article").allInnerTexts()) expect(firstPage).not.toContain(text);
+  await page.getByRole("link", { name: "Volver al inicio del periodo" }).click();
+  await expect(page).toHaveURL(/precio=sin-sesion/);
+  await expect(page.getByRole("article")).toHaveCount(24);
+});
+
+test("period presets keep filters, invalid filters are rejected and unfiltered home stays indexable", async ({
+  page,
+}) => {
+  await page.goto("/?categoria=yoga");
+  await page.getByRole("link", { name: "Hoy", exact: true }).click();
+  await expect(page).toHaveURL(/periodo=hoy/);
+  await expect(page).toHaveURL(/categoria=yoga/);
+  await expect(page.getByRole("heading", { name: "Hoy", exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Hoy", exact: true })).toHaveAttribute("aria-current", "page");
+  await page.getByRole("link", { name: "Fin de semana" }).click();
+  await expect(page.getByRole("heading", { name: "Este fin de semana" })).toBeVisible();
+  await expect(page.getByLabel("Filtros activos")).toContainText("Yoga");
+  for (const path of ["/?categoria=boxeo", "/?idioma=de", "/?precio=gratis", "/?periodo=ayer", "/?municipio=%3Cb%3E"]) {
+    await page.goto(path);
+    await expect(page.getByRole("heading", { name: "No podemos mostrar esta búsqueda" }), path).toBeVisible();
+  }
+  await page.goto("/");
+  await expect(page.locator('meta[name="robots"]')).toHaveCount(0);
+});

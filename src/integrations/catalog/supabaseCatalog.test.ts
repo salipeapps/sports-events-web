@@ -421,3 +421,27 @@ describe("public detail RPC (#52)", () => {
     await expect(repository(request, 2).get(id)).rejects.toMatchObject({ code: "INCOMPATIBLE_CONTRACT" });
   });
 });
+
+describe("H2 server-side filters (#51)", () => {
+  it("sends only validated filters in the RPC body", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json(envelope([])));
+    const repository = new SupabasePublicCatalogRepository(
+      { url: "https://test.supabase.co", key: "sb_publishable_test" },
+      request,
+      () => now,
+    );
+    const filtered = { ...query, categoria: "yoga", municipio: "Valencia", idioma: "es", precioComparable: false };
+    await repository.list(filtered);
+    expect(JSON.parse(String(request.mock.calls[0][1]?.body))).toEqual(filtered);
+  });
+  it.each([
+    { categoria: "boxeo" },
+    { idioma: "de" },
+    { municipio: "" },
+    { municipio: "a".repeat(101) },
+    { municipio: "<b>x</b>" },
+    { precioComparable: "true" },
+  ])("rejects %j before any request", (extra) => {
+    expect(() => validateCatalogQuery({ ...query, ...extra } as CatalogQuery)).toThrow("INVALID_REQUEST");
+  });
+});

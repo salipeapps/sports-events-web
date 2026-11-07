@@ -228,3 +228,31 @@ STAGING publication rendered in a browser; see Web #54 for that gated test.
 
 Local browser evidence: `.next-e2e-catalog-live/evidence/result.json` and
 `home-390.png`, `home-768.png`, `home-1440.png` in the same ignored directory.
+
+## Search filters and period presets — Web #51 (partial)
+
+The home sends **only the filters the H2 RPC evaluates server-side**; nothing is
+filtered, inferred or completed in the browser. Each URL parameter is validated:
+a malformed or repeated value shows "No podemos mostrar esta búsqueda" and never
+reaches the RPC.
+
+| URL parameter                      | RPC argument                  | Semantics (Engine V021)                                                                                                      |
+| ---------------------------------- | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `categoria`                        | `categoria`                   | editorial category, exact                                                                                                    |
+| `municipio`                        | `municipio`                   | case-insensitive literal on `activity`, `departure`, `meeting_point`; an excursion **destination never matches**             |
+| `idioma`                           | `idioma`                      | `es`, `en`, `ca`, `other`; unknown language never matches                                                                    |
+| `precio=sesion` / `sin-sesion`     | `precioComparable` true/false | a current fixed **per-session EUR** option exists / does not. `sin-sesion` is **not "gratis"** and the UI says so            |
+| `periodo=hoy` / `manana` / `finde` | `desde`/`hasta`               | Madrid calendar; weekend = Saturday 00:00 to Monday 00:00 (49 h / 47 h on DST weekends), starting now when already inside it |
+
+Dimensions combine with AND. Period, month, filters, `at` and `cursor` travel in every
+pagination, month and "volver al inicio" link because the RPC seals the cursor to
+the exact range and filters. "Limpiar filtros" keeps the period. A filtered search
+with no rows shows "No hay actividades que cumplan estos filtros". Any URL with
+query parameters is `noindex, follow`; the bare home stays indexable.
+
+**Not implementable in Web alone (Engine contract gaps for #51):** free-text search
+(activity/organizer/place), several values in one dimension (OR), "gratis" and
+maximum price, neighbourhood, level, accent-insensitive municipality ("Valencia" vs
+"València" are different strings for the RPC). Implementing them client-side would
+filter only the current page and break the cursor, so they are left to a versioned
+RPC change.
