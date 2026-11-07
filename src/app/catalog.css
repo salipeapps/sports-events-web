@@ -661,3 +661,76 @@
     white-space: nowrap;
   }
 }
+
+/* Filters: collapsed on phones so the first screen shows results; expanded on wider screens. */
+.public-filter-panel > summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  margin-top: 24px;
+  padding: 0 16px;
+  border: 1px solid #bccab7;
+  border-radius: 12px;
+  background: white;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.public-filter-panel > summary {
+  list-style: none;
+}
+.public-filter-panel > summary::-webkit-details-marker {
+  display: none;
+}
+.public-filter-panel > summary::after {
+  content: "";
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(-2px) rotate(45deg);
+}
+.public-filter-panel[open] > summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+.public-filter-panel > summary:focus-visible {
+  outline: 3px solid #276448;
+  outline-offset: 2px;
+}
+.public-filter-panel[open] > summary {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+}
+.public-filter-panel[open] > .public-filters {
+  margin-top: 0;
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+.public-filter-count {
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: #e5efe4;
+  color: var(--public-green);
+  font-size: 12px;
+}
+
+/* Only where the browser can force the panel open: otherwise the summary stays as the fallback. */
+@supports selector(::details-content) {
+  @media (min-width: 681px) {
+    .public-filter-panel > summary {
+      display: none;
+    }
+    .public-filter-panel::details-content {
+      content-visibility: visible;
+      block-size: auto;
+    }
+    .public-filter-panel > .public-filters {
+      margin-top: 24px;
+      border-top: 1px solid #dbe2d8;
+      border-radius: 12px;
+    }
+  }
+}

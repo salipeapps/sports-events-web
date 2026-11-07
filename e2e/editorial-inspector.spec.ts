@@ -457,3 +457,55 @@ test("initial inspection prefills the exact bare-origin evidence for approval", 
   await expect.poll(() => payloads.length).toBe(1);
   expect(payloads[0]).toMatchObject({ action: "APPROVE", verificationUrl: evidenceUrl, registrationVerified: true });
 });
+
+test("approval sends only the registered evidence and explains an Engine 409 honestly", async ({ page }) => {
+  const evidenceUrl = "https://example.org/inscripcion";
+  const inspection = {
+    ...candidate,
+    registrationSupported: true,
+    data: {
+      ...candidate.data,
+      registration: { method: "WHATSAPP", destination: "+34600111222", evidenceUrl, organizerPublished: true },
+    },
+  };
+  const payloads: Record<string, unknown>[] = [];
+  await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
+  await page.route("**" + inspectionPath + "/commands", (route) => {
+    payloads.push(route.request().postDataJSON());
+    return route.fulfill({ status: 409, json: { code: "CONFLICT" } });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("APPROVE");
+  const url = page.getByLabel("URL oficial verificada (HTTPS, sin query)");
+  await expect(url).toHaveValue(evidenceUrl);
+  await expect(url).toHaveAttribute("readonly", "");
+  await expect(url).toHaveAccessibleDescription(/única que acepta el Engine/);
+  await page.getByLabel("Motivo obligatorio").fill("Verificada la evidencia del organizador");
+  await page.getByLabel("Categoría", { exact: true }).selectOption("running");
+  await page.getByLabel("He verificado ahora el canal, destino y autorización de publicación del organizador.").check();
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "El Engine no ha aceptado la aprobación" })).toContainText(
+    "Se han recargado sus datos",
+  );
+  await expect(page.getByText("El candidato ha cambiado.", { exact: false })).toHaveCount(0);
+  expect(payloads).toHaveLength(1);
+  expect(payloads[0]).toMatchObject({ action: "APPROVE", verificationUrl: evidenceUrl, registrationVerified: true });
+});
+
+test("approval without a registered evidence is stopped before calling the Engine", async ({ page }) => {
+  const inspection = withData({ ...candidate, registrationSupported: true }, { ...candidate.data, registration: null });
+  const payloads: unknown[] = [];
+  await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
+  await page.route("**" + inspectionPath + "/commands", (route) => {
+    payloads.push(route.request().postDataJSON());
+    return route.fulfill({ json: receipt(route.request().headers()["idempotency-key"]) });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("APPROVE");
+  await expect(page.getByLabel("URL oficial verificada (HTTPS, sin query)")).toHaveValue("");
+  await page.getByLabel("Motivo obligatorio").fill("Intento de aprobación");
+  await page.getByLabel("Categoría", { exact: true }).selectOption("running");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Corrige la inscripción antes de aprobar." })).toBeVisible();
+  expect(payloads).toHaveLength(0);
+});

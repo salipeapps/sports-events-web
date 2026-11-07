@@ -214,3 +214,18 @@ export function catalogHref(
   if (tail) params.set("tail", "1");
   return params.size ? `/?${params}#activities` : "/#activities";
 }
+
+/**
+ * Catalogue URL a visitor came from, so "Volver a la agenda" keeps month, period, filters and
+ * page. Only a same-origin home URL qualifies; its query is revalidated by the home itself.
+ */
+export function catalogReturnHref(referrer: string, origin: string): string | null {
+  if (!referrer) return null;
+  try {
+    const url = new URL(referrer);
+    if (url.origin !== origin || url.pathname !== "/") return null;
+    return `/${url.search}#activities`;
+  } catch {
+    return null;
+  }
+}
