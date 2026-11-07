@@ -53,6 +53,11 @@ export interface CatalogQuery {
   hasta: string;
   cursor: string | null;
   limit: number;
+  /** Optional H2 server-side filters; omitted keys mean "no filter" (RPC defaults null). */
+  municipio?: string;
+  categoria?: string;
+  idioma?: string;
+  precioComparable?: boolean;
 }
 
 export interface CatalogPage {

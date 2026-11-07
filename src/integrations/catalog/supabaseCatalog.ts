@@ -221,7 +221,16 @@ export function validateCatalogQuery(query: CatalogQuery) {
     !Number.isInteger(query.limit) ||
     query.limit < 1 ||
     query.limit > 100 ||
-    (query.cursor !== null && !cursorPattern.test(query.cursor))
+    (query.cursor !== null && !cursorPattern.test(query.cursor)) ||
+    (query.categoria !== undefined &&
+      !["yoga", "running", "hiking", "cycling", "fitness", "swimming", "dance", "other"].includes(query.categoria)) ||
+    (query.idioma !== undefined && !["es", "en", "ca", "other"].includes(query.idioma)) ||
+    (query.municipio !== undefined &&
+      (typeof query.municipio !== "string" ||
+        !query.municipio.trim() ||
+        query.municipio.length > 100 ||
+        /[\u0000-\u001f\u007f<>]/.test(query.municipio))) ||
+    (query.precioComparable !== undefined && typeof query.precioComparable !== "boolean")
   )
     throw new CatalogReadError("INVALID_REQUEST");
 }
