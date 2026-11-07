@@ -18,6 +18,11 @@ const candidate = {
   moreConflicts: false,
 };
 
+/** Mirrors the BFF: canonical test URLs keep the exact write snapshot equal to the display data. */
+function withData<T extends EditorialInspection>(inspection: T, data: EditorialInspection["data"]): T {
+  return { ...inspection, data, correctionBase: data };
+}
+
 function receipt(commandKey: string, status = "APPROVED") {
   return { commandKey, candidateIds: [candidateId], status };
 }
@@ -153,11 +158,13 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
 });
 
 const valenciaOrganizerId = "f5225129-1df5-4a37-b12f-41aa27c83943";
-const unassigned = {
-  ...candidate,
-  organizerName: null,
-  organizers: [...candidate.organizers, { id: valenciaOrganizerId, name: "S.D. Correcaminos" }],
-  data: {
+const unassigned = withData(
+  {
+    ...candidate,
+    organizerName: null,
+    organizers: [...candidate.organizers, { id: valenciaOrganizerId, name: "S.D. Correcaminos" }],
+  },
+  {
     ...candidate.data,
     organizerId: null,
     locations: [
@@ -165,7 +172,7 @@ const unassigned = {
       { ...candidate.data.locations[0], pointName: "Eixida en la Plaça Marató", verified: false },
     ],
   },
-};
+);
 
 async function mockCorrection(page: Page, initial: EditorialInspection = unassigned) {
   let current: EditorialInspection = initial;
@@ -178,10 +185,15 @@ async function mockCorrection(page: Page, initial: EditorialInspection = unassig
     commands.push({ key, payload });
     const override = respond(commands.length);
     if (override) return route.fulfill(override);
-    current = { ...current, revision: current.revision + 1, data: payload.correction };
+    current = withData({ ...current, revision: current.revision + 1 }, payload.correction);
     return route.fulfill({ json: receipt(key, "in_review") });
   });
-  return { commands, respondWith: (fn: typeof respond) => (respond = fn) };
+  return {
+    commands,
+    respondWith: (fn: typeof respond) => (respond = fn),
+    /** Simulates a concurrent change by another editor. */
+    advance: () => (current = { ...current, revision: current.revision + 1 }),
+  };
 }
 
 test("reviews real-shaped details and associates only the organizer without verifying locations", async ({ page }) => {
@@ -257,15 +269,14 @@ test("updates only the legacy registration link", async ({ page }) => {
   });
 });
 
-test("an organizer correction is retried idempotently and a version conflict requires a new key", async ({ page }) => {
+test("an organizer correction is retried idempotently and a version conflict resyncs the form", async ({ page }) => {
   const mock = await mockCorrection(page);
-  mock.respondWith((count) =>
-    count === 1
-      ? { status: 503, json: { code: "WRITE_UNAVAILABLE" } }
-      : count === 3
-        ? { status: 409, json: { code: "CONFLICT" } }
-        : null,
-  );
+  mock.respondWith((count) => {
+    if (count === 1) return { status: 503, json: { code: "WRITE_UNAVAILABLE" } };
+    if (count !== 3) return null;
+    mock.advance();
+    return { status: 409, json: { code: "CONFLICT" } };
+  });
   await page.goto("/admin/editorial/" + candidateId);
   await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_ORGANIZER");
   await page.getByLabel("Organizador comprobado").selectOption(valenciaOrganizerId);
@@ -277,19 +288,60 @@ test("an organizer correction is retried idempotently and a version conflict req
   await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toBeVisible();
   expect(mock.commands[1]).toEqual(mock.commands[0]);
 
-  // A later correction against a stale version surfaces the conflict and drops the key.
+  // Another editor changes the candidate: the 409 reloads it and clears the stale confirmation.
   await page.getByLabel("Decisión", { exact: true }).selectOption("VERIFY_LOCATION");
-  await page.getByLabel(/He comprobado esta ubicación: .*Parque del Turia/).check();
+  const location = page.getByLabel(/He comprobado esta ubicación: .*Parque del Turia/);
+  await location.check();
   await page.getByLabel("Motivo obligatorio").fill("Ubicación comprobada");
   await submit.click();
   await expect(
-    page.getByRole("alert").filter({ hasText: "El candidato ha cambiado. Actualiza sus datos antes de decidir." }),
+    page.getByRole("alert").filter({ hasText: "Se han recargado sus datos: revísalos y confirma de nuevo." }),
   ).toBeVisible();
   expect(mock.commands[2].payload).toMatchObject({ expectedVersion: 1, expectedRevision: 1 });
+  await expect(page.getByText("2", { exact: true })).toBeVisible();
+  await expect(location).not.toBeChecked();
+  await location.check();
   await submit.click();
-  await expect.poll(() => mock.commands.length).toBe(4);
-  expect(mock.commands[3].payload).toEqual(mock.commands[2].payload);
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toBeVisible();
+  expect(mock.commands).toHaveLength(4);
+  expect(mock.commands[3].payload).toMatchObject({ expectedVersion: 1, expectedRevision: 2 });
   expect(mock.commands[3].key).not.toBe(mock.commands[2].key);
+});
+
+test("organizer-only CORRECT preserves the exact Engine registration link", async ({ page }) => {
+  for (const registrationUri of ["https://example.org", "https://example.org/a/../booking"]) {
+    const raw = { ...inspectionFixture, data: { ...inspectionFixture.data, organizerId: null, registrationUri } };
+    const inspection = { ...normalizeInspection(raw, candidateId), organizers: unassigned.organizers };
+    expect(inspection.data.registrationUri).not.toBe(registrationUri);
+    const mock = await mockCorrection(page, inspection);
+    await page.goto("/admin/editorial/" + candidateId);
+    await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_ORGANIZER");
+    await page.getByLabel("Organizador comprobado").selectOption(valenciaOrganizerId);
+    await page.getByLabel("Motivo obligatorio").fill("Organizador contrastado");
+    await page.getByRole("button", { name: "Confirmar decisión" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine:" })).toBeVisible();
+    expect(mock.commands[0].payload.correction).toEqual({ ...raw.data, organizerId: valenciaOrganizerId });
+    await page.unrouteAll();
+  }
+});
+
+test("blocks corrections when the Engine registration link cannot be preserved exactly", async ({ page }) => {
+  const raw = {
+    ...inspectionFixture,
+    data: { ...inspectionFixture.data, registrationUri: "https://example.org/book?token=abc" },
+  };
+  const inspection = normalizeInspection(raw, candidateId);
+  expect(inspection.correctionBase).toBeNull();
+  const mock = await mockCorrection(page, { ...inspection, organizers: unassigned.organizers });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_ORGANIZER");
+  await expect(page.getByText(/no se puede reenviar con exactitud/)).toBeVisible();
+  await page.getByLabel("Organizador comprobado").selectOption(valenciaOrganizerId);
+  await page.getByLabel("Motivo obligatorio").fill("Organizador contrastado");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: /no se puede reenviar con exactitud/ })).toBeVisible();
+  expect(mock.commands).toHaveLength(0);
+  expect(JSON.stringify(inspection)).not.toContain("token=abc");
 });
 
 test("rejects re-associating the organizer that is already set", async ({ page }) => {
@@ -308,14 +360,11 @@ test("rejects re-associating the organizer that is already set", async ({ page }
 test("shows the known end date for a candidate without scheduled times", async ({ page }) => {
   await page.route("**" + inspectionPath, (route) =>
     route.fulfill({
-      json: {
-        ...candidate,
-        data: {
-          ...candidate.data,
-          schedule: null,
-          calendarDates: { startDate: "2030-05-01", endDate: "2030-05-03", precision: "DATE_ONLY" },
-        },
-      },
+      json: withData(candidate, {
+        ...candidate.data,
+        schedule: null,
+        calendarDates: { startDate: "2030-05-01", endDate: "2030-05-03", precision: "DATE_ONLY" },
+      }),
     }),
   );
   await page.goto("/admin/editorial/" + candidateId);
@@ -325,25 +374,16 @@ test("shows the known end date for a candidate without scheduled times", async (
 
 for (const evidenceUrl of ["https://example.org", "https://example.org/", "https://example.org/a/../booking"]) {
   test(`corrects WhatsApp and preserves evidence on refresh: ${evidenceUrl}`, async ({ page }) => {
-    let inspection = {
-      ...candidate,
-      registrationSupported: true,
-      data: {
-        ...candidate.data,
-        registration: null as null | {
-          method: string;
-          destination: string;
-          evidenceUrl: string;
-          organizerPublished: boolean;
-        },
-      },
-    };
+    let inspection: EditorialInspection = withData(
+      { ...candidate, registrationSupported: true },
+      { ...candidate.data, registration: null },
+    );
     const payloads: Record<string, unknown>[] = [];
     await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
     await page.route("**" + inspectionPath + "/commands", (route) => {
       const payload = route.request().postDataJSON();
       payloads.push(payload);
-      if (payload.action === "CORRECT") inspection = { ...inspection, revision: 1, data: payload.correction };
+      if (payload.action === "CORRECT") inspection = withData({ ...inspection, revision: 1 }, payload.correction);
       return route.fulfill({ json: receipt(route.request().headers()["idempotency-key"]) });
     });
     await page.goto("/admin/editorial/" + candidateId);

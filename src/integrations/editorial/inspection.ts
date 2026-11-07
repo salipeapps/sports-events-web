@@ -162,11 +162,25 @@ function data(value: unknown): EditorialData {
   };
 }
 
+/**
+ * Exact snapshot for CORRECT. `data` canonicalises links for safe display (`https://example.org` becomes
+ * `https://example.org/`), which must never leak into a write as an unconfirmed change. Only the raw
+ * `registrationUri` differs; when it is a link that display filters out, no exact snapshot is offered and
+ * the unsafe value never reaches the browser.
+ */
+function correctionBase(raw: Record<string, unknown>, details: EditorialData): EditorialData | null {
+  const uri = raw.registrationUri;
+  if (uri === null) return details;
+  if (details.registrationUri === null || typeof uri !== "string") return null;
+  return { ...details, registrationUri: uri };
+}
+
 export function normalizeInspection(value: unknown, candidateId: string): EditorialInspection {
   const raw = record(value);
   if (uuid(raw.candidateId) !== candidateId || version(raw.candidateVersion) < 1) invalid();
   const source = record(raw.source);
   const details = data(raw.data);
+  const writeBase = correctionBase(record(raw.data), details);
   const conflicts = list(raw.conflicts, 100, (value) => {
     const item = record(value);
     return {
@@ -183,6 +197,7 @@ export function normalizeInspection(value: unknown, candidateId: string): Editor
     status: text(raw.status, 45),
     title: details.title,
     data: details,
+    correctionBase: writeBase,
     registrationSupported: Object.hasOwn(details, "registration"),
     organizerName: nullableText(raw.organizerName),
     organizers: list(raw.organizers, 100, (value) => {

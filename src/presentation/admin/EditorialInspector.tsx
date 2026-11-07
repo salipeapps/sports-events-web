@@ -23,6 +23,9 @@ const errors: Record<string, string> = {
   FORBIDDEN: "No tienes permiso para realizar esta operación.",
   NOT_FOUND: "No se encuentra esta candidatura.",
   CONFLICT: "El candidato ha cambiado. Actualiza sus datos antes de decidir.",
+  CONFLICT_REFRESHED: "El candidato ha cambiado. Se han recargado sus datos: revísalos y confirma de nuevo.",
+  UNPRESERVABLE:
+    "Este candidato conserva un enlace de inscripción que no se puede reenviar con exactitud. Solicita la corrección al operador.",
   RATE_LIMITED: "Demasiadas solicitudes. Inténtalo más tarde.",
   WRITE_UNAVAILABLE: "No se ha podido confirmar la operación. Puedes reintentar con la misma clave.",
   INCOMPATIBLE_CONTRACT: "El servicio editorial ha devuelto una respuesta incompatible.",
@@ -94,20 +97,26 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
     [candidateId],
   );
 
+  // Resynchronises every form field with a fresh read so no stale intent survives a new version.
+  const syncForm = useCallback((value: EditorialInspection) => {
+    setCandidate(value);
+    setOrganizerId(value.data.organizerId ?? "");
+    setRegistrationUri(value.correctionBase?.registrationUri ?? value.data.registrationUri ?? "");
+    setRegistrationMethod(value.data.registration?.method ?? "");
+    setDestination(value.data.registration?.destination ?? "");
+    setEvidenceUrl(value.data.registration?.evidenceUrl ?? "");
+    setOrganizerPublished(value.data.registration?.organizerPublished ?? false);
+    setVerificationUrl(value.data.registration?.evidenceUrl ?? "");
+    setRegistrationVerified(false);
+    setVerifiedLocations([]);
+  }, []);
+
   useEffect(() => {
     const controller = new AbortController();
     refresh(controller.signal)
       .then((value) => {
         if (!controller.signal.aborted) {
-          setCandidate(value);
-          setOrganizerId(value.data.organizerId ?? "");
-          setRegistrationUri(value.data.registrationUri ?? "");
-          setRegistrationMethod(value.data.registration?.method ?? "");
-          setDestination(value.data.registration?.destination ?? "");
-          setEvidenceUrl(value.data.registration?.evidenceUrl ?? "");
-          setOrganizerPublished(value.data.registration?.organizerPublished ?? false);
-          setVerificationUrl(value.data.registration?.evidenceUrl ?? "");
-          setRegistrationVerified(false);
+          syncForm(value);
           setError("");
         }
       })
@@ -118,7 +127,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [refresh]);
+  }, [refresh, syncForm]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -139,10 +148,14 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       payload.category = category;
     }
     if (isCorrectionAction(action)) {
+      if (!candidate.correctionBase) {
+        setError(errors.UNPRESERVABLE);
+        return;
+      }
       let change: CorrectionChange;
       if (action === "CORRECT_ORGANIZER") {
         if (!organizerId) return;
-        if (organizerId === candidate.data.organizerId) {
+        if (organizerId === candidate.correctionBase.organizerId) {
           setError("El organizador seleccionado ya está asociado a este candidato.");
           return;
         }
@@ -168,7 +181,8 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         }
         change = { kind: "LOCATIONS", verifiedIndexes: verifiedLocations };
       }
-      const correction = buildCorrection(candidate.data, change);
+      // Start from the exact Engine snapshot, never from the display-normalised data.
+      const correction = buildCorrection(candidate.correctionBase, change);
       if (!correction) {
         setError("No hay cambios confirmados que guardar.");
         return;
@@ -194,6 +208,14 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       if (!response.ok) {
         const code = String(value.code ?? "");
         if (["INVALID_REQUEST", "FORBIDDEN", "NOT_FOUND", "CONFLICT"].includes(code)) pending.current = null;
+        if (code === "CONFLICT") {
+          // Reload version, revision and data before allowing another intent; a retry would only conflict again.
+          const fresh = await refresh().catch(() => null);
+          if (fresh) {
+            syncForm(fresh);
+            throw new Error(errors.CONFLICT_REFRESHED);
+          }
+        }
         throw new Error(errors[code] ?? "Error al enviar la decisión.");
       }
       // A successful receipt is mandatory; never infer success from a timeout or 2xx without a receipt.
@@ -201,17 +223,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         throw new Error(errors.INCOMPATIBLE_CONTRACT);
       pending.current = null;
       setResult("Decisión confirmada por Engine: " + String(value.status));
-      const updated = await refresh();
-      setCandidate(updated);
-      setOrganizerId(updated.data.organizerId ?? "");
-      setRegistrationUri(updated.data.registrationUri ?? "");
-      setRegistrationMethod(updated.data.registration?.method ?? "");
-      setDestination(updated.data.registration?.destination ?? "");
-      setEvidenceUrl(updated.data.registration?.evidenceUrl ?? "");
-      setOrganizerPublished(updated.data.registration?.organizerPublished ?? false);
-      setVerificationUrl(updated.data.registration?.evidenceUrl ?? "");
-      setRegistrationVerified(false);
-      setVerifiedLocations([]);
+      syncForm(await refresh());
       setReason("");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : errors.WRITE_UNAVAILABLE);
@@ -504,6 +516,9 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                 ))}
                 <p>Solo se marcarán como verificadas las ubicaciones seleccionadas; el resto no cambia.</p>
               </fieldset>
+            )}
+            {isCorrectionAction(action) && role === "admin" && !candidate.correctionBase && (
+              <p>{errors.UNPRESERVABLE}</p>
             )}
             {isCorrectionAction(action) && role === "admin" && (
               <p>Guardar esta revisión retira cualquier publicación activa y exige una nueva aprobación.</p>
