@@ -60,6 +60,14 @@ editoriales y el nuevo runtime Java; la API editorial responde NOT_CONFIGURED.
    Sin path, query, fragment, credenciales ni puertos personalizados. No depende de
    Cloud Run, STS, WIF, audiencia IAM ni cuenta de servicio. Solo se envía el bearer
    Supabase del usuario; Engine comprueba firma, issuer, sesión y membresía viva.
+   **Fase P (Engine #125):** cuando el Engine active el IAM de invocación de Cloud Run,
+   `EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE` debe ser exactamente ese origen. El BFF obtiene
+   entonces un ID token de Google (Vercel OIDC → STS → `moumeet-staging-invoker@`,
+   el mismo intercambio que `readApi.ts`, con `GCP_WORKLOAD_PROVIDER_AUDIENCE`,
+   `GCP_INVOKER_SERVICE_ACCOUNT_EMAIL` y `VERCEL_EXPECTED_OIDC_*`) y lo envía **solo**
+   en `X-Serverless-Authorization`; el bearer Supabase sigue en `Authorization`. Si no
+   puede obtenerlo, responde `WRITE_UNAVAILABLE` sin llamar al Engine. Vacía, no se
+   envía (estado anterior a P4). Una audiencia distinta del origen da `NOT_CONFIGURED`.
 4. Web #59 revisada, pruebas de contrato Java-Web y una API Java real desplegada
    con `EDITORIAL_API_ENABLED=true` sobre runtime dedicado, sin Flyway, jobs ni
    API anterior; autorización, quota, red, factura y permisos JDBC mínimos

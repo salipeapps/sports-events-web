@@ -249,12 +249,44 @@ export function getDiscoveryMode(env: NodeJS.ProcessEnv = process.env): Discover
   return "disabled";
 }
 
-interface StageConfig {
+export interface StageConfig {
   origin: string;
   providerAudience: string;
   serviceEmail: string;
   expectedIssuer: string;
   expectedAudience: string;
+}
+
+/**
+ * Vercel OIDC → Google STS → IAM identity for a private `*.run.app` origin. The ID token audience is
+ * exactly that origin. Shared by the discovery reader and the editorial BFF (phase P, Engine #125).
+ */
+export function workloadIdentityConfig(env: Partial<NodeJS.ProcessEnv>, origin: string): StageConfig {
+  let u: URL;
+  try {
+    u = new URL(origin);
+  } catch {
+    throw new DiscoveryReadError("NOT_CONFIGURED");
+  }
+  if (
+    u.origin !== origin ||
+    u.protocol !== "https:" ||
+    !/^[a-z0-9-]+(?:-[a-z0-9]+)?\.a\.run\.app$/.test(u.hostname) ||
+    !/^\/\/iam\.googleapis\.com\/projects\/[0-9]+\/locations\/global\/workloadIdentityPools\/[a-zA-Z0-9-]+\/providers\/[a-zA-Z0-9-]+$/.test(
+      env.GCP_WORKLOAD_PROVIDER_AUDIENCE ?? "",
+    ) ||
+    !/^[a-zA-Z0-9.-]+@[a-zA-Z0-9-]+\.iam\.gserviceaccount\.com$/.test(env.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL ?? "") ||
+    env.VERCEL_EXPECTED_OIDC_ISSUER !== "https://oidc.vercel.com/raulsp" ||
+    env.VERCEL_EXPECTED_OIDC_AUDIENCE !== "https://vercel.com/raulsp"
+  )
+    throw new DiscoveryReadError("NOT_CONFIGURED");
+  return {
+    origin,
+    providerAudience: env.GCP_WORKLOAD_PROVIDER_AUDIENCE!,
+    serviceEmail: env.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL!,
+    expectedIssuer: env.VERCEL_EXPECTED_OIDC_ISSUER!,
+    expectedAudience: env.VERCEL_EXPECTED_OIDC_AUDIENCE!,
+  };
 }
 
 export function parseStageConfig(env: Partial<NodeJS.ProcessEnv> = process.env): StageConfig {
@@ -273,22 +305,10 @@ export function parseStageConfig(env: Partial<NodeJS.ProcessEnv> = process.env):
     u.username ||
     u.password ||
     u.port ||
-    env.ENGINE_STAGING_ID_TOKEN_AUDIENCE !== u.origin ||
-    !/^\/\/iam\.googleapis\.com\/projects\/[0-9]+\/locations\/global\/workloadIdentityPools\/[a-zA-Z0-9-]+\/providers\/[a-zA-Z0-9-]+$/.test(
-      env.GCP_WORKLOAD_PROVIDER_AUDIENCE ?? "",
-    ) ||
-    !/^[a-zA-Z0-9.-]+@[a-zA-Z0-9-]+\.iam\.gserviceaccount\.com$/.test(env.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL ?? "") ||
-    env.VERCEL_EXPECTED_OIDC_ISSUER !== "https://oidc.vercel.com/raulsp" ||
-    env.VERCEL_EXPECTED_OIDC_AUDIENCE !== "https://vercel.com/raulsp"
+    env.ENGINE_STAGING_ID_TOKEN_AUDIENCE !== u.origin
   )
     throw new DiscoveryReadError("NOT_CONFIGURED");
-  return {
-    origin: u.origin,
-    providerAudience: env.GCP_WORKLOAD_PROVIDER_AUDIENCE!,
-    serviceEmail: env.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL!,
-    expectedIssuer: env.VERCEL_EXPECTED_OIDC_ISSUER!,
-    expectedAudience: env.VERCEL_EXPECTED_OIDC_AUDIENCE!,
-  };
+  return workloadIdentityConfig(env, u.origin);
 }
 
 function oidcClaims(token: string): Record<string, unknown> {
