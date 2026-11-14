@@ -9,6 +9,7 @@ import {
   isApprovedStagingDeployment,
   isStagingSmokeEnabled,
   parseStageConfig,
+  workloadIdentityConfig,
   recordStagingPrivateReadFailure,
 } from "./readApi";
 
@@ -372,5 +373,40 @@ describe("private discovery read adapter (offline)", () => {
       }),
     ).toBe("demo");
     expect(() => parseStageConfig({ ENGINE_STAGING_BASE_URL: "http://localhost:9000" })).toThrow();
+  });
+});
+
+describe("workloadIdentityConfig (shared with the editorial BFF)", () => {
+  const identity = {
+    GCP_WORKLOAD_PROVIDER_AUDIENCE:
+      "//iam.googleapis.com/projects/938564885191/locations/global/workloadIdentityPools/moumeet-staging-vercel/providers/vercel-staging",
+    GCP_INVOKER_SERVICE_ACCOUNT_EMAIL: "moumeet-staging-invoker@moumeet-staging.iam.gserviceaccount.com",
+    VERCEL_EXPECTED_OIDC_ISSUER: "https://oidc.vercel.com/raulsp",
+    VERCEL_EXPECTED_OIDC_AUDIENCE: "https://vercel.com/raulsp",
+  };
+  const origin = "https://moumeet-editorial-staging-zbtpvxtrzq-od.a.run.app";
+
+  it("binds the ID token audience to the exact run.app origin", () => {
+    expect(workloadIdentityConfig(identity, origin)).toEqual({
+      origin,
+      providerAudience: identity.GCP_WORKLOAD_PROVIDER_AUDIENCE,
+      serviceEmail: identity.GCP_INVOKER_SERVICE_ACCOUNT_EMAIL,
+      expectedIssuer: identity.VERCEL_EXPECTED_OIDC_ISSUER,
+      expectedAudience: identity.VERCEL_EXPECTED_OIDC_AUDIENCE,
+    });
+  });
+
+  it("fails closed on foreign origins or incomplete identity", () => {
+    for (const bad of [
+      origin + "/",
+      "http://moumeet-editorial-staging-zbtpvxtrzq-od.a.run.app",
+      "https://editorial.example.org",
+      "",
+    ]) {
+      expect(() => workloadIdentityConfig(identity, bad)).toThrow();
+    }
+    for (const key of Object.keys(identity) as (keyof typeof identity)[]) {
+      expect(() => workloadIdentityConfig({ ...identity, [key]: undefined }, origin)).toThrow();
+    }
   });
 });

@@ -2,7 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 import { isSafeRegistrationUrl } from "@/domain/registration";
-import { isApprovedStagingDeployment } from "@/integrations/discovery/readApi";
+import { isApprovedStagingDeployment, workloadIdentityConfig, workloadToken } from "@/integrations/discovery/readApi";
 import { getDiscoveryAccessToken, type DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
 import { EditorialInspectionError, normalizeInspection } from "./inspection";
 
@@ -138,7 +138,10 @@ export function editorialB1Enabled(env: NodeJS.ProcessEnv = process.env): boolea
 
 interface EditorialConfig {
   origin: string;
+  /** Set only when the Engine enforces Cloud Run invoker IAM; then it equals the origin exactly. */
+  idTokenAudience: string | null;
 }
+const jwtShape = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
 export function editorialConfig(env: NodeJS.ProcessEnv = process.env): EditorialConfig {
   if (!editorialB1Enabled(env)) fail("NOT_CONFIGURED");
   const origin = env.EDITORIAL_ENGINE_STAGING_ORIGIN;
@@ -162,7 +165,10 @@ export function editorialConfig(env: NodeJS.ProcessEnv = process.env): Editorial
       origin === env.ENGINE_COMMAND_STAGING_BASE_URL
     )
       fail("NOT_CONFIGURED");
-    return { origin };
+    // Empty means the Engine does not enforce invoker IAM yet; any other value must name this origin exactly.
+    const audience = env.EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE ?? "";
+    if (audience !== "" && audience !== origin) fail("NOT_CONFIGURED");
+    return { origin, idTokenAudience: audience === "" ? null : origin };
   } catch {
     return fail("NOT_CONFIGURED");
   }
@@ -170,11 +176,13 @@ export function editorialConfig(env: NodeJS.ProcessEnv = process.env): Editorial
 interface Dependencies {
   env: NodeJS.ProcessEnv;
   getAccess(): Promise<DiscoveryTokenResult>;
+  getWorkloadToken(env: NodeJS.ProcessEnv, audience: string): Promise<string>;
   fetcher: typeof fetch;
 }
 const defaults: Dependencies = {
   env: process.env,
   getAccess: getDiscoveryAccessToken,
+  getWorkloadToken: (env, audience) => workloadToken(workloadIdentityConfig(env, audience)),
   fetcher: fetch,
 };
 
@@ -329,6 +337,12 @@ export async function handleEditorialB1(
       headers["Idempotency-Key"] = key!;
       headers["Content-Type"] = type!;
       if (reason !== undefined) headers["X-Editorial-Reason"] = reason;
+    }
+    if (config.idTokenAudience) {
+      // Cloud Run invoker IAM (phase P): the Google ID token travels only here; the user's JWT stays in Authorization.
+      const workload = await deps.getWorkloadToken(deps.env, config.idTokenAudience);
+      if (!jwtShape.test(workload)) fail("WRITE_UNAVAILABLE");
+      headers["X-Serverless-Authorization"] = "Bearer " + workload;
     }
     const upstream = await deps.fetcher(config.origin + path, {
       method: operation === "inspect" ? "GET" : "POST",

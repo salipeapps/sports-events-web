@@ -438,3 +438,68 @@ describe("upstream time budget (#54 cold start)", () => {
     expect(route.maxDuration).toBeLessThanOrEqual(60);
   });
 });
+
+describe("Cloud Run invoker IAM (phase P, Engine #125)", () => {
+  const idToken = "eyJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJlZGl0b3JpYWwifQ.c2lnbmF0dXJl"; // shape only
+  const withAudience = (audience: string | undefined) => ({ ...env, EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE: audience });
+
+  it("sends no Google identity while the Engine does not enforce invoker IAM", async () => {
+    for (const deployment of [{ ...env }, withAudience("")]) {
+      const ctx = setup("admin", deployment);
+      expect((await ctx.run("command")).status).toBe(200);
+      expect(ctx.getWorkloadToken).not.toHaveBeenCalled();
+      const headers = ctx.fetcher.mock.calls[0][1]?.headers as Record<string, string>;
+      expect(headers["X-Serverless-Authorization"]).toBeUndefined();
+    }
+  });
+
+  it("adds the ID token only in X-Serverless-Authorization and keeps the user's JWT in Authorization", async () => {
+    for (const operation of ["inspect", "command", "import"] as const) {
+      const ctx = setup("admin", withAudience(engine));
+      ctx.getWorkloadToken.mockResolvedValue(idToken);
+      const body = operation === "import" ? "a,b\n" : reject;
+      const response = await ctx.run(
+        operation,
+        request(operation, body, operation === "import" ? { "X-Editorial-Reason": "Reviewed import" } : {}),
+      );
+      expect(ctx.getWorkloadToken).toHaveBeenCalledWith(
+        expect.objectContaining({ EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE: engine }),
+        engine,
+      );
+      expect(ctx.getWorkloadToken.mock.invocationCallOrder[0]).toBeGreaterThan(
+        ctx.getAccess.mock.invocationCallOrder[1],
+      );
+      const headers = ctx.fetcher.mock.calls[0][1]?.headers as Record<string, string>;
+      expect(headers["X-Serverless-Authorization"]).toBe("Bearer " + idToken);
+      expect(headers.Authorization).toBe("Bearer private-jwt");
+      expect(await response.text()).not.toContain(idToken);
+    }
+  });
+
+  it("fails closed before calling the Engine when the identity cannot be obtained or is malformed", async () => {
+    for (const outcome of [
+      () => Promise.reject(new Error("sts down")),
+      () => Promise.resolve("not-a-jwt"),
+      () => Promise.resolve(""),
+    ]) {
+      const ctx = setup("admin", withAudience(engine));
+      ctx.getWorkloadToken.mockImplementation(outcome);
+      const response = await ctx.run("command");
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ code: "WRITE_UNAVAILABLE" });
+      expect(ctx.fetcher).not.toHaveBeenCalled();
+    }
+  });
+
+  it("refuses an audience that is not exactly the verified Engine origin", async () => {
+    for (const audience of [engine + "/", "https://other.a.run.app", env.ENGINE_STAGING_BASE_URL]) {
+      const ctx = setup("admin", withAudience(audience));
+      expect((await ctx.run("command")).status).toBe(404);
+      expect(ctx.getAccess).not.toHaveBeenCalled();
+      expect(ctx.getWorkloadToken).not.toHaveBeenCalled();
+      expect(ctx.fetcher).not.toHaveBeenCalled();
+    }
+    expect(editorialConfig(withAudience(engine)).idTokenAudience).toBe(engine);
+    expect(editorialConfig(env).idTokenAudience).toBeNull();
+  });
+});
