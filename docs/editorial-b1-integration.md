@@ -159,7 +159,7 @@ tampoco la concede.
   cabecera del perímetro de la fase P se añade en un único punto. Sin redirecciones ni caché, timeout
   de 12 s y respuesta de 8 KiB como máximo.
 - **Recibo**: se reconstruye con una lista cerrada de campos. Exige `commandKey` igual a la clave
-  enviada, `action` del comando, objetivo igual al de la ruta, campos ajenos nulos y `status` dentro
+  enviada, `action` del comando, objetivo igual al de la ruta, `alias`/`officialUrl` idénticos a los enviados (la SQL V026 los devuelve tal cual en `ADDED` y `EXISTS`), campos ajenos nulos y `status` dentro
   de `ADDED`/`EXISTS` (alias y canal) o `DECLARED`/`WITHDRAWN`/`UNCHANGED` (autoridad, con
   `authoritative` igual al enviado). `EXISTS` y `UNCHANGED` se muestran como «sin escritura».
 - **Errores**: lista cerrada 400/401/403/404/409/429/503. En un 409 solo se reenvían `reason`

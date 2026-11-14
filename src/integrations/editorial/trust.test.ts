@@ -429,10 +429,26 @@ describe("V026 trust BFF: uncertain outcomes and Engine errors", () => {
     ["channel fields", { ...receipts.alias, channelId }],
     ["bad date", { ...receipts.alias, recordedAt: "yesterday" }],
     ["array", [receipts.alias]],
+    ["another alias", { ...receipts.alias, alias: "Otro organizador" }],
   ])("rejects an alias receipt with %s", async (_name, body) => {
     const ctx = setup();
     ctx.fetcher.mockResolvedValue(upstream(body));
     expect(await (await ctx.run("alias")).json()).toEqual({ code: "INCOMPATIBLE_CONTRACT" });
+  });
+
+  // The V026 SQL echoes the submitted official_url in ADDED and EXISTS: anything else does not confirm the reviewed host.
+  it.each([
+    ["another host", "https://other.example.org"],
+    ["subdomain", "https://tickets.organizer.example.org"],
+    ["trailing-slash variant", "https://organizer.example.org/"],
+    ["uppercase host", "https://ORGANIZER.example.org"],
+    ["non-string", 42],
+  ])("rejects a channel receipt with %s", async (_name, officialUrl) => {
+    const ctx = setup();
+    ctx.fetcher.mockResolvedValue(upstream({ ...receipts.channel, officialUrl }));
+    const response = await ctx.run("channel");
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ code: "INCOMPATIBLE_CONTRACT" });
   });
 
   it("drops unknown receipt fields and accepts omitted nulls", async () => {

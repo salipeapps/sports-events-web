@@ -544,14 +544,21 @@ export function normalizeTrustReceipt(
     status: raw.status,
     recordedAt: raw.recordedAt,
   };
+  // V026 SQL echoes the submitted alias / official_url in both ADDED and EXISTS (Java only applies the presentation
+  // normalization the BFF already enforces), so the receipt must confirm exactly what the admin reviewed.
   if (operation === "alias") {
-    if (raw.organizerId !== targetId || !boundedText(raw.alias, 400)) fail("INCOMPATIBLE_CONTRACT");
+    if (raw.organizerId !== targetId || !str(raw.alias) || raw.alias !== sent.alias) fail("INCOMPATIBLE_CONTRACT");
     if (![raw.officialUrl, raw.channelId, raw.sourceId, raw.authoritative].every(nullable))
       fail("INCOMPATIBLE_CONTRACT");
     return { ...receipt, organizerId: targetId, alias: raw.alias };
   }
   if (operation === "channel") {
-    if (raw.organizerId !== targetId || !boundedText(raw.officialUrl, 500) || !isUuid(raw.channelId))
+    if (
+      raw.organizerId !== targetId ||
+      !str(raw.officialUrl) ||
+      raw.officialUrl !== sent.officialUrl ||
+      !isUuid(raw.channelId)
+    )
       fail("INCOMPATIBLE_CONTRACT");
     if (![raw.alias, raw.sourceId, raw.authoritative].every(nullable)) fail("INCOMPATIBLE_CONTRACT");
     return { ...receipt, organizerId: targetId, officialUrl: raw.officialUrl, channelId: raw.channelId };
