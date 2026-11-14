@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireAdminAccess } from "@/integrations/auth/adminAuth";
 
 export default async function EditorialEntry({ searchParams }: { searchParams: Promise<{ candidate?: string }> }) {
-  await requireAdminAccess("catalog.review");
+  const session = await requireAdminAccess("catalog.review");
   const { candidate } = await searchParams;
   const valid =
     typeof candidate === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(candidate);
@@ -24,6 +24,13 @@ export default async function EditorialEntry({ searchParams }: { searchParams: P
         </p>
       ) : candidate ? (
         <p role="alert">El identificador debe ser un UUID válido.</p>
+      ) : null}
+      {session.role === "admin" ? (
+        <p>
+          <Link href="/admin/editorial/trust">
+            Confianza editorial: alias, canales oficiales y autoridad de ubicación
+          </Link>
+        </p>
       ) : null}
     </section>
   );
