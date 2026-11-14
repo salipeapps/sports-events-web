@@ -199,6 +199,61 @@ describe("V026 trust BFF: positive path", () => {
   });
 });
 
+describe("V026 trust BFF: Cloud Run invoker ID token (phase P, #77)", () => {
+  const withAudience = { ...env, EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE: engine };
+
+  it("sends no X-Serverless-Authorization and fetches no ID token without an audience", async () => {
+    const ctx = setup();
+    ctx.fetcher.mockResolvedValue(upstream(receipts.alias));
+    expect((await ctx.run("alias")).status).toBe(200);
+    expect(ctx.getWorkloadToken).not.toHaveBeenCalled();
+    expect(ctx.fetcher.mock.calls[0][1]?.headers).not.toHaveProperty("X-Serverless-Authorization");
+  });
+
+  it.each(operations)("inherits the ID token header on %s through the single Engine call", async (op) => {
+    const ctx = setup("admin", withAudience);
+    ctx.fetcher.mockResolvedValue(upstream(receipts[op]));
+    expect((await ctx.run(op)).status).toBe(200);
+    expect(ctx.getWorkloadToken).toHaveBeenCalledWith(withAudience, engine);
+    expect(ctx.fetcher.mock.calls[0][1]?.headers).toEqual({
+      Accept: "application/json",
+      Authorization: "Bearer private-jwt",
+      "Idempotency-Key": key,
+      "Content-Type": "application/json",
+      "X-Serverless-Authorization": "Bearer aaaa.bbbb.cccc",
+    });
+  });
+
+  it("fails closed with an audience other than the verified origin, before session or dispatch", async () => {
+    const ctx = setup("admin", { ...env, EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE: "https://other.example.org" });
+    const response = await ctx.run("locationAuthority");
+    expect(response.status).toBe(404);
+    expect(await response.json()).toEqual({ code: "NOT_CONFIGURED" });
+    expect(ctx.getAccess).not.toHaveBeenCalled();
+    expect(ctx.getWorkloadToken).not.toHaveBeenCalled();
+    expect(ctx.fetcher).not.toHaveBeenCalled();
+  });
+
+  it("never dispatches for a reviewer, so no ID token is minted", async () => {
+    const ctx = setup("reviewer", withAudience);
+    expect((await ctx.run("channel")).status).toBe(403);
+    expect(ctx.getWorkloadToken).not.toHaveBeenCalled();
+    expect(ctx.fetcher).not.toHaveBeenCalled();
+  });
+
+  it("reports an unusable or failing ID token as WRITE_UNAVAILABLE without dispatch", async () => {
+    const malformed = setup("admin", withAudience);
+    malformed.getWorkloadToken.mockResolvedValue("not-a-jwt");
+    expect(await (await malformed.run("alias")).json()).toEqual({ code: "WRITE_UNAVAILABLE" });
+    expect(malformed.fetcher).not.toHaveBeenCalled();
+
+    const failing = setup("admin", withAudience);
+    failing.getWorkloadToken.mockRejectedValue(new Error("metadata unavailable"));
+    expect(await (await failing.run("locationAuthority")).json()).toEqual({ code: "WRITE_UNAVAILABLE" });
+    expect(failing.fetcher).not.toHaveBeenCalled();
+  });
+});
+
 describe("V026 trust BFF: activation gate fails closed", () => {
   it.each([
     { EDITORIAL_TRUST_ENABLED: undefined },

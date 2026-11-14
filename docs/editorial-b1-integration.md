@@ -156,7 +156,7 @@ tampoco la concede.
   retirar.
 - **Envío**: pasa por la única llamada `fetch` del BFF al Engine (`callEngine`), compartida con
   inspect, command e import. Las cabeceras `Accept` y `Authorization` se fijan solo allí, así que la
-  cabecera del perímetro de la fase P se añade en un único punto. Sin redirecciones ni caché, timeout
+  cabecera `X-Serverless-Authorization` de la fase P (#77, solo con `EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE` igual al origen) también se añade solo allí, y la heredan los tres comandos V026. Sin redirecciones ni caché, timeout
   de 12 s y respuesta de 8 KiB como máximo.
 - **Recibo**: se reconstruye con una lista cerrada de campos. Exige `commandKey` igual a la clave
   enviada, `action` del comando, objetivo igual al de la ruta, `alias`/`officialUrl` idénticos a los enviados (la SQL V026 los devuelve tal cual en `ADDED` y `EXISTS`), campos ajenos nulos y `status` dentro
