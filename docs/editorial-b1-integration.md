@@ -26,8 +26,9 @@ No se muestran fixtures ni se anuncia éxito antes de recibir el recibo del Engi
 - Protección de origen y Host estrictos en POST, token Auth verificado de
   Supabase, JWT del usuario verificado solo server-side sobre HTTPS,
   validación de body/esquema, lectura acotada, sin redirección/caché,
-  timeout de 12 s en comandos e importaciones y de 25 s en lecturas (el primer
-  GET tras un arranque en frío del Engine tardó ~14 s en STAGING, #54), y errores
+  timeout de 12 s en comandos e importaciones y de 45 s en lecturas, con
+  `maxDuration` 60 en la ruta (el primer GET tras un arranque en frío del Engine
+  tardó ~14 s en STAGING, #54, y ~31 s el 14/11/2026 con 0..1 instancias), y errores
   públicos sin SQL/secretos. Si la lectura no responde, el inspector lo dice como
   lectura (no como operación incierta), avisa a los 3 s de que el servicio puede
   estar arrancando y ofrece «Reintentar lectura».

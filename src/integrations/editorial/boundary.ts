@@ -264,12 +264,13 @@ function validateRequest(request: Request, operation: Operation, env: NodeJS.Pro
 
 /** Server-only HTTPS BFF. The Java runtime verifies the user's Supabase JWT and live membership. */
 /**
- * A cold Engine instance took ~14 s to answer its first read in STAGING (#54). Reads are
- * idempotent, so they get room for a cold start; commands keep the short budget because an
- * uncertain outcome is already retried with the same Idempotency-Key.
+ * A cold Engine instance took ~14 s to answer its first read in STAGING (#54) and ~31 s on
+ * 2026-11-14 (Cloud Run 0..1 instances, ~22 s of Spring startup). Reads are idempotent, so they
+ * get room for a cold start; commands keep the short budget because an uncertain outcome is
+ * already retried with the same Idempotency-Key, and the inspector read warms the instance first.
  */
 export function upstreamTimeoutMs(operation: Operation): number {
-  return operation === "inspect" ? 25_000 : 12_000;
+  return operation === "inspect" ? 45_000 : 12_000;
 }
 
 export async function handleEditorialB1(
