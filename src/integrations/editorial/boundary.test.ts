@@ -427,8 +427,14 @@ it("forwards an organizer-only CORRECT verbatim to admins and never for reviewer
 
 describe("upstream time budget (#54 cold start)", () => {
   it("gives idempotent reads room for an Engine cold start and keeps commands short", () => {
-    expect(upstreamTimeoutMs("inspect")).toBe(25_000);
+    expect(upstreamTimeoutMs("inspect")).toBe(45_000);
     expect(upstreamTimeoutMs("command")).toBe(12_000);
     expect(upstreamTimeoutMs("import")).toBe(12_000);
+  });
+
+  it("lets the inspector route outlive its upstream read budget within the Hobby limit", async () => {
+    const route = await import("@/app/api/internal/editorial/candidates/[id]/route");
+    expect(route.maxDuration * 1000).toBeGreaterThanOrEqual(upstreamTimeoutMs("inspect") + 10_000);
+    expect(route.maxDuration).toBeLessThanOrEqual(60);
   });
 });
