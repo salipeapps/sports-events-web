@@ -440,7 +440,7 @@ describe("upstream time budget (#54 cold start)", () => {
 });
 
 describe("Cloud Run invoker IAM (phase P, Engine #125)", () => {
-  const idToken = "eyJhbGciOiJSUzI1NiJ9.eyJhdWQiOiJlZGl0b3JpYWwifQ.c2lnbmF0dXJl"; // shape only
+  const idToken = ["fake-header", "fake-payload", "fake-signature"].join("."); // three segments only, not a JWT
   const withAudience = (audience: string | undefined) => ({ ...env, EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE: audience });
 
   it("sends no Google identity while the Engine does not enforce invoker IAM", async () => {
