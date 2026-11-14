@@ -4,6 +4,19 @@ import { randomUUID } from "node:crypto";
 import { isSafeRegistrationUrl } from "@/domain/registration";
 import { isApprovedStagingDeployment, workloadIdentityConfig, workloadToken } from "@/integrations/discovery/readApi";
 import { getDiscoveryAccessToken, type DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
+import {
+  composeTrustReason,
+  isOfficialChannelOrigin,
+  isValidAlias,
+  maxAliasLength,
+  trustActions,
+  trustMethod,
+  trustOperations,
+  trustPath,
+  trustStatuses,
+  type TrustOperation,
+  type TrustReceipt,
+} from "@/domain/editorialTrust";
 import { EditorialInspectionError, normalizeInspection } from "./inspection";
 
 type Operation = "inspect" | "command" | "import";
@@ -252,17 +265,17 @@ function normalizeReceipt(raw: unknown) {
     recordedAt: raw.recordedAt,
   };
 }
-function validateRequest(request: Request, operation: Operation, env: NodeJS.ProcessEnv) {
+function validateRequest(request: Request, method: "GET" | "POST" | "PUT", env: NodeJS.ProcessEnv) {
   const origin = env.APP_ORIGIN;
   const url = new URL(request.url);
   if (!origin || url.origin !== origin || url.search || request.headers.get("host") !== new URL(origin).host)
     fail("FORBIDDEN");
-  if (operation === "inspect") {
+  if (method === "GET") {
     if (request.method !== "GET") fail("INVALID_REQUEST");
     return;
   }
   if (
-    request.method !== "POST" ||
+    request.method !== method ||
     request.headers.get("origin") !== origin ||
     (request.headers.has("sec-fetch-site") && request.headers.get("sec-fetch-site") !== "same-origin") ||
     request.headers.has("content-encoding")
@@ -292,7 +305,7 @@ export async function handleEditorialB1(
     const registrationContract = deps.env.EDITORIAL_REGISTRATION_ENABLED === "enabled";
     if ((operation !== "import" && !isUuid(candidateId)) || (operation === "import" && candidateId !== null))
       fail("INVALID_REQUEST");
-    validateRequest(request, operation, deps.env);
+    validateRequest(request, operation === "inspect" ? "GET" : "POST", deps.env);
     let rawBody: string | undefined, action: string | undefined, type: string | undefined, reason: string | undefined;
     const key = request.headers.get("idempotency-key");
     if (operation !== "inspect") {
@@ -317,76 +330,304 @@ export async function handleEditorialB1(
         rawBody = await bounded(request, 262144);
       }
     }
-    const first = await deps.getAccess();
-    if (first.status === "denied") fail(first.code);
-    allowRole(first, operation, action);
-    const current = await deps.getAccess();
-    if (current.status === "denied") fail(current.code);
-    if (current.subject !== first.subject) fail("UNAUTHENTICATED");
-    allowRole(current, operation, action);
+    const current = await authorizeTwice(deps, (access) => allowRole(access, operation, action));
     if (editorialConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
-    const path =
-      operation === "import"
-        ? "/api/editorial/v1/imports"
-        : "/api/editorial/v1/candidates/" + candidateId + (operation === "command" ? "/commands" : "");
-    const headers: Record<string, string> = {
-      Accept: "application/json",
-      Authorization: "Bearer " + current.accessToken,
-    };
+    const headers: Record<string, string> = {};
     if (operation !== "inspect") {
       headers["Idempotency-Key"] = key!;
       headers["Content-Type"] = type!;
       if (reason !== undefined) headers["X-Editorial-Reason"] = reason;
     }
-    if (config.idTokenAudience) {
-      // Cloud Run invoker IAM (phase P): the Google ID token travels only here; the user's JWT stays in Authorization.
-      const workload = await deps.getWorkloadToken(deps.env, config.idTokenAudience);
-      if (!jwtShape.test(workload)) fail("WRITE_UNAVAILABLE");
-      headers["X-Serverless-Authorization"] = "Bearer " + workload;
-    }
-    const upstream = await deps.fetcher(config.origin + path, {
+    const upstream = await callEngine(deps, config, current, {
       method: operation === "inspect" ? "GET" : "POST",
+      path:
+        operation === "import"
+          ? "/api/editorial/v1/imports"
+          : "/api/editorial/v1/candidates/" + candidateId + (operation === "command" ? "/commands" : ""),
       headers,
       body: rawBody,
-      cache: "no-store",
-      redirect: "error",
-      signal: AbortSignal.timeout(upstreamTimeoutMs(operation)),
+      timeoutMs: upstreamTimeoutMs(operation),
+      maxBytes: operation === "inspect" ? 65536 : 8192,
     });
-    if (
-      !/^application\/json(?:;|$)/i.test(upstream.headers.get("content-type") ?? "") ||
-      !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(upstream.headers.get("cache-control") ?? "")
-    )
-      fail("INCOMPATIBLE_CONTRACT");
-    const result = JSON.parse(await bounded(upstream, operation === "inspect" ? 65536 : 8192));
-    if (!upstream.ok) {
-      const allowed: Record<number, string> = {
-        400: "INVALID_REQUEST",
-        401: "UNAUTHENTICATED",
-        403: "FORBIDDEN",
-        404: "NOT_FOUND",
-        409: "CONFLICT",
-        429: "RATE_LIMITED",
-        503: "WRITE_UNAVAILABLE",
-      };
-      if (!isRecord(result) || result.code !== allowed[upstream.status]) fail("INCOMPATIBLE_CONTRACT");
-      return respond({ code: result.code }, upstream.status);
-    }
-    if (upstream.status !== 200) fail("INCOMPATIBLE_CONTRACT");
+    if (!upstream.ok) return engineFailure(upstream);
     if (operation === "inspect") {
-      const inspection = normalizeInspection(result, candidateId!);
+      const inspection = normalizeInspection(upstream.result, candidateId!);
       if (registrationContract && !inspection.registrationSupported) fail("INCOMPATIBLE_CONTRACT");
       return respond(inspection, 200);
     }
-    return respond(normalizeReceipt(result), 200);
+    return respond(normalizeReceipt(upstream.result), 200);
   } catch (error) {
-    const err =
-      error instanceof EditorialBffError
-        ? error
-        : error instanceof EditorialInspectionError
-          ? new EditorialBffError("INCOMPATIBLE_CONTRACT")
-          : error instanceof SyntaxError
-            ? new EditorialBffError("INVALID_REQUEST")
-            : new EditorialBffError("WRITE_UNAVAILABLE");
-    return respond({ code: err.code }, status[err.code]);
+    return failure(error);
+  }
+}
+
+function failure(error: unknown): Response {
+  const err =
+    error instanceof EditorialBffError
+      ? error
+      : error instanceof EditorialInspectionError
+        ? new EditorialBffError("INCOMPATIBLE_CONTRACT")
+        : error instanceof SyntaxError
+          ? new EditorialBffError("INVALID_REQUEST")
+          : new EditorialBffError("WRITE_UNAVAILABLE");
+  return respond({ code: err.code }, status[err.code]);
+}
+
+/** Two reads of the live session with the same subject; `allow` throws when the role may not act. */
+async function authorizeTwice(deps: Dependencies, allow: (access: Access) => void): Promise<Access> {
+  const first = await deps.getAccess();
+  if (first.status === "denied") fail(first.code);
+  allow(first);
+  const current = await deps.getAccess();
+  if (current.status === "denied") fail(current.code);
+  if (current.subject !== first.subject) fail("UNAUTHENTICATED");
+  allow(current);
+  return current;
+}
+
+interface EngineCall {
+  method: "GET" | "POST" | "PUT";
+  path: string;
+  /** Operation-specific headers only; Accept and Authorization are set once, here. */
+  headers: Record<string, string>;
+  body?: string;
+  timeoutMs: number;
+  maxBytes: number;
+}
+interface EngineResult {
+  status: number;
+  ok: boolean;
+  result: unknown;
+}
+
+/**
+ * The ONLY request this BFF sends to the Engine. Every operation (B1 inspect/command/import and the V026 trust
+ * commands) goes through here, so a perimeter header is added in exactly one place. No redirects, no cache, bounded
+ * body and a hard timeout: an aborted call throws and is reported as WRITE_UNAVAILABLE (uncertain), never as success.
+ */
+async function callEngine(
+  deps: Dependencies,
+  config: EditorialConfig,
+  access: Access,
+  call: EngineCall,
+): Promise<EngineResult> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    Authorization: "Bearer " + access.accessToken,
+    ...call.headers,
+  };
+  if (config.idTokenAudience) {
+    // Cloud Run invoker IAM (phase P): the Google ID token travels only here; the user's JWT stays in Authorization.
+    const workload = await deps.getWorkloadToken(deps.env, config.idTokenAudience);
+    if (!jwtShape.test(workload)) fail("WRITE_UNAVAILABLE");
+    headers["X-Serverless-Authorization"] = "Bearer " + workload;
+  }
+  const upstream = await deps.fetcher(config.origin + call.path, {
+    method: call.method,
+    headers,
+    body: call.body,
+    cache: "no-store",
+    redirect: "error",
+    signal: AbortSignal.timeout(call.timeoutMs),
+  });
+  if (
+    !/^application\/json(?:;|$)/i.test(upstream.headers.get("content-type") ?? "") ||
+    !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(upstream.headers.get("cache-control") ?? "")
+  )
+    fail("INCOMPATIBLE_CONTRACT");
+  let result: unknown;
+  try {
+    result = JSON.parse(await bounded(upstream, call.maxBytes));
+  } catch {
+    // An unreadable Engine answer is never the caller's INVALID_REQUEST: a write may have happened.
+    fail("INCOMPATIBLE_CONTRACT");
+  }
+  if (upstream.ok && upstream.status !== 200) fail("INCOMPATIBLE_CONTRACT");
+  return { status: upstream.status, ok: upstream.ok, result };
+}
+
+const engineErrors: Record<number, ErrorCode> = {
+  400: "INVALID_REQUEST",
+  401: "UNAUTHENTICATED",
+  403: "FORBIDDEN",
+  404: "NOT_FOUND",
+  409: "CONFLICT",
+  429: "RATE_LIMITED",
+  503: "WRITE_UNAVAILABLE",
+};
+/** Closed list: only a known status with its matching code is relayed, and only the code. */
+function engineFailure(upstream: EngineResult, extra: Record<string, unknown> = {}): Response {
+  if (!isRecord(upstream.result) || upstream.result.code !== engineErrors[upstream.status])
+    fail("INCOMPATIBLE_CONTRACT");
+  return respond({ code: upstream.result.code, ...extra }, upstream.status);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// V026 trust commands: reviewed alias, official channel and location authority. Admin only (Engine
+// `authorize(jwt,false)`). Separate activation gate pinned to the reviewed Engine commit of the V026 runtime.
+// ---------------------------------------------------------------------------------------------------------------
+
+/** Engine `e66bc3a` (#280): V026 endpoints, with `PUT /sources/{id}/location-authority` open to admins. */
+export const editorialTrustReviewedSha = "e66bc3abbc24ba577e0049562ac3a4c01e095953";
+
+export function editorialTrustEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (
+    editorialB1Enabled(env) &&
+    env.EDITORIAL_TRUST_ENABLED === "enabled" &&
+    env.EDITORIAL_ENGINE_TRUST_REVIEWED_SHA === editorialTrustReviewedSha
+  );
+}
+function editorialTrustConfig(env: NodeJS.ProcessEnv): EditorialConfig {
+  const config = editorialConfig(env);
+  if (!editorialTrustEnabled(env)) fail("NOT_CONFIGURED");
+  return config;
+}
+
+const trustInputKeys: Record<TrustOperation, string[]> = {
+  alias: ["alias", "reason", "evidenceUrl"],
+  channel: ["officialUrl", "reason", "evidenceUrl"],
+  locationAuthority: ["authoritative", "reason", "evidenceUrl"],
+};
+
+/** Exact Web input → exact Engine body (`trustBody` in EditorialController rejects any other key or count). */
+export function validateTrustInput(operation: TrustOperation, value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) fail("INVALID_REQUEST");
+  exactKeys(value, trustInputKeys[operation]);
+  const reason =
+    str(value.reason) && str(value.evidenceUrl) ? composeTrustReason(value.reason, value.evidenceUrl) : null;
+  if (reason === null) fail("INVALID_REQUEST");
+  if (operation === "alias") {
+    if (!isValidAlias(value.alias)) fail("INVALID_REQUEST");
+    return { alias: value.alias, reason };
+  }
+  if (operation === "channel") {
+    if (!isOfficialChannelOrigin(value.officialUrl)) fail("INVALID_REQUEST");
+    return { officialUrl: value.officialUrl, reason };
+  }
+  if (typeof value.authoritative !== "boolean") fail("INVALID_REQUEST");
+  return { authoritative: value.authoritative, reason };
+}
+
+function nullable(value: unknown): boolean {
+  return value === null || value === undefined;
+}
+function boundedText(value: unknown, maximum: number): value is string {
+  return str(value) && value.length > 0 && value.length <= maximum && !/[\x00-\x1f\x7f]/.test(value);
+}
+
+export function normalizeTrustReceipt(
+  raw: unknown,
+  operation: TrustOperation,
+  targetId: string,
+  key: string,
+  sent: Record<string, unknown>,
+): TrustReceipt {
+  if (
+    !isRecord(raw) ||
+    raw.commandKey !== key ||
+    raw.action !== trustActions[operation] ||
+    !str(raw.status) ||
+    !trustStatuses[operation].includes(raw.status) ||
+    !str(raw.recordedAt) ||
+    !Number.isFinite(Date.parse(raw.recordedAt))
+  )
+    fail("INCOMPATIBLE_CONTRACT");
+  const receipt: TrustReceipt = {
+    commandKey: key,
+    action: raw.action,
+    organizerId: null,
+    alias: null,
+    officialUrl: null,
+    channelId: null,
+    sourceId: null,
+    authoritative: null,
+    status: raw.status,
+    recordedAt: raw.recordedAt,
+  };
+  // V026 SQL echoes the submitted alias / official_url in both ADDED and EXISTS (Java only applies the presentation
+  // normalization the BFF already enforces), so the receipt must confirm exactly what the admin reviewed.
+  if (operation === "alias") {
+    if (raw.organizerId !== targetId || !str(raw.alias) || raw.alias !== sent.alias) fail("INCOMPATIBLE_CONTRACT");
+    if (![raw.officialUrl, raw.channelId, raw.sourceId, raw.authoritative].every(nullable))
+      fail("INCOMPATIBLE_CONTRACT");
+    return { ...receipt, organizerId: targetId, alias: raw.alias };
+  }
+  if (operation === "channel") {
+    if (
+      raw.organizerId !== targetId ||
+      !str(raw.officialUrl) ||
+      raw.officialUrl !== sent.officialUrl ||
+      !isUuid(raw.channelId)
+    )
+      fail("INCOMPATIBLE_CONTRACT");
+    if (![raw.alias, raw.sourceId, raw.authoritative].every(nullable)) fail("INCOMPATIBLE_CONTRACT");
+    return { ...receipt, organizerId: targetId, officialUrl: raw.officialUrl, channelId: raw.channelId };
+  }
+  if (raw.sourceId !== targetId || raw.authoritative !== sent.authoritative) fail("INCOMPATIBLE_CONTRACT");
+  if (![raw.organizerId, raw.alias, raw.officialUrl, raw.channelId].every(nullable)) fail("INCOMPATIBLE_CONTRACT");
+  return { ...receipt, sourceId: targetId, authoritative: raw.authoritative as boolean };
+}
+
+const conflictReasons: Record<TrustOperation, string | null> = {
+  alias: "ALIAS_IN_USE",
+  channel: "CHANNEL_IN_USE",
+  locationAuthority: null,
+};
+/** 409 detail: the public organizer names/IDs already holding the alias or host. Dropped unless exactly valid. */
+function conflictDetail(operation: TrustOperation, result: unknown): Record<string, unknown> {
+  if (!isRecord(result) || result.reason === undefined || result.reason !== conflictReasons[operation]) return {};
+  const organizers = result.organizers;
+  if (
+    !Array.isArray(organizers) ||
+    organizers.length > 20 ||
+    !organizers.every(
+      (item) =>
+        isRecord(item) &&
+        Object.keys(item).length === 2 &&
+        isUuid(item.id) &&
+        boundedText(item.canonicalName, maxAliasLength * 2),
+    )
+  )
+    return { reason: result.reason };
+  return {
+    reason: result.reason,
+    organizers: organizers.map((item: Record<string, unknown>) => ({ id: item.id, canonicalName: item.canonicalName })),
+  };
+}
+
+export async function handleEditorialTrust(
+  request: Request,
+  operation: TrustOperation,
+  targetId: string,
+  deps: Dependencies = defaults,
+): Promise<Response> {
+  try {
+    if (!trustOperations.includes(operation)) fail("INVALID_REQUEST");
+    const config = editorialTrustConfig(deps.env);
+    if (!isUuid(targetId)) fail("INVALID_REQUEST");
+    validateRequest(request, trustMethod(operation), deps.env);
+    const key = request.headers.get("idempotency-key");
+    if (!isUuid(key)) fail("INVALID_REQUEST");
+    if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers.get("content-type") ?? ""))
+      fail("INVALID_REQUEST");
+    const body = validateTrustInput(operation, JSON.parse(await bounded(request, 4096)));
+    // Engine `authorize(jwt,false)`: reviewer is never allowed on trust commands.
+    const current = await authorizeTwice(deps, (access) => {
+      if (access.role !== "admin") fail("FORBIDDEN");
+    });
+    if (editorialTrustConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
+    const upstream = await callEngine(deps, config, current, {
+      method: trustMethod(operation),
+      path: "/api/editorial/v1" + trustPath(operation, targetId),
+      headers: { "Idempotency-Key": key, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      timeoutMs: upstreamTimeoutMs("command"),
+      maxBytes: 8192,
+    });
+    if (!upstream.ok)
+      return engineFailure(upstream, upstream.status === 409 ? conflictDetail(operation, upstream.result) : {});
+    return respond(normalizeTrustReceipt(upstream.result, operation, targetId, key, body), 200);
+  } catch (error) {
+    return failure(error);
   }
 }

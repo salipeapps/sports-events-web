@@ -119,3 +119,87 @@ real de publicación. El test adicional `engineContract.test.ts` acepta
 `EDITORIAL_ENGINE_CONTRACT_FILE` apuntando al JSON generado por
 `EditorialCommandsIT` en Engine: valida inspección y respuestas RPC antes/después
 de suspender sin adaptar Web #50. Es evidencia PG17 offline, no una publicación real.
+
+## Comandos de confianza editorial V026 (alias, canal oficial y autoridad de ubicación)
+
+Estado: **implementado en Web, desactivado por defecto**. Contrato: Engine `e66bc3a` (#280),
+`EditorialController` y `TrustCommand`, más `docs/editorial-trust-commands.md` y
+`docs/staging-fdm-editorial-trust-operator.md` del Engine. **Esta pantalla no autoriza ejecutar
+ningún comando**: cada envío es una escritura real y requiere la autorización operativa C del
+paquete FDM, que se pide y registra aparte. Fusionar en `develop` (despliegue de Vercel STAGING)
+tampoco la concede.
+
+| BFF Web                                                       | Engine                                                  | Cuerpo Web (claves exactas)              | Cuerpo Engine (claves exactas) |
+| ------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------- | ------------------------------ |
+| `POST /api/internal/editorial/organizers/{id}/aliases`        | `POST /api/editorial/v1/organizers/{id}/aliases`        | `alias`, `reason`, `evidenceUrl`         | `alias`, `reason`              |
+| `POST /api/internal/editorial/organizers/{id}/channels`       | `POST /api/editorial/v1/organizers/{id}/channels`       | `officialUrl`, `reason`, `evidenceUrl`   | `officialUrl`, `reason`        |
+| `PUT /api/internal/editorial/sources/{id}/location-authority` | `PUT /api/editorial/v1/sources/{id}/location-authority` | `authoritative`, `reason`, `evidenceUrl` | `authoritative`, `reason`      |
+
+- **Solo `admin`**: el Engine llama a `authorize(jwt,false)` en los tres comandos, así que
+  `reviewer` no puede. El BFF lo comprueba en dos lecturas de sesión con el mismo sujeto antes de
+  enviar nada, y la página `/admin/editorial/trust` exige la capacidad `sources.manage` (solo admin).
+- **Petición**: mismo origen, Host, `Origin` y `Sec-Fetch-Site: same-origin`, sin query string ni
+  `Content-Encoding`, `Content-Type: application/json`, `Idempotency-Key` UUID canónico en
+  minúsculas, cuerpo de 4 KiB como máximo y JSON con las claves exactas. `PUT` solo en
+  `location-authority`; `POST` solo en alias y canal.
+- **Evidencia**: el contrato del Engine no tiene campo de evidencia. El BFF la incorpora al motivo
+  auditado (`editorial_trust_changes.reason`) con el formato fijo `<motivo> · Evidencia: <URL>`, y
+  rechaza el comando si el resultado supera los 1000 caracteres del Engine. La URL debe ser HTTPS
+  pública y canónica, sin credenciales, puerto, query ni fragmento.
+- **Alias**: se envía en la forma de presentación del Engine (NFC, espacios simples, sin caracteres
+  invisibles, entre 2 y 200 caracteres y con alguna letra). La pantalla muestra la forma normalizada
+  que se va a enviar antes de confirmar.
+- **Canal**: solo un origen `https://host` o `https://host/` en minúsculas, sin ruta, puerto, query
+  ni fragmento. Aplica la regla `safePublicUrl` del Engine. La captura confía en el host completo:
+  no se registran agregadores ni plataformas de terceros, y un subdominio es otro host.
+- **Autoridad de ubicación**: sin opción por defecto; hay que elegir expresamente entre declarar y
+  retirar.
+- **Envío**: pasa por la única llamada `fetch` del BFF al Engine (`callEngine`), compartida con
+  inspect, command e import. Las cabeceras `Accept` y `Authorization` se fijan solo allí, así que la
+  cabecera `X-Serverless-Authorization` de la fase P (#77, solo con `EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE` igual al origen) también se añade solo allí, y la heredan los tres comandos V026. Sin redirecciones ni caché, timeout
+  de 12 s y respuesta de 8 KiB como máximo.
+- **Recibo**: se reconstruye con una lista cerrada de campos. Exige `commandKey` igual a la clave
+  enviada, `action` del comando, objetivo igual al de la ruta, `alias`/`officialUrl` idénticos a los enviados (la SQL V026 los devuelve tal cual en `ADDED` y `EXISTS`), campos ajenos nulos y `status` dentro
+  de `ADDED`/`EXISTS` (alias y canal) o `DECLARED`/`WITHDRAWN`/`UNCHANGED` (autoridad, con
+  `authoritative` igual al enviado). `EXISTS` y `UNCHANGED` se muestran como «sin escritura».
+- **Errores**: lista cerrada 400/401/403/404/409/429/503. En un 409 solo se reenvían `reason`
+  (`ALIAS_IN_USE`/`CHANNEL_IN_USE`) y hasta 20 organizadores públicos `{id, canonicalName}` si
+  cumplen el formato exacto.
+- **Resultado incierto**: un timeout, un fallo de red, un 503 o una respuesta ilegible (también un
+  200 malformado) se muestran como **resultado incierto**, nunca como éxito ni como fallo. La clave
+  se conserva y la pantalla ofrece «Reintentar con la misma clave»; el Engine devuelve el mismo
+  recibo si ya lo registró. Cambiar cualquier dato crea una intención nueva con otra clave. Tras una
+  respuesta definitiva (400/403/404/409) la intención termina y hay que confirmar de nuevo.
+- **UI**: tres formularios independientes, sin acciones masivas, sin valores precargados y sin texto
+  que dé una acción por aprobada. Flujo: editar → revisar exactamente lo que se enviará → casilla de
+  confirmación explícita → recibo del Engine visible.
+
+### Activación (desactivada por defecto)
+
+Además de todas las puertas B1 anteriores (`editorialB1Enabled` y el origen verificado), el código exige:
+
+1. `EDITORIAL_TRUST_ENABLED=enabled`;
+2. `EDITORIAL_ENGINE_TRUST_REVIEWED_SHA=e66bc3abbc24ba577e0049562ac3a4c01e095953` (el runtime
+   V026 revisado, `moumeet-editorial-staging` revisión `00011-rah`). Una cadena SHA no certifica el
+   artefacto desplegado: la imagen y la revisión se verifican en el acta operacional.
+
+Si falta alguna, las tres rutas responden `404 NOT_CONFIGURED` sin leer la sesión ni contactar con
+el Engine. Configurar estas variables en Vercel es un cambio operativo que requiere su propia
+autorización.
+
+### Pruebas
+
+- `src/integrations/editorial/trust.test.ts`: puerta de activación, origen, Host, `Sec-Fetch-Site`,
+  método, clave, tipo de contenido, cuerpos con claves de más o de menos, motivo y evidencia
+  inválidos, alias no normalizado o invisible, canal con ruta, puerto, IP o mayúsculas, `reviewer`,
+  cambio de sujeto o de rol entre lecturas, timeout y fallo de red (incierto), errores del Engine,
+  409 con detalle, respuestas incompatibles y recibos que no cuadran. También comprueba que
+  `boundary.ts` tiene una sola llamada `deps.fetcher(`.
+- `src/presentation/admin/EditorialTrustPanel.test.tsx`: tres formularios, nada precargado, motivo y
+  evidencia obligatorios y ningún texto de aprobación.
+- `e2e/editorial-trust.spec.ts` (BFF simulado con `page.route`): recibo visible tras confirmar,
+  timeout incierto con reintento con la misma clave, canal con ruta rechazado en local, conflicto con
+  la lista de organizadores y `PUT` con elección explícita.
+
+No cubre una ejecución real contra el Engine: los mocks no sustituyen la verificación del operador
+(preflight, recibo y postflight del paquete FDM).
