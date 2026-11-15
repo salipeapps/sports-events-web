@@ -256,7 +256,7 @@ suite authorize #87 write activation, large-object opt-in #98, reader
 deployment or migration.
 
 See engine
-[STAGING PUBLIC TEMP live plan](https://github.com/raulacden/sports-events-engine/blob/develop/docs/staging-public-temp-live-staging-plan.md),
-[issue #94](https://github.com/raulacden/sports-events-engine/issues/94)
+[STAGING PUBLIC TEMP live plan](https://github.com/salipeapps/sports-events-engine/blob/develop/docs/staging-public-temp-live-staging-plan.md),
+[issue #94](https://github.com/salipeapps/sports-events-engine/issues/94)
 and the Engine
-[option-A acceptance gates](https://github.com/raulacden/sports-events-engine/blob/develop/docs/staging-managed-postgres-option-a-acceptance.md).
+[option-A acceptance gates](https://github.com/salipeapps/sports-events-engine/blob/develop/docs/staging-managed-postgres-option-a-acceptance.md).

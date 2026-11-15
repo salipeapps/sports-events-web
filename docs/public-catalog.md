@@ -1,6 +1,6 @@
 # Public catalogue H2 — Web #50
 
-Public implementation for [Web #50](https://github.com/raulacden/sports-events-web/issues/50).
+Public implementation for [Web #50](https://github.com/salipeapps/sports-events-web/issues/50).
 The home renders anonymous upcoming activities, comparable cards, a seven-local-date
 window and a calendar paginated by month and opaque cursor (24 cards per page).
 No published inventory is invented. Empty successful responses show zero activities;
@@ -8,7 +8,7 @@ disabled, failed and invalid requests have distinct states without a false zero 
 
 ## Configuration and boundaries
 
-Engine V019/V020 are installed in STAGING. [Engine #139](https://github.com/raulacden/sports-events-engine/pull/139)
+Engine V019/V020 are installed in STAGING. [Engine #139](https://github.com/salipeapps/sports-events-engine/pull/139)
 verified 23 direct anonymous HTTP checks against the real public RPC. The current
 STAGING inventory is empty. This Web implementation consumes that API without
 waiting for a first publication or treating empty inventory as an error.

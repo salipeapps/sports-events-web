@@ -50,7 +50,7 @@ are committed. The API remains disabled in all existing deployments.
    issuer/audience and signed matching `app_metadata.discovery_role`;
    never reveal the tokens. Review JWT lifetime and session revocation.
    A migration being applied **does not** enable the Auth hook by itself.
-3. Review and install the [dedicated reader SQL](https://github.com/raulacden/sports-events-engine/blob/develop/scripts/prepare-admin-read-role-staging.sql)
+3. Review and install the [dedicated reader SQL](https://github.com/salipeapps/sports-events-engine/blob/develop/scripts/prepare-admin-read-role-staging.sql)
    with the approved STAGING database change procedure. Confirm the
    role's effective SELECT permissions/RLS and absence of writes, schema
    ownership, BYPASSRLS and client discovery-table grants. No service-role or

@@ -1,8 +1,8 @@
 # Authoritative command admission: BFF integration (#41)
 
-Status: offline integration, 2026-10-16. **NO-GO for real writes.** Both command flags stay `disabled` in `.env.example` and the admission attestation variables stay empty. No Vercel/Cloud Run setting, GCP resource, secret, IAM grant or PROD configuration is created or changed here. Real enablement requires the independent authorization of [Engine #87](https://github.com/raulacden/sports-events-engine/issues/87).
+Status: offline integration, 2026-10-16. **NO-GO for real writes.** Both command flags stay `disabled` in `.env.example` and the admission attestation variables stay empty. No Vercel/Cloud Run setting, GCP resource, secret, IAM grant or PROD configuration is created or changed here. Real enablement requires the independent authorization of [Engine #87](https://github.com/salipeapps/sports-events-engine/issues/87).
 
-This replaces the reference BFF quota model of #39 (`commandQuota.ts`, removed). Engine [#102 / PR #103](https://github.com/raulacden/sports-events-engine/pull/103) now owns the durable admission inside the private writer; its [ADR](https://github.com/raulacden/sports-events-engine/blob/develop/docs/command-admission-adr.md) is the specification of record for the store, limits, IAM, costs and reconciliation.
+This replaces the reference BFF quota model of #39 (`commandQuota.ts`, removed). Engine [#102 / PR #103](https://github.com/salipeapps/sports-events-engine/pull/103) now owns the durable admission inside the private writer; its [ADR](https://github.com/salipeapps/sports-events-engine/blob/develop/docs/command-admission-adr.md) is the specification of record for the store, limits, IAM, costs and reconciliation.
 
 ## Protocol: one admission per command, made by Engine
 
