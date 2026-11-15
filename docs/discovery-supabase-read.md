@@ -91,8 +91,8 @@ limitado a desarrollo local.
   Si no hay diez filas, registrar el inventario observado sin fabricar datos.
 - Esta PR no ejecuta migraciones, cambia flags/secrets/IAM, despliega ni muta DB.
 
-Referencias: [issue Web #48](https://github.com/raulacden/sports-events-web/issues/48),
-[Engine #120](https://github.com/raulacden/sports-events-engine/issues/120),
-[Engine #121](https://github.com/raulacden/sports-events-engine/issues/121),
+Referencias: [issue Web #48](https://github.com/salipeapps/sports-events-web/issues/48),
+[Engine #120](https://github.com/salipeapps/sports-events-engine/issues/120),
+[Engine #121](https://github.com/salipeapps/sports-events-engine/issues/121),
 [Supabase RPC](https://supabase.com/docs/reference/javascript/rpc),
 [autenticación SSR](https://supabase.com/docs/guides/auth/server-side/advanced-guide).

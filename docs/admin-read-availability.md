@@ -1,15 +1,15 @@
 # H1b: Admin read availability
 
-Issue: [Web #49](https://github.com/raulacden/sports-events-web/issues/49).
+Issue: [Web #49](https://github.com/salipeapps/sports-events-web/issues/49).
 Requirements: RF-12, RF-25, RF-33, RF-35, RF-37.
 
 ## Contract inventory (22 October 2026)
 
-[Engine H0](https://github.com/raulacden/sports-events-engine/blob/develop/docs/hybrid-read-contract-v2.md)
+[Engine H0](https://github.com/salipeapps/sports-events-engine/blob/develop/docs/hybrid-read-contract-v2.md)
 explicitly reserves the editorial `AdminRepository` models for
-[Engine #123](https://github.com/raulacden/sports-events-engine/issues/123), which remains open.
-[Engine #121](https://github.com/raulacden/sports-events-engine/issues/121) implements nine B3
-Discovery RPCs, consumed separately by [Web #48](https://github.com/raulacden/sports-events-web/issues/48).
+[Engine #123](https://github.com/salipeapps/sports-events-engine/issues/123), which remains open.
+[Engine #121](https://github.com/salipeapps/sports-events-engine/issues/121) implements nine B3
+Discovery RPCs, consumed separately by [Web #48](https://github.com/salipeapps/sports-events-web/issues/48).
 Those resources are not B1 event candidates, source configurations, capture runs or published activities.
 Do not relabel them or derive editorial totals/coverage from a bounded B3 page.
 

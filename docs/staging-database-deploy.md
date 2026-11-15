@@ -2,7 +2,7 @@
 
 Web **escribe y prueba** su SQL en `supabase/migrations/`, pero **no lo aplica** en STAGING.
 El único que despliega en la base de datos de STAGING (`yfytzogjrhwstcnzspdv`) es el
-pipeline de STAGING del Engine (`raulacden/sports-events-engine`, workflow `STAGING deploy`).
+pipeline de STAGING del Engine (`salipeapps/sports-events-engine`, workflow `STAGING deploy`).
 Así nunca hay dos pipelines modificando la misma base de datos.
 El diseño completo está en `docs/staging-deploy-pipeline.md` del Engine.
 
@@ -34,7 +34,7 @@ El diseño completo está en `docs/staging-deploy-pipeline.md` del Engine.
 ## Configuración
 
 - Secreto `MOUMEET_ENGINE_DISPATCH_TOKEN`: token _fine-grained_ limitado a
-  `raulacden/sports-events-engine` con **Actions: Read and write** y nada más. Sin él, el workflow
+  `salipeapps/sports-events-engine` con **Actions: Read and write** y nada más. Sin él, el workflow
   solo avisa y el Engine evaluará el commit en su siguiente ejecución.
 
 Las migraciones ya aplicadas en STAGING con otro nombre (`20261008211334_web_admin_memberships`,

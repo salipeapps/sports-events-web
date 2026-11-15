@@ -1,6 +1,6 @@
 # Inscripción multicanal verificada (Engine #153)
 
-Implementación offline coordinada con [Engine #153](https://github.com/raulacden/sports-events-engine/issues/153).
+Implementación offline coordinada con [Engine #153](https://github.com/salipeapps/sports-events-engine/issues/153).
 Revisar primero `docs/registration-multichannel-adr.md` del Engine y V021. No autoriza
 migraciones, grants, despliegue, cambios de env remotos ni publicaciones reales.
 

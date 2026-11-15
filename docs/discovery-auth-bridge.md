@@ -221,4 +221,4 @@ Local results on 2026-10-09:
 
 References: [Auth Hooks security/configuration](https://supabase.com/docs/guides/auth/auth-hooks),
 [JWT signing keys](https://supabase.com/docs/guides/auth/signing-keys),
-[engine contract](https://github.com/raulacden/sports-events-engine/blob/develop/docs/discovery-admin-api-v1.md).
+[engine contract](https://github.com/salipeapps/sports-events-engine/blob/develop/docs/discovery-admin-api-v1.md).
