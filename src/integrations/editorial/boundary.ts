@@ -300,6 +300,15 @@ export function upstreamTimeoutMs(operation: Operation): number {
   return operation === "inspect" ? 45_000 : 12_000;
 }
 
+/**
+ * The trust panel has no inspector read before its commands, so the first command of a window met a cold Engine and
+ * its 12 s budget expired while the Engine still wrote (STAGING 15/11 and 16/11, Engine #125). Every trust and
+ * organizer command is therefore preceded by an unauthenticated readiness probe with room for a cold start. The
+ * route budget is 38 s (probe) + 12 s (command) + 10 s margin = the 60 s Hobby limit.
+ */
+export const engineWarmupTimeoutMs = 38_000;
+const engineWarmupPath = "/actuator/health/readiness";
+
 export async function handleEditorialB1(
   request: Request,
   operation: Operation,
@@ -394,6 +403,8 @@ async function authorizeTwice(deps: Dependencies, allow: (access: Access) => voi
 interface EngineCall {
   method: "GET" | "POST" | "PUT";
   path: string;
+  /** Readiness probe: no user token, no body, any HTTP answer means the instance is up; the answer is discarded. */
+  probe?: boolean;
   /** Operation-specific headers only; Accept and Authorization are set once, here. */
   headers: Record<string, string>;
   body?: string;
@@ -417,11 +428,10 @@ async function callEngine(
   access: Access,
   call: EngineCall,
 ): Promise<EngineResult> {
-  const headers: Record<string, string> = {
-    Accept: "application/json",
-    Authorization: "Bearer " + access.accessToken,
-    ...call.headers,
-  };
+  // The user's JWT never travels on the readiness probe: it is a public Engine endpoint.
+  const headers: Record<string, string> = call.probe
+    ? {}
+    : { Accept: "application/json", Authorization: "Bearer " + access.accessToken, ...call.headers };
   if (config.idTokenAudience) {
     // Cloud Run invoker IAM (phase P): the Google ID token travels only here; the user's JWT stays in Authorization.
     const workload = await deps.getWorkloadToken(deps.env, config.idTokenAudience);
@@ -436,6 +446,10 @@ async function callEngine(
     redirect: "error",
     signal: AbortSignal.timeout(call.timeoutMs),
   });
+  if (call.probe) {
+    await upstream.body?.cancel();
+    return { status: upstream.status, ok: upstream.ok, result: null };
+  }
   if (
     !/^application\/json(?:;|$)/i.test(upstream.headers.get("content-type") ?? "") ||
     !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(upstream.headers.get("cache-control") ?? "")
@@ -450,6 +464,22 @@ async function callEngine(
   }
   if (upstream.ok && upstream.status !== 200) fail("INCOMPATIBLE_CONTRACT");
   return { status: upstream.status, ok: upstream.ok, result };
+}
+
+/**
+ * Wakes a cold Engine before a command so the command's short budget is not spent on the cold start. A probe that
+ * fails (timeout, network, redirect) throws before the command is sent: reported as WRITE_UNAVAILABLE and retried
+ * with the same Idempotency-Key, which is harmless because nothing reached the Engine's command endpoint.
+ */
+async function warmEngine(deps: Dependencies, config: EditorialConfig, access: Access): Promise<void> {
+  await callEngine(deps, config, access, {
+    method: "GET",
+    path: engineWarmupPath,
+    headers: {},
+    timeoutMs: engineWarmupTimeoutMs,
+    maxBytes: 0,
+    probe: true,
+  });
 }
 
 const engineErrors: Record<number, ErrorCode> = {
@@ -623,6 +653,7 @@ export async function handleEditorialTrust(
       if (access.role !== "admin") fail("FORBIDDEN");
     });
     if (editorialTrustConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
+    await warmEngine(deps, config, current);
     const upstream = await callEngine(deps, config, current, {
       method: trustMethod(operation),
       path: "/api/editorial/v1" + trustPath(operation, targetId),
@@ -713,6 +744,7 @@ export async function handleEditorialOrganizerCreation(
       if (access.role !== "admin") fail("FORBIDDEN");
     });
     if (editorialOrganizerConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
+    await warmEngine(deps, config, current);
     const upstream = await callEngine(deps, config, current, {
       method: "POST",
       path: "/api/editorial/v1" + organizerPath,

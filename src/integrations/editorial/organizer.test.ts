@@ -87,10 +87,14 @@ function setup(role: "admin" | "reviewer" = "admin", deployment: NodeJS.ProcessE
     .fn<() => Promise<DiscoveryTokenResult>>()
     .mockResolvedValue({ status: "authorized", role, subject: actor, accessToken: "private-jwt" });
   const fetcher = vi.fn<typeof fetch>();
+  // The readiness probe that precedes every command answers here; `fetcher` only sees the command itself.
+  const warmup = vi.fn<typeof fetch>(async () => new Response("{}", { status: 200 }));
   const getWorkloadToken = vi.fn(async () => "aaaa.bbbb.cccc");
-  const deps = { env: deployment, getAccess, getWorkloadToken, fetcher };
+  const route: typeof fetch = (input, init) =>
+    String(input).endsWith("/actuator/health/readiness") ? warmup(input, init) : fetcher(input, init);
+  const deps = { env: deployment, getAccess, getWorkloadToken, fetcher: route };
   const run = (req = request()) => handleEditorialOrganizerCreation(req, deps);
-  return { getAccess, getWorkloadToken, fetcher, run };
+  return { getAccess, getWorkloadToken, fetcher, warmup, run };
 }
 
 describe("V022 organizer registration BFF: positive path", () => {
@@ -136,6 +140,24 @@ describe("V022 organizer registration BFF: positive path", () => {
     await ctx.run();
     expect(spy).toHaveBeenCalledWith(12_000);
     spy.mockRestore();
+  });
+});
+
+describe("V022 organizer registration BFF: readiness probe (cold start)", () => {
+  it("probes readiness without the user token before registering", async () => {
+    const ctx = setup();
+    ctx.fetcher.mockResolvedValue(upstream(engineReceipt));
+    expect((await ctx.run()).status).toBe(200);
+    expect(ctx.warmup).toHaveBeenCalledTimes(1);
+    expect(ctx.warmup.mock.calls[0][0]).toBe(engine + "/actuator/health/readiness");
+    expect(ctx.warmup.mock.calls[0][1]?.headers).toEqual({});
+  });
+
+  it("never registers when the probe fails", async () => {
+    const ctx = setup();
+    ctx.warmup.mockRejectedValue(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+    expect(await (await ctx.run()).json()).toEqual({ code: "WRITE_UNAVAILABLE" });
+    expect(ctx.fetcher).not.toHaveBeenCalled();
   });
 });
 
