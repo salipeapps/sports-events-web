@@ -11,6 +11,7 @@ import {
 import {
   editorialTrustEnabled,
   editorialTrustReviewedSha,
+  engineWarmupTimeoutMs,
   handleEditorialB1,
   handleEditorialTrust,
   validateTrustInput,
@@ -135,11 +136,15 @@ function setup(role: "admin" | "reviewer" = "admin", deployment: NodeJS.ProcessE
     .fn<() => Promise<DiscoveryTokenResult>>()
     .mockResolvedValue({ status: "authorized", role, subject: actor, accessToken: "private-jwt" });
   const fetcher = vi.fn<typeof fetch>();
+  // The readiness probe that precedes every command answers here; `fetcher` only sees the command itself.
+  const warmup = vi.fn<typeof fetch>(async () => new Response("{}", { status: 200 }));
   const getWorkloadToken = vi.fn(async () => "aaaa.bbbb.cccc");
-  const deps = { env: deployment, getAccess, getWorkloadToken, fetcher };
+  const route: typeof fetch = (input, init) =>
+    String(input).endsWith("/actuator/health/readiness") ? warmup(input, init) : fetcher(input, init);
+  const deps = { env: deployment, getAccess, getWorkloadToken, fetcher: route };
   const run = (operation: TrustOperation, req = request(operation), target = targets[operation]) =>
     handleEditorialTrust(req, operation, target, deps);
-  return { getAccess, getWorkloadToken, fetcher, run, deps };
+  return { getAccess, getWorkloadToken, fetcher, warmup, run, deps };
 }
 
 describe("V026 trust BFF: positive path", () => {
@@ -196,6 +201,81 @@ describe("V026 trust BFF: positive path", () => {
       headers: { Host: new URL(origin).host },
     });
     expect((await handleEditorialB1(inspect, "inspect", organizerId, ctx.deps)).status).toBe(404);
+  });
+});
+
+describe("V026 trust BFF: readiness probe before every command (cold start, Engine #125)", () => {
+  it.each(operations)("probes readiness once, without the user token, before the %s command", async (op) => {
+    const ctx = setup();
+    const order: string[] = [];
+    ctx.warmup.mockImplementation(async () => {
+      order.push("probe");
+      return new Response("{}", { status: 200 });
+    });
+    ctx.fetcher.mockImplementation(async () => {
+      order.push("command");
+      return upstream(receipts[op]);
+    });
+    expect((await ctx.run(op)).status).toBe(200);
+    expect(order).toEqual(["probe", "command"]);
+    const [url, init] = ctx.warmup.mock.calls[0];
+    expect(url).toBe(engine + "/actuator/health/readiness");
+    expect(init).toMatchObject({ method: "GET", cache: "no-store", redirect: "error" });
+    expect(init?.headers).toEqual({});
+    expect(init?.body).toBeUndefined();
+  });
+
+  it("carries only the Cloud Run ID token on the probe when invoker IAM is enforced", async () => {
+    const ctx = setup("admin", { ...env, EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE: engine });
+    ctx.fetcher.mockResolvedValue(upstream(receipts.alias));
+    expect((await ctx.run("alias")).status).toBe(200);
+    expect(ctx.warmup.mock.calls[0][1]?.headers).toEqual({ "X-Serverless-Authorization": "Bearer aaaa.bbbb.cccc" });
+  });
+
+  it("gives the probe room for a cold start within the 60 s route limit", async () => {
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    const ctx = setup();
+    ctx.fetcher.mockResolvedValue(upstream(receipts.channel));
+    await ctx.run("channel");
+    expect(spy.mock.calls.map(([ms]) => ms)).toEqual([engineWarmupTimeoutMs, 12_000]);
+    spy.mockRestore();
+    expect(engineWarmupTimeoutMs + 12_000 + 10_000).toBeLessThanOrEqual(60_000);
+    for (const route of [
+      await import("@/app/api/internal/editorial/organizers/[id]/aliases/route"),
+      await import("@/app/api/internal/editorial/organizers/[id]/channels/route"),
+      await import("@/app/api/internal/editorial/sources/[id]/location-authority/route"),
+      await import("@/app/api/internal/editorial/organizers/route"),
+    ])
+      expect(route.maxDuration).toBe(60);
+  });
+
+  it("accepts any HTTP answer from the probe and discards it", async () => {
+    const ctx = setup();
+    ctx.warmup.mockResolvedValue(new Response("<html>down</html>", { status: 503 }));
+    ctx.fetcher.mockResolvedValue(upstream(receipts.alias));
+    expect((await ctx.run("alias")).status).toBe(200);
+    expect(ctx.fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ["timeout", new DOMException("The operation was aborted due to timeout", "TimeoutError")],
+    ["network", new TypeError("fetch failed")],
+  ])("never sends the command when the probe fails (%s)", async (_name, error) => {
+    const ctx = setup();
+    ctx.warmup.mockRejectedValue(error);
+    const response = await ctx.run("alias");
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ code: "WRITE_UNAVAILABLE" });
+    expect(ctx.fetcher).not.toHaveBeenCalled();
+  });
+
+  it("never probes before the session and role checks pass", async () => {
+    const ctx = setup("reviewer");
+    expect((await ctx.run("alias")).status).toBe(403);
+    expect(ctx.warmup).not.toHaveBeenCalled();
+    const off = setup("admin", { ...env, EDITORIAL_TRUST_ENABLED: undefined });
+    expect((await off.run("alias")).status).toBe(404);
+    expect(off.warmup).not.toHaveBeenCalled();
   });
 });
 

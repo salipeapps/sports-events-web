@@ -158,6 +158,16 @@ tampoco la concede.
   inspect, command e import. Las cabeceras `Accept` y `Authorization` se fijan solo allí, así que la
   cabecera `X-Serverless-Authorization` de la fase P (#77, solo con `EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE` igual al origen) también se añade solo allí, y la heredan los tres comandos V026. Sin redirecciones ni caché, timeout
   de 12 s y respuesta de 8 KiB como máximo.
+- **Calentamiento antes del comando**: el panel de confianza no hace una lectura del inspector antes
+  de sus comandos, así que el primer comando de cada ventana encontraba el Engine en frío. Sus 12 s
+  se agotaban mientras el Engine escribía igualmente (STAGING, 15/11 y 16/11, Engine #125). Ahora,
+  después de validar la petición, la sesión y el rol, el BFF envía un `GET /actuator/health/readiness`
+  con 38 s de margen. Es un endpoint público del Engine, así que la petición no lleva el JWT del
+  usuario: solo el ID token de la fase P si está configurado. Cualquier respuesta HTTP significa que
+  la instancia está arrancada; su contenido se descarta. Si la sonda falla (timeout, red o
+  redirección), el comando **no se envía** y se responde `WRITE_UNAVAILABLE`; reintentar con la misma
+  clave es inocuo. Las rutas de confianza y de alta fijan `maxDuration = 60`, que cubre los 38 s de
+  la sonda, los 12 s del comando y 10 s de margen dentro del límite de Hobby.
 - **Recibo**: se reconstruye con una lista cerrada de campos. Exige `commandKey` igual a la clave
   enviada, `action` del comando, objetivo igual al de la ruta, `alias`/`officialUrl` idénticos a los enviados (la SQL V026 los devuelve tal cual en `ADDED` y `EXISTS`), campos ajenos nulos y `status` dentro
   de `ADDED`/`EXISTS` (alias y canal) o `DECLARED`/`WITHDRAWN`/`UNCHANGED` (autoridad, con
@@ -226,6 +236,7 @@ no autoriza ningún alta**: cada envío es una escritura real que requiere su pr
   de otro parecido no se hace desde aquí.
 - **Recibo**: exige `commandKey` igual a la clave enviada, `status` `CREATED`, `organizerId` y
   `officialChannelId` UUID, y `canonicalName` y `officialUrl` idénticos a los enviados.
+- Misma sonda de calentamiento previa que los comandos V026.
 - Mismas reglas de petición, evidencia dentro del motivo, sesión doble, envío por `callEngine`
   (con `X-Serverless-Authorization` de la fase P), timeout de 12 s y resultado incierto con reintento
   con la misma clave que los comandos V026.
