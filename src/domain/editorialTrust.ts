@@ -114,6 +114,45 @@ export function composeTrustReason(reason: string, evidenceUrl: string): string 
   return composed.length <= maxEngineReasonLength ? composed : null;
 }
 
+// ---------------------------------------------------------------------------------------------------------------
+// V022 organizer registration (Engine #197, `POST /api/editorial/v1/organizers`): creates ONE organizer together with
+// its official channel. Same review discipline as the trust commands above.
+// ---------------------------------------------------------------------------------------------------------------
+
+export const organizerAction = "CREATE_ORGANIZER";
+/** Engine `register_organizer_v1`: CREATED is the only success; EXISTS/AMBIGUOUS answer 409 and write nothing. */
+export const organizerStatus = "CREATED";
+export const organizerPath = "/organizers";
+
+export interface OrganizerInput {
+  canonicalName: string;
+  officialUrl: string;
+  reason: string;
+  evidenceUrl: string;
+}
+
+export interface OrganizerReceipt {
+  commandKey: string;
+  action: typeof organizerAction;
+  organizerId: string;
+  canonicalName: string;
+  officialUrl: string;
+  officialChannelId: string;
+  verifiedAt: string;
+  status: typeof organizerStatus;
+  recordedAt: string;
+}
+
+/** Java `OrganizerRegistration.presentationName`: the same rule as an alias (NFC, single spaces, 2-200, a letter). */
+export const normalizeOrganizerName = normalizeAlias;
+export const isValidOrganizerName = isValidAlias;
+
+/**
+ * The Engine accepts a public HTTPS URL with a path, but the capture trusts the channel's whole host. Web only sends
+ * an origin, exactly like an additional V026 channel, so the reviewed host is the only thing registered.
+ */
+export const isOrganizerOfficialUrl = isOfficialChannelOrigin;
+
 export function trustPath(operation: TrustOperation, targetId: string): string {
   return operation === "locationAuthority"
     ? "/sources/" + targetId + "/location-authority"

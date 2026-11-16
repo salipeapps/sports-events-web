@@ -203,3 +203,44 @@ autorización.
 
 No cubre una ejecución real contra el Engine: los mocks no sustituyen la verificación del operador
 (preflight, recibo y postflight del paquete FDM).
+
+## Alta de organizador V022 (organizador nuevo y su canal oficial)
+
+Estado: **implementado en Web, desactivado por defecto**. Contrato: Engine `e66bc3a`,
+`EditorialController.registerOrganizer` y `organizer_registry.register_organizer_v1` (V022, #197),
+más `docs/editorial-organizer-registration.md` del Engine. Igual que los comandos V026, **esta pantalla
+no autoriza ningún alta**: cada envío es una escritura real que requiere su propia autorización C.
+
+| BFF Web                                   | Engine                              | Cuerpo Web (claves exactas)                             | Cuerpo Engine (claves exactas)                                       |
+| ----------------------------------------- | ----------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------- |
+| `POST /api/internal/editorial/organizers` | `POST /api/editorial/v1/organizers` | `canonicalName`, `officialUrl`, `reason`, `evidenceUrl` | `canonicalName`, `officialUrl`, `reason`, `distinctFromOrganizerIds` |
+
+- **Un alta crea dos cosas**: el organizador y, en la misma transacción, su canal oficial con la
+  `officialUrl`. La captura confía en ese host igual que en un canal V026. Por eso Web solo envía un
+  origen `https://host` o `https://host/`, aunque el Engine admita una ruta.
+- **Nombre canónico**: misma forma de presentación que un alias (NFC, espacios simples, entre 2 y 200
+  caracteres, alguna letra, sin caracteres invisibles). La revisión muestra la forma normalizada.
+- **Parecidos**: `distinctFromOrganizerIds` va siempre vacío. Si el Engine responde
+  `ORGANIZER_EXISTS` o `ORGANIZER_AMBIGUOUS` (409, sin escritura), la pantalla muestra los
+  organizadores públicos que coinciden y la intención termina. Declarar que un organizador es distinto
+  de otro parecido no se hace desde aquí.
+- **Recibo**: exige `commandKey` igual a la clave enviada, `status` `CREATED`, `organizerId` y
+  `officialChannelId` UUID, y `canonicalName` y `officialUrl` idénticos a los enviados.
+- Mismas reglas de petición, evidencia dentro del motivo, sesión doble, envío por `callEngine`
+  (con `X-Serverless-Authorization` de la fase P), timeout de 12 s y resultado incierto con reintento
+  con la misma clave que los comandos V026.
+
+### Activación (desactivada por defecto)
+
+Exige todas las puertas de los comandos V026 (`editorialTrustEnabled`) **y además**
+`EDITORIAL_ORGANIZER_CREATION_ENABLED=enabled`. Abrir una ventana de confianza no habilita altas por
+accidente. Si falta, la ruta responde `404 NOT_CONFIGURED` sin leer la sesión ni contactar con el
+Engine. Configurar la variable en Vercel es un cambio operativo con su propia autorización.
+
+### Pruebas
+
+- `src/integrations/editorial/organizer.test.ts`: puerta propia sobre la de confianza, petición,
+  cuerpo exacto con `distinctFromOrganizerIds` vacío, nombre y URL inválidos, `reviewer`, cambio de
+  sujeto, 409 `ORGANIZER_EXISTS`/`ORGANIZER_AMBIGUOUS`, timeout incierto y recibos que no cuadran.
+- `e2e/editorial-trust.spec.ts`: alta con recibo visible, URL con ruta rechazada en local y 409 de
+  parecidos con la lista de organizadores.

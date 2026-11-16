@@ -9,8 +9,9 @@ vi.mock("next/link", () => ({
 describe("EditorialTrustPanel initial state", () => {
   const html = renderToStaticMarkup(<EditorialTrustPanel />);
 
-  it("renders three separate forms and no bulk action", () => {
-    expect(html.match(/<form/g)).toHaveLength(3);
+  it("renders four separate forms and no bulk action", () => {
+    expect(html.match(/<form/g)).toHaveLength(4);
+    expect(html).toContain('aria-label="Alta de organizador"');
     expect(html).toContain('aria-label="Alias de organizador"');
     expect(html).toContain('aria-label="Canal oficial de organizador"');
     expect(html).toContain('aria-label="Autoridad de ubicación"');
@@ -25,8 +26,13 @@ describe("EditorialTrustPanel initial state", () => {
   });
 
   it("requires reason and evidence in every form", () => {
-    expect(html.match(/Motivo editorial \(obligatorio\)/g)).toHaveLength(3);
-    expect(html.match(/URL de evidencia oficial revisada/g)).toHaveLength(3);
+    expect(html.match(/Motivo editorial \(obligatorio\)/g)).toHaveLength(4);
+    expect(html.match(/URL de evidencia oficial revisada/g)).toHaveLength(4);
+  });
+
+  it("never lets the organizer form acknowledge similar organizers", () => {
+    expect(html).not.toMatch(/distinctFrom|distintos de/i);
+    expect(html).toContain("si hay organizadores");
   });
 
   it("never suggests that an action is approved or authorized", () => {

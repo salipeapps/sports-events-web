@@ -7,8 +7,14 @@ import { getDiscoveryAccessToken, type DiscoveryTokenResult } from "@/integratio
 import {
   composeTrustReason,
   isOfficialChannelOrigin,
+  isOrganizerOfficialUrl,
   isValidAlias,
+  isValidOrganizerName,
   maxAliasLength,
+  organizerAction,
+  organizerPath,
+  organizerStatus,
+  type OrganizerReceipt,
   trustActions,
   trustMethod,
   trustOperations,
@@ -568,14 +574,15 @@ export function normalizeTrustReceipt(
   return { ...receipt, sourceId: targetId, authoritative: raw.authoritative as boolean };
 }
 
-const conflictReasons: Record<TrustOperation, string | null> = {
-  alias: "ALIAS_IN_USE",
-  channel: "CHANNEL_IN_USE",
-  locationAuthority: null,
+const conflictReasons: Record<TrustOperation | "organizer", readonly string[]> = {
+  alias: ["ALIAS_IN_USE"],
+  channel: ["CHANNEL_IN_USE"],
+  locationAuthority: [],
+  organizer: ["ORGANIZER_EXISTS", "ORGANIZER_AMBIGUOUS"],
 };
-/** 409 detail: the public organizer names/IDs already holding the alias or host. Dropped unless exactly valid. */
-function conflictDetail(operation: TrustOperation, result: unknown): Record<string, unknown> {
-  if (!isRecord(result) || result.reason === undefined || result.reason !== conflictReasons[operation]) return {};
+/** 409 detail: the public organizer names/IDs already holding the name, alias or host. Dropped unless exactly valid. */
+function conflictDetail(operation: TrustOperation | "organizer", result: unknown): Record<string, unknown> {
+  if (!isRecord(result) || !str(result.reason) || !conflictReasons[operation].includes(result.reason)) return {};
   const organizers = result.organizers;
   if (
     !Array.isArray(organizers) ||
@@ -627,6 +634,96 @@ export async function handleEditorialTrust(
     if (!upstream.ok)
       return engineFailure(upstream, upstream.status === 409 ? conflictDetail(operation, upstream.result) : {});
     return respond(normalizeTrustReceipt(upstream.result, operation, targetId, key, body), 200);
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// V022 organizer registration (Engine #197): ONE organizer and its official channel. Admin only. Its own switch on top
+// of the trust gate, so a trust window never enables registrations by accident.
+// ---------------------------------------------------------------------------------------------------------------
+
+export function editorialOrganizerCreationEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return editorialTrustEnabled(env) && env.EDITORIAL_ORGANIZER_CREATION_ENABLED === "enabled";
+}
+function editorialOrganizerConfig(env: NodeJS.ProcessEnv): EditorialConfig {
+  const config = editorialConfig(env);
+  if (!editorialOrganizerCreationEnabled(env)) fail("NOT_CONFIGURED");
+  return config;
+}
+
+/**
+ * Exact Web input → exact Engine body. `distinctFromOrganizerIds` is always empty: this screen never acknowledges
+ * similar organizers, so an AMBIGUOUS answer stops the intention for a separate human review.
+ */
+export function validateOrganizerInput(value: unknown): Record<string, unknown> {
+  if (!isRecord(value)) fail("INVALID_REQUEST");
+  exactKeys(value, ["canonicalName", "officialUrl", "reason", "evidenceUrl"]);
+  const reason =
+    str(value.reason) && str(value.evidenceUrl) ? composeTrustReason(value.reason, value.evidenceUrl) : null;
+  if (reason === null || !isValidOrganizerName(value.canonicalName) || !isOrganizerOfficialUrl(value.officialUrl))
+    fail("INVALID_REQUEST");
+  return { canonicalName: value.canonicalName, officialUrl: value.officialUrl, reason, distinctFromOrganizerIds: [] };
+}
+
+/** Engine `OrganizerReceipt`: must confirm THIS key and exactly the name and official URL the admin reviewed. */
+export function normalizeOrganizerReceipt(raw: unknown, key: string, sent: Record<string, unknown>): OrganizerReceipt {
+  if (
+    !isRecord(raw) ||
+    raw.commandKey !== key ||
+    raw.status !== organizerStatus ||
+    !isUuid(raw.organizerId) ||
+    !isUuid(raw.officialChannelId) ||
+    raw.canonicalName !== sent.canonicalName ||
+    raw.officialUrl !== sent.officialUrl ||
+    !str(raw.verifiedAt) ||
+    !Number.isFinite(Date.parse(raw.verifiedAt)) ||
+    !str(raw.recordedAt) ||
+    !Number.isFinite(Date.parse(raw.recordedAt))
+  )
+    fail("INCOMPATIBLE_CONTRACT");
+  return {
+    commandKey: key,
+    action: organizerAction,
+    organizerId: raw.organizerId,
+    canonicalName: sent.canonicalName as string,
+    officialUrl: sent.officialUrl as string,
+    officialChannelId: raw.officialChannelId,
+    verifiedAt: raw.verifiedAt,
+    status: organizerStatus,
+    recordedAt: raw.recordedAt,
+  };
+}
+
+export async function handleEditorialOrganizerCreation(
+  request: Request,
+  deps: Dependencies = defaults,
+): Promise<Response> {
+  try {
+    const config = editorialOrganizerConfig(deps.env);
+    validateRequest(request, "POST", deps.env);
+    const key = request.headers.get("idempotency-key");
+    if (!isUuid(key)) fail("INVALID_REQUEST");
+    if (!/^application\/json(?:;\s*charset=utf-8)?$/i.test(request.headers.get("content-type") ?? ""))
+      fail("INVALID_REQUEST");
+    const body = validateOrganizerInput(JSON.parse(await bounded(request, 4096)));
+    // Engine `authorize(jwt,false)`: reviewer is never allowed to register organizers.
+    const current = await authorizeTwice(deps, (access) => {
+      if (access.role !== "admin") fail("FORBIDDEN");
+    });
+    if (editorialOrganizerConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
+    const upstream = await callEngine(deps, config, current, {
+      method: "POST",
+      path: "/api/editorial/v1" + organizerPath,
+      headers: { "Idempotency-Key": key, "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      timeoutMs: upstreamTimeoutMs("command"),
+      maxBytes: 8192,
+    });
+    if (!upstream.ok)
+      return engineFailure(upstream, upstream.status === 409 ? conflictDetail("organizer", upstream.result) : {});
+    return respond(normalizeOrganizerReceipt(upstream.result, key, body), 200);
   } catch (error) {
     return failure(error);
   }
