@@ -50,7 +50,7 @@ test("an admin reviews, confirms and sees the Engine receipt for an alias", asyn
   });
   await page.goto("/admin/editorial");
   await page.getByRole("link", { name: /Confianza editorial/ }).click();
-  await expect(page.getByRole("heading", { name: "Confianza editorial (V026)" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Confianza editorial (V022 y V026)" })).toBeVisible();
 
   await fillAlias(page);
   const review = page.getByRole("group", { name: "Revisión: alias" });
@@ -185,4 +185,88 @@ test("location authority needs an explicit choice and is sent with PUT", async (
   await review.getByRole("button", { name: "Enviar al Engine" }).click();
   await expect(page.getByRole("status", { name: "Recibo del Engine" })).toContainText("WITHDRAWN");
   expect(calls.map((call) => [call.method, call.body.authoritative])).toEqual([["PUT", false]]);
+});
+
+async function fillOrganizer(page: Page, url = "https://organizer.example.org") {
+  const form = page.getByRole("form", { name: "Alta de organizador" });
+  await form.getByLabel("Nombre canónico").fill("Club  Atletismo Ejemplo");
+  await form.getByLabel("Origen HTTPS de la web oficial").fill(url);
+  await form.getByLabel("Motivo editorial (obligatorio)").fill("Titular del dominio según su aviso legal");
+  await form.getByLabel("URL de evidencia oficial revisada (HTTPS, obligatoria)").fill(evidence);
+  await form.getByRole("button", { name: "Revisar alta antes de enviar" }).click();
+}
+
+test("an admin registers one organizer with its official channel and sees the receipt", async ({ page }) => {
+  const calls: Captured[] = [];
+  await page.route("**/api/internal/editorial/organizers", (route) => {
+    const call = capture(route.request());
+    calls.push(call);
+    return route.fulfill({
+      json: {
+        commandKey: call.key,
+        action: "CREATE_ORGANIZER",
+        organizerId,
+        canonicalName: "Club Atletismo Ejemplo",
+        officialUrl: "https://organizer.example.org",
+        officialChannelId: "c4a2a2a2-1111-4000-8000-333333333333",
+        verifiedAt: "2026-11-16T10:00:00Z",
+        status: "CREATED",
+        recordedAt: "2026-11-16T10:00:00Z",
+      },
+    });
+  });
+  await page.goto("/admin/editorial/trust");
+  await fillOrganizer(page, "https://organizer.example.org/inscripciones");
+  const form = page.getByRole("form", { name: "Alta de organizador" });
+  await expect(form.getByRole("alert")).toContainText("solo un origen HTTPS");
+  expect(calls).toHaveLength(0);
+
+  await form.getByLabel("Origen HTTPS de la web oficial").fill("https://organizer.example.org");
+  await form.getByRole("button", { name: "Revisar alta antes de enviar" }).click();
+  const review = page.getByRole("group", { name: "Revisión: alta de organizador" });
+  await expect(review).toContainText("POST /api/editorial/v1/organizers");
+  await expect(review).toContainText("Club Atletismo Ejemplo");
+  await expect(review).toContainText("Ninguno: si el Engine encuentra alguno, no escribe nada");
+  await review.getByLabel(/He revisado la evidencia/).check();
+  await review.getByRole("button", { name: "Enviar al Engine" }).click();
+  const receipt = page.getByRole("status", { name: "Recibo del Engine" });
+  await expect(receipt).toContainText("CREATED: el Engine ha creado el organizador y su canal oficial.");
+  await expect(receipt).toContainText("https://organizer.example.org");
+  expect(calls).toEqual([
+    {
+      method: "POST",
+      key: expect.stringMatching(/^[0-9a-f-]{36}$/),
+      body: {
+        canonicalName: "Club Atletismo Ejemplo",
+        officialUrl: "https://organizer.example.org",
+        reason: "Titular del dominio según su aviso legal",
+        evidenceUrl: evidence,
+      },
+    },
+  ]);
+});
+
+test("a similar organizer stops the registration and lists the matches", async ({ page }) => {
+  await page.route("**/api/internal/editorial/organizers", (route) =>
+    route.fulfill({
+      status: 409,
+      json: {
+        code: "CONFLICT",
+        reason: "ORGANIZER_AMBIGUOUS",
+        organizers: [{ id: organizerId, canonicalName: "Club de Atletismo Ejemplo" }],
+      },
+    }),
+  );
+  await page.goto("/admin/editorial/trust");
+  await fillOrganizer(page);
+  const review = page.getByRole("group", { name: "Revisión: alta de organizador" });
+  await review.getByLabel(/He revisado la evidencia/).check();
+  await review.getByRole("button", { name: "Enviar al Engine" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "nombre parecido" })).toContainText(
+    "No se ha registrado nada",
+  );
+  await expect(page.getByRole("list", { name: "Organizadores que ya lo usan" })).toContainText(
+    "Club de Atletismo Ejemplo",
+  );
+  await expect(review.getByLabel(/He revisado la evidencia/)).not.toBeChecked();
 });

@@ -6,9 +6,14 @@ import {
   composeTrustReason,
   isEvidenceUrl,
   isOfficialChannelOrigin,
+  isOrganizerOfficialUrl,
   isTrustReason,
   isValidAlias,
+  isValidOrganizerName,
   normalizeAlias,
+  normalizeOrganizerName,
+  organizerPath,
+  type OrganizerReceipt,
   trustPath,
   trustMethod,
   type TrustOperation,
@@ -31,6 +36,13 @@ const errors: Record<string, string> = {
   INCOMPATIBLE_CONTRACT:
     "Resultado incierto: el Engine ha devuelto una respuesta que no se puede verificar. Puede haberse registrado o no.",
 };
+/** 409 reasons of an organizer registration: nothing was written, and this screen never acknowledges matches. */
+const conflictMessages: Record<string, string> = {
+  ORGANIZER_EXISTS:
+    "Ya existe un organizador con un nombre equivalente. No se ha registrado nada: no crees otro; revisa si basta con usarlo.",
+  ORGANIZER_AMBIGUOUS:
+    "Hay organizadores con un nombre parecido. No se ha registrado nada. Esta pantalla no permite declararlos distintos: detén el alta y revisa la ficha.",
+};
 /** Codes after which the same intention may be retried with the same Idempotency-Key. */
 const retryable = new Set(["UNAUTHENTICATED", "RATE_LIMITED", "WRITE_UNAVAILABLE", "INCOMPATIBLE_CONTRACT"]);
 const uncertain = new Set(["WRITE_UNAVAILABLE", "INCOMPATIBLE_CONTRACT"]);
@@ -41,7 +53,10 @@ const statusLabels: Record<string, string> = {
   DECLARED: "DECLARED: el Engine ha registrado la declaración de autoridad de ubicación.",
   WITHDRAWN: "WITHDRAWN: el Engine ha registrado la retirada de la autoridad de ubicación.",
   UNCHANGED: "UNCHANGED: la fuente ya estaba en ese estado; el Engine no ha escrito nada.",
+  CREATED: "CREATED: el Engine ha creado el organizador y su canal oficial.",
 };
+type CommandId = TrustOperation | "organizer";
+type AnyReceipt = TrustReceipt | OrganizerReceipt;
 
 interface Prepared {
   path: string;
@@ -55,7 +70,7 @@ interface Pending {
 }
 interface Outcome {
   kind: "receipt" | "error";
-  receipt?: TrustReceipt;
+  receipt?: AnyReceipt;
   message?: string;
   code?: string;
   key?: string;
@@ -63,7 +78,7 @@ interface Outcome {
 }
 
 /** One trust command: edit → review exactly what will be sent → explicit confirmation → Engine receipt. */
-function useTrustCommand(operation: TrustOperation) {
+function useTrustCommand(operation: CommandId) {
   const [prepared, setPrepared] = useState<Prepared | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -110,10 +125,11 @@ function useTrustCommand(operation: TrustOperation) {
           pending.current = null;
           setConfirmed(false);
         }
+        const reason = typeof value.reason === "string" ? value.reason : "";
         setOutcome({
           kind: "error",
           code,
-          message: errors[code],
+          message: (code === "CONFLICT" && conflictMessages[reason]) || errors[code],
           key: retryable.has(code) ? key : undefined,
           conflicts: Array.isArray(value.organizers)
             ? (value.organizers as { id: string; canonicalName: string }[])
@@ -127,7 +143,7 @@ function useTrustCommand(operation: TrustOperation) {
         return;
       }
       pending.current = null;
-      setOutcome({ kind: "receipt", receipt: value as unknown as TrustReceipt });
+      setOutcome({ kind: "receipt", receipt: value as unknown as AnyReceipt });
       setPrepared(null);
       setConfirmed(false);
       onReceipt();
@@ -217,19 +233,33 @@ function ReviewAndSend({ command, onReceipt, label }: { command: Command; onRece
   );
 }
 
-function Receipt({ receipt }: { receipt: TrustReceipt }) {
+function Receipt({ receipt }: { receipt: AnyReceipt }) {
   const rows: [string, ReactNode][] = [
     ["Estado", statusLabels[receipt.status] ?? receipt.status],
     ["Acción", receipt.action],
     ["Clave del comando", <code key="k">{receipt.commandKey}</code>],
     ["Registrado en", receipt.recordedAt],
   ];
+  if ("officialChannelId" in receipt) {
+    rows.push(
+      ["Organizador creado", receipt.organizerId],
+      ["Nombre canónico", receipt.canonicalName],
+      ["Canal oficial", receipt.officialUrl],
+      ["ID del canal", receipt.officialChannelId],
+      ["Verificado en", receipt.verifiedAt],
+    );
+    return <ReceiptView rows={rows} />;
+  }
   if (receipt.organizerId) rows.push(["Organizador", receipt.organizerId]);
   if (receipt.alias) rows.push(["Alias", receipt.alias]);
   if (receipt.officialUrl) rows.push(["Canal oficial", receipt.officialUrl]);
   if (receipt.channelId) rows.push(["ID del canal", receipt.channelId]);
   if (receipt.sourceId) rows.push(["Fuente", receipt.sourceId]);
   if (receipt.authoritative !== null) rows.push(["Autoridad de ubicación", receipt.authoritative ? "Sí" : "No"]);
+  return <ReceiptView rows={rows} />;
+}
+
+function ReceiptView({ rows }: { rows: [string, ReactNode][] }) {
   return (
     <section role="status" aria-label="Recibo del Engine">
       <h3>Recibo del Engine</h3>
@@ -325,6 +355,90 @@ function useEditorialFields() {
       setError("");
     },
   };
+}
+
+function OrganizerForm() {
+  const command = useTrustCommand("organizer");
+  const fields = useEditorialFields();
+  const [name, setName] = useState("");
+  const [officialUrl, setOfficialUrl] = useState("");
+  const locked = command.prepared !== null || command.busy;
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    fields.setError("");
+    const normalized = normalizeOrganizerName(name);
+    if (!isValidOrganizerName(normalized))
+      return fields.setError(
+        "El nombre debe tener entre 2 y 200 caracteres, alguna letra y ningún carácter invisible.",
+      );
+    if (!isOrganizerOfficialUrl(officialUrl))
+      return fields.setError(
+        "La web oficial debe ser solo un origen HTTPS en minúsculas (https://host o https://host/), sin ruta, query, fragmento ni puerto.",
+      );
+    const { reason, error } = prepareReason(fields.reason, fields.evidence);
+    if (error) return fields.setError(error);
+    command.review({
+      path: organizerPath,
+      method: "POST",
+      body: { canonicalName: normalized, officialUrl, reason, evidenceUrl: fields.evidence },
+      summary: [
+        ["Organizador nuevo (nombre canónico)", normalized],
+        ["Canal oficial (host exacto)", officialUrl],
+        ["Organizadores parecidos reconocidos", "Ninguno: si el Engine encuentra alguno, no escribe nada"],
+        ["Motivo registrado", composeTrustReason(reason, fields.evidence)!],
+      ],
+    });
+  }
+
+  return (
+    <section aria-labelledby="organizer-title">
+      <h2 id="organizer-title">Alta de un organizador nuevo</h2>
+      <p>
+        Crea <strong>un</strong> organizador y, a la vez, su canal oficial. Úsalo solo si el organizador no existe con
+        ningún nombre equivalente. Si existe, el Engine responde con conflicto y no escribe nada; si hay organizadores
+        parecidos, también se detiene. La captura confiará en todo el host del canal. No se puede borrar después.
+      </p>
+      <form onSubmit={submit} aria-label="Alta de organizador">
+        <p>
+          <label htmlFor="organizer-name">Nombre canónico</label>
+          <input
+            id="organizer-name"
+            required
+            maxLength={200}
+            value={name}
+            disabled={locked}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </p>
+        <p>
+          <label htmlFor="organizer-url">Origen HTTPS de la web oficial</label>
+          <input
+            id="organizer-url"
+            type="url"
+            inputMode="url"
+            required
+            maxLength={500}
+            value={officialUrl}
+            disabled={locked}
+            onChange={(event) => setOfficialUrl(event.target.value)}
+          />
+        </p>
+        <ReasonFields idPrefix="organizer" disabled={locked} {...fields} />
+        {fields.error ? <p role="alert">{fields.error}</p> : null}
+        {!command.prepared ? <button type="submit">Revisar alta antes de enviar</button> : null}
+      </form>
+      <ReviewAndSend
+        command={command}
+        label="alta de organizador"
+        onReceipt={() => {
+          fields.reset();
+          setName("");
+          setOfficialUrl("");
+        }}
+      />
+    </section>
+  );
 }
 
 function AliasForm() {
@@ -569,15 +683,16 @@ function LocationAuthorityForm() {
 export function EditorialTrustPanel() {
   return (
     <section>
-      <h1>Confianza editorial (V026)</h1>
+      <h1>Confianza editorial (V022 y V026)</h1>
       <p>
         <Link href="/admin/editorial">Volver a la revisión editorial</Link>
       </p>
       <p>
-        Tres comandos independientes, solo para administradores. Cada envío es una única escritura real que decide el
+        Cuatro comandos independientes, solo para administradores. Cada envío es una única escritura real que decide el
         Engine; esta pantalla no autoriza ejecutarlos ni registra nada hasta recibir su recibo. Un resultado incierto se
         reintenta con la misma clave, nunca se da por hecho.
       </p>
+      <OrganizerForm />
       <AliasForm />
       <ChannelForm />
       <LocationAuthorityForm />
