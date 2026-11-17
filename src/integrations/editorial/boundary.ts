@@ -38,7 +38,7 @@ type ErrorCode =
   | "INCOMPATIBLE_CONTRACT";
 type Access = Extract<DiscoveryTokenResult, { status: "authorized" }>;
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-const actions = ["APPROVE", "REJECT", "CORRECT", "RESOLVE_CONFLICTS", "PUBLISH", "SUSPEND"] as const;
+const actions = ["APPROVE", "REJECT", "CORRECT", "RESOLVE_CONFLICTS", "PUBLISH", "SUSPEND", "REVERIFY"] as const;
 const categories = ["yoga", "running", "hiking", "cycling", "fitness", "swimming", "dance", "other"];
 const status: Record<ErrorCode, number> = {
   NOT_CONFIGURED: 404,
@@ -125,6 +125,10 @@ export function validateEditorialCommand(
       !isHttpsVerificationUrl(value.verificationUrl, value.registrationVerified === true) ||
       !categories.includes(value.category as string)
     )
+      fail("INVALID_REQUEST");
+  } else if (action === "REVERIFY") {
+    exactKeys(value, [...common, "verificationUrl", "registrationVerified"]);
+    if (value.registrationVerified !== true || !isHttpsVerificationUrl(value.verificationUrl, true))
       fail("INVALID_REQUEST");
   } else if (action === "CORRECT") {
     exactKeys(value, [...common, "correction"]);
@@ -331,6 +335,7 @@ export async function handleEditorialB1(
         rawBody = await bounded(request, 16384);
         const payload = validateEditorialCommand(JSON.parse(rawBody));
         action = payload.action;
+        if (action === "REVERIFY" && !registrationContract) fail("NOT_CONFIGURED");
         if (
           registrationContract &&
           ((action === "APPROVE" && payload.registrationVerified !== true) ||
