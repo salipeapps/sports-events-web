@@ -8,7 +8,7 @@ import type { OrganizerRegistration } from "@/domain/registration";
  */
 export const correctionActions = ["CORRECT_ORGANIZER", "CORRECT_REGISTRATION", "VERIFY_LOCATION"] as const;
 export type CorrectionAction = (typeof correctionActions)[number];
-export type EditorialAction = "APPROVE" | "REJECT" | "PUBLISH" | "SUSPEND" | CorrectionAction;
+export type EditorialAction = "APPROVE" | "REJECT" | "PUBLISH" | "SUSPEND" | "REVERIFY" | CorrectionAction;
 
 export type CorrectionChange =
   | { kind: "ORGANIZER"; organizerId: string }
@@ -25,7 +25,9 @@ export function canSubmitAction(role: AdminRole, action: EditorialAction): boole
   return role === "admin" || action === "APPROVE" || action === "REJECT";
 }
 
-export function commandAction(action: EditorialAction): "APPROVE" | "REJECT" | "PUBLISH" | "SUSPEND" | "CORRECT" {
+export function commandAction(
+  action: EditorialAction,
+): "APPROVE" | "REJECT" | "PUBLISH" | "SUSPEND" | "REVERIFY" | "CORRECT" {
   return isCorrectionAction(action) ? "CORRECT" : action;
 }
 
