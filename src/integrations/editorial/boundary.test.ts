@@ -323,12 +323,7 @@ it("requires the exact coordinated Engine SHA and explicit registration gate", (
   ).toBe(false);
 });
 
-it("forwards revalidation only for admins under the registration contract", async () => {
-  const deployment = {
-    ...env,
-    EDITORIAL_REGISTRATION_ENABLED: "enabled",
-    EDITORIAL_ENGINE_REVIEWED_SHA: "fd593be3d44c48080fd211c2b390e0a055133e3a",
-  };
+it("forwards revalidation only for admins, including with the existing staging configuration", async () => {
   const reverify = {
     ...reject,
     action: "REVERIFY",
@@ -344,15 +339,11 @@ it("forwards revalidation only for admins under the registration contract", asyn
     expect(() => validateEditorialCommand(JSON.parse(JSON.stringify(payload)))).toThrow();
   }
 
-  const reviewer = setup("reviewer", deployment);
+  const reviewer = setup("reviewer");
   expect((await reviewer.run("command", request("command", reverify))).status).toBe(403);
   expect(reviewer.fetcher).not.toHaveBeenCalled();
 
-  const legacy = setup();
-  expect((await legacy.run("command", request("command", reverify))).status).toBe(404);
-  expect(legacy.fetcher).not.toHaveBeenCalled();
-
-  const admin = setup("admin", deployment);
+  const admin = setup();
   expect((await admin.run("command", request("command", reverify))).status).toBe(200);
   expect(admin.fetcher).toHaveBeenCalledWith(
     expect.anything(),
