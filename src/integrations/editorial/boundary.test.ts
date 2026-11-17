@@ -323,6 +323,43 @@ it("requires the exact coordinated Engine SHA and explicit registration gate", (
   ).toBe(false);
 });
 
+it("forwards revalidation only for admins under the registration contract", async () => {
+  const deployment = {
+    ...env,
+    EDITORIAL_REGISTRATION_ENABLED: "enabled",
+    EDITORIAL_ENGINE_REVIEWED_SHA: "fd593be3d44c48080fd211c2b390e0a055133e3a",
+  };
+  const reverify = {
+    ...reject,
+    action: "REVERIFY",
+    verificationUrl: approve.verificationUrl,
+    registrationVerified: true,
+  };
+  for (const payload of [
+    { ...reverify, registrationVerified: undefined },
+    { ...reverify, registrationVerified: false },
+    { ...reverify, category: "running" },
+    { ...reverify, verificationUrl: "https://example.org/current?extra=1" },
+  ]) {
+    expect(() => validateEditorialCommand(JSON.parse(JSON.stringify(payload)))).toThrow();
+  }
+
+  const reviewer = setup("reviewer", deployment);
+  expect((await reviewer.run("command", request("command", reverify))).status).toBe(403);
+  expect(reviewer.fetcher).not.toHaveBeenCalled();
+
+  const legacy = setup();
+  expect((await legacy.run("command", request("command", reverify))).status).toBe(404);
+  expect(legacy.fetcher).not.toHaveBeenCalled();
+
+  const admin = setup("admin", deployment);
+  expect((await admin.run("command", request("command", reverify))).status).toBe(200);
+  expect(admin.fetcher).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ body: JSON.stringify(reverify) }),
+  );
+});
+
 it("never downgrades the explicitly selected registration contract to a legacy Engine", async () => {
   const deployment = {
     ...env,
