@@ -335,7 +335,6 @@ export async function handleEditorialB1(
         rawBody = await bounded(request, 16384);
         const payload = validateEditorialCommand(JSON.parse(rawBody));
         action = payload.action;
-        if (action === "REVERIFY" && !registrationContract) fail("NOT_CONFIGURED");
         if (
           registrationContract &&
           ((action === "APPROVE" && payload.registrationVerified !== true) ||
