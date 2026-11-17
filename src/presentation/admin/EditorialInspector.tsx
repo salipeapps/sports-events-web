@@ -158,17 +158,26 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
     setReadAttempt((attempt) => attempt + 1);
   }
 
+  const canReverify =
+    role === "admin" &&
+    candidate?.status === "accepted" &&
+    candidate.publicationStatus === "published" &&
+    candidate.registrationSupported &&
+    candidate.data.registration?.organizerPublished === true &&
+    candidate.conflictCount === 0 &&
+    !candidate.moreConflicts;
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!candidate || busy || !reason.trim()) return;
-    if (!canSubmitAction(role, action)) return;
+    if (!canSubmitAction(role, action) || (action === "REVERIFY" && !canReverify)) return;
     const payload: Record<string, unknown> = {
       action: commandAction(action),
       expectedVersion: candidate.candidateVersion,
       expectedRevision: candidate.revision,
       reason: reason.trim(),
     };
-    if (action === "APPROVE") {
+    if (action === "APPROVE" || action === "REVERIFY") {
       if (candidate.registrationSupported) {
         const registration = candidate.data.registration;
         if (!registration) {
@@ -182,7 +191,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       } else {
         payload.verificationUrl = verificationUrl;
       }
-      payload.category = category;
+      if (action === "APPROVE") payload.category = category;
     }
     if (isCorrectionAction(action)) {
       if (!candidate.correctionBase) {
@@ -394,6 +403,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
               disabled={busy}
               onChange={(e) => {
                 setAction(e.target.value as Action);
+                setRegistrationVerified(false);
                 setError("");
               }}
             >
@@ -428,6 +438,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                   Publicar actividad
                 </option>
               )}
+              {canReverify && <option value="REVERIFY">Revalidar publicación</option>}
               {role === "admin" && (
                 <option value="SUSPEND" disabled={candidate.publicationStatus !== "published"}>
                   Suspender publicación
@@ -580,7 +591,7 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                 </a>
               </p>
             )}
-            {action === "APPROVE" && (
+            {(action === "APPROVE" || action === "REVERIFY") && (
               <>
                 {candidate.registrationSupported && (
                   <label>
@@ -621,6 +632,10 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
                     onChange={(e) => setVerificationUrl(e.target.value)}
                   />
                 )}
+              </>
+            )}
+            {action === "APPROVE" && (
+              <>
                 <label htmlFor="editorial-category">Categoría</label>
                 <select
                   id="editorial-category"
@@ -644,7 +659,12 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
               )}
             <button
               type="submit"
-              disabled={busy || !reason.trim() || (role === "reviewer" && candidate.publicationStatus === "published")}
+              disabled={
+                busy ||
+                !reason.trim() ||
+                (role === "reviewer" && candidate.publicationStatus === "published") ||
+                (action === "REVERIFY" && (!canReverify || !registrationVerified))
+              }
             >
               {busy ? "Validando decisión…" : "Confirmar decisión"}
             </button>
