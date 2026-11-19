@@ -21,9 +21,11 @@ it("accepts the genuine FDM long readable event permalink as verified evidence",
   const fdm = "https://www.fdmvalencia.es/eventos/clinic-maria-calvo-balaguer-rugby/";
   expect(isSafeRegistrationUrl(fdm)).toBe(true);
   expect(isRegistrationDestination("WEB", fdm)).toBe(true);
-  expect(
-    decodePublicRegistration({ method: "WEB", destination: fdm, action: "OPEN_HTTPS" }),
-  ).toEqual({ method: "WEB", destination: fdm, action: "OPEN_HTTPS" });
+  expect(decodePublicRegistration({ method: "WEB", destination: fdm, action: "OPEN_HTTPS" })).toEqual({
+    method: "WEB",
+    destination: fdm,
+    action: "OPEN_HTTPS",
+  });
 });
 
 it.each([
