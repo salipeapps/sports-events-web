@@ -373,7 +373,13 @@ it("never downgrades the explicitly selected registration contract to a legacy E
 });
 
 describe("registration approval preserves the saved evidence URI", () => {
-  it.each(["https://example.org", "https://example.org/", "https://EXAMPLE.org", "https://example.org/a/../booking"])(
+  it.each([
+    "https://example.org",
+    "https://example.org/",
+    "https://EXAMPLE.org",
+    "https://example.org/a/../booking",
+    "https://www.fdmvalencia.es/eventos/clinic-maria-calvo-balaguer-rugby/",
+  ])(
     "forwards the exact inspected evidence URL: %s",
     async (evidenceUrl) => {
       const ctx = setup("reviewer", {
