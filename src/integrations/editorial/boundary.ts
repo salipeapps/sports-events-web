@@ -155,7 +155,8 @@ export function editorialB1Enabled(env: NodeJS.ProcessEnv = process.env): boolea
     env.DISCOVERY_STAGING_SMOKE_ENABLED !== "enabled" &&
     (env.EDITORIAL_ENGINE_REVIEWED_SHA === "eb4f4f5604a27ec410cdb5342ea5ef89a8b4378c" ||
       (env.EDITORIAL_REGISTRATION_ENABLED === "enabled" &&
-        env.EDITORIAL_ENGINE_REVIEWED_SHA === "fd593be3d44c48080fd211c2b390e0a055133e3a"))
+        (env.EDITORIAL_ENGINE_REVIEWED_SHA === "fd593be3d44c48080fd211c2b390e0a055133e3a" ||
+          env.EDITORIAL_ENGINE_REVIEWED_SHA === "36480eea25d392a90050cf49466cf55dd478e392")))
   );
 }
 

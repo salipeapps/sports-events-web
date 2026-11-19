@@ -44,3 +44,45 @@ La captura SQL no reemplaza el futuro smoke HTTP anónimo real STAGING.
 Rollback: deshabilitar catálogo y B1, detener publicaciones; mantener el esquema y
 la historia. No volver silenciosamente a v1 para esconder un error de v2. Reabrir
 requiere revisión de ambos clientes/Engine, contactos y autorización operativa.
+
+## Revisión de compatibilidad del Engine desplegado (19/11/2026; pendiente de aprobación independiente)
+
+Esta revisión prepara, **pero no autoriza**, el uso en STAGING del Engine
+`36480eea25d392a90050cf49466cf55dd478e392` (imagen sellada
+`sha256:9bde50f0478c9ca69d69054f1f9ae00c91ebee5bd4b499e4ff4bc4a0a0a7a479`).
+La revisión del despliegue `44538547684` confirmó promoción editorial y actualización
+del Job de captura; no se ejecutó una publicación multicanal por este cambio.
+
+Se compararon los ficheros de código exactos con el pin anterior
+`fd593be3d44c48080fd211c2b390e0a055133e3a` (el historial de ambos SHAs
+diverge, por lo que NO basta con asumir compatibilidad por ancestro):
+
+Se cotejaron los componentes del contrato:
+
+- **`OccurrenceData` y `db/registration/V021__verified_registration.sql`:** blobs idénticos; se mantiene el objeto `registration` y el contrato V021.
+- **`EditorialController`:** la inspección y los comandos existentes mantienen forma; añade rutas separadas de organizador y confianza.
+- **`JdbcEditorialCommands`:** agrega `REVERIFY`, altas y comandos de confianza; generaliza los recibos idempotentes sin cambiar el `Receipt` de los comandos editoriales.
+- **`EditorialApiConfiguration`:** autoriza el `PUT` exacto de autoridad de ubicación; mantiene denegados los demás verbos.
+- **`Registration.safePublicUrl`:** permite el slug FDM legible de cinco o más palabras; conserva el rechazo de segmentos opacos (paridad Web comprobada en #84).
+- **`JdbcCatalogProjectionStore`:** acepta `reverify_publication` al reconstruir la proyección sin cambiar `registration` ni `sourceUrl` de catálogo v2.
+
+La PR asociada incorpora el **SHA desplegado exacto** en la lista de compatibilidad
+del BFF, solo junto con `EDITORIAL_REGISTRATION_ENABLED=enabled`. No cambia el
+pin legado, el gate `EDITORIAL_TRUST_ENABLED`, los roles, la autorización del
+origen, el fail-closed, el catálogo v1/v2 ni el default de las variables. Los
+tests comprueban que sin opt-in, fuera de STAGING, con B1 deshabilitado o con
+SHA distinto, el acceso sigue denegado.
+
+**Antes de fusionar o activar**: revisión independiente de seguridad/contrato
+del commit exacto, CI completa, comprobar los permisos IAM y el digest real del
+servicio que responderá al BFF, comprobar que el deployment de Web corresponde
+a la revisión aprobada, y obtener autorización operacional específica para
+modificar las variables remotas. `EDITORIAL_ENGINE_REVIEWED_SHA` es un valor
+configurado, **no** prueba criptográfica automática del binario remoto. Si el
+Engine cambia de imagen, es obligatorio repetir la revisión. Nunca usar estos
+ajustes para habilitar PROD.
+
+Para el E2E real sigue siendo necesaria la confirmación humana del canal y
+destino oficial del organizador, y autorización independiente para
+CORRECT/APPROVE/PUBLISH/SUSPEND. Ni la nueva captura FDM EMAIL ni la presencia
+de RPC v2 son autorización de publicación.

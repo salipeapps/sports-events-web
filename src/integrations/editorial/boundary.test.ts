@@ -323,6 +323,36 @@ it("requires the exact coordinated Engine SHA and explicit registration gate", (
   ).toBe(false);
 });
 
+it("requires registration opt-in and every STAGING gate for the deployed Engine commit", () => {
+  const current = { ...env, EDITORIAL_ENGINE_REVIEWED_SHA: "36480eea25d392a90050cf49466cf55dd478e392" };
+  expect(editorialB1Enabled(current)).toBe(false);
+  const optedIn = { ...current, EDITORIAL_REGISTRATION_ENABLED: "enabled" };
+  expect(editorialB1Enabled(optedIn)).toBe(true);
+  for (const change of [
+    { APP_ENV: "production" },
+    { EDITORIAL_B1_ENABLED: "disabled" },
+    { DISCOVERY_STAGING_SMOKE_ENABLED: "enabled" },
+    { EDITORIAL_ENGINE_REVIEWED_SHA: "36480eea25d392a90050cf49466cf55dd478e391" },
+  ])
+    expect(editorialB1Enabled({ ...optedIn, ...change })).toBe(false);
+});
+
+it("requires the explicit multichannel contract with the deployed Engine commit", async () => {
+  const ctx = setup("admin", {
+    ...env,
+    EDITORIAL_REGISTRATION_ENABLED: "enabled",
+    EDITORIAL_ENGINE_REVIEWED_SHA: "36480eea25d392a90050cf49466cf55dd478e392",
+  });
+  expect((await ctx.run("command", request("command", approve))).status).toBe(400);
+  expect(
+    (await ctx.run("command", request("command", { ...reject, action: "CORRECT", correction: inspectionFixture.data })))
+      .status,
+  ).toBe(400);
+  expect(ctx.fetcher).not.toHaveBeenCalled();
+  ctx.fetcher.mockResolvedValue(upstream(inspectionFixture));
+  expect((await ctx.run("inspect")).status).toBe(503);
+});
+
 it("forwards revalidation only for admins, including with the existing staging configuration", async () => {
   const reverify = {
     ...reject,
