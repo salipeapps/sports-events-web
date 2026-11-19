@@ -17,6 +17,24 @@ it.each([
   ["EMAIL", "person@example.local"],
   ["EMAIL", "person@example.org?subject=private"],
 ])("rejects %s %s", (method, value) => expect(isRegistrationDestination(method, value)).toBe(false));
+it("accepts the genuine FDM long readable event permalink as verified evidence", () => {
+  const fdm = "https://www.fdmvalencia.es/eventos/clinic-maria-calvo-balaguer-rugby/";
+  expect(isSafeRegistrationUrl(fdm)).toBe(true);
+  expect(isRegistrationDestination("WEB", fdm)).toBe(true);
+  expect(
+    decodePublicRegistration({ method: "WEB", destination: fdm, action: "OPEN_HTTPS" }),
+  ).toEqual({ method: "WEB", destination: fdm, action: "OPEN_HTTPS" });
+});
+
+it.each([
+  "https://example.org/abcdefghijklmnopqrstuvwxyz0123456789",
+  "https://example.org/clinic-maria-calvo-balaguer-rugby-12345678901234567890123456789012",
+  "https://example.org/clinic-maria-CALVO-balaguer-rugby",
+  "https://example.org/clinic-maria-calvo-balaguer-rugby?token=test",
+])("does not relax opaque or unsafe URL rejection for %s", (url) => {
+  expect(isSafeRegistrationUrl(url)).toBe(false);
+});
+
 it.each([
   "http://example.org/",
   "https://example.org/book?x=tracking",
