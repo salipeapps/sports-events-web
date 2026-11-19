@@ -57,15 +57,14 @@ Se compararon los ficheros de código exactos con el pin anterior
 `fd593be3d44c48080fd211c2b390e0a055133e3a` (el historial de ambos SHAs
 diverge, por lo que NO basta con asumir compatibilidad por ancestro):
 
-| Componente Engine | Diferencia inspeccionada | Impacto en Web |
-|---|---|---|
-| `OccurrenceData` | Blob idéntico | `registration` explícito preservado en la inspección y CORRECT |
-| `db/registration/V021__verified_registration.sql` | Blob idéntico | Contrato de base de datos V021 sin variación en el diff |
-| `EditorialController` | Inspección y comandos existentes mantienen forma; se agregan rutas de organizador y confianza | No cambia el transporte de inspección/APPROVE; las nuevas rutas tienen puertas separadas |
-| `JdbcEditorialCommands` | Se añaden `REVERIFY`, alta y comandos de confianza; recibo idempotente pasa a genérico sin cambiar `Receipt` para comandos editoriales | Revalidación requiere `registrationVerified=true`; BFF mantiene fallos cerrados y roles |
-| `EditorialApiConfiguration` | Regla exacta de `PUT` solo para autoridad de ubicación | Los demás verbos siguen denegados; no amplía permisos de CORRECT/APPROVE |
-| `Registration.safePublicUrl` | Permite slug FDM legible de cinco o más palabras; continúa rechazando segmentos opacos | Paridad Web cubierta por la PR #84 |
-| `JdbcCatalogProjectionStore` | `reverify_publication` se admite para reconstrucción actualizada | No cambia el contrato v2 `registration` + `sourceUrl` |
+Se cotejaron los componentes del contrato:
+
+- **`OccurrenceData` y `db/registration/V021__verified_registration.sql`:** blobs idénticos; se mantiene el objeto `registration` y el contrato V021.
+- **`EditorialController`:** la inspección y los comandos existentes mantienen forma; añade rutas separadas de organizador y confianza.
+- **`JdbcEditorialCommands`:** agrega `REVERIFY`, altas y comandos de confianza; generaliza los recibos idempotentes sin cambiar el `Receipt` de los comandos editoriales.
+- **`EditorialApiConfiguration`:** autoriza el `PUT` exacto de autoridad de ubicación; mantiene denegados los demás verbos.
+- **`Registration.safePublicUrl`:** permite el slug FDM legible de cinco o más palabras; conserva el rechazo de segmentos opacos (paridad Web comprobada en #84).
+- **`JdbcCatalogProjectionStore`:** acepta `reverify_publication` al reconstruir la proyección sin cambiar `registration` ni `sourceUrl` de catálogo v2.
 
 La PR asociada incorpora el **SHA desplegado exacto** en la lista de compatibilidad
 del BFF, solo junto con `EDITORIAL_REGISTRATION_ENABLED=enabled`. No cambia el
