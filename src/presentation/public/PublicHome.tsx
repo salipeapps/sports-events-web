@@ -182,26 +182,28 @@ export function PublicHome({
               <p className="public-eyebrow">Tu agenda, a tu ritmo</p>
               <h2 id="activities-title">{selection?.label ?? "Actividades deportivas"}</h2>
             </div>
-            <nav className="public-tabs" aria-label="Periodo del catálogo">
-              <a href={catalogHref({ period: "hoy", filters })} aria-current={tab("hoy")}>
-                Hoy
-              </a>
-              <a href={catalogHref({ period: "manana", filters })} aria-current={tab("manana")}>
-                Mañana
-              </a>
-              <a href={catalogHref({ period: "finde", filters })} aria-current={tab("finde")}>
-                Fin de semana
-              </a>
-              <a href={catalogHref({ filters })} aria-current={tab(null)}>
-                Próximos 7 días
-              </a>
-              <a
-                href={catalogHref({ month: calendarMonth, filters })}
-                aria-current={selection?.month ? "page" : undefined}
-              >
-                Calendario completo
-              </a>
-            </nav>
+            {selection && (
+              <nav className="public-tabs" aria-label="Periodo del catálogo">
+                <a href={catalogHref({ period: "hoy", filters })} aria-current={tab("hoy")}>
+                  Hoy
+                </a>
+                <a href={catalogHref({ period: "manana", filters })} aria-current={tab("manana")}>
+                  Mañana
+                </a>
+                <a href={catalogHref({ period: "finde", filters })} aria-current={tab("finde")}>
+                  Fin de semana
+                </a>
+                <a href={catalogHref({ filters })} aria-current={tab(null)}>
+                  Próximos 7 días
+                </a>
+                <a
+                  href={catalogHref({ month: calendarMonth, filters })}
+                  aria-current={selection?.month ? "page" : undefined}
+                >
+                  Calendario completo
+                </a>
+              </nav>
+            )}
           </div>
           {selection && <FilterForm selection={selection} />}
           {selection?.month && (
