@@ -141,6 +141,10 @@ describe("public cards and availability", () => {
     expect(html).not.toContain("0 actividades");
     expect(html).not.toContain("No hay actividades");
     expect(html).not.toContain("no está disponible");
+    // Route-level loading has no searchParams yet. Do not expose links without
+    // the visitor's existing filters: clicking one would silently clear them.
+    expect(html).not.toContain('aria-label="Periodo del catálogo"');
+    expect(html).not.toContain("periodo=hoy");
   });
   it("offers a fresh period request after an upstream failure", () => {
     const html = renderToStaticMarkup(<PublicHome selection={selection} result={{ status: "unavailable" }} />);

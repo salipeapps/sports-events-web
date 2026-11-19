@@ -219,6 +219,10 @@ test("period presets keep filters, invalid filters are rejected and only filtere
   page,
 }) => {
   await page.goto("/?categoria=yoga");
+  // Next.js may stream a fallback before searchParams have resolved. The fallback
+  // must not expose unscoped tabs that would drop the selected category.
+  await expect(page.getByLabel("Filtros activos")).toContainText("Yoga");
+  await expect(page.getByRole("link", { name: "Hoy", exact: true })).toHaveAttribute("href", /categoria=yoga/);
   await page.getByRole("link", { name: "Hoy", exact: true }).click();
   await expect(page).toHaveURL(/periodo=hoy/);
   await expect(page).toHaveURL(/categoria=yoga/);
