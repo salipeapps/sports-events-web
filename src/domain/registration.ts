@@ -31,15 +31,16 @@ export function isSafeRegistrationUrl(value: unknown): value is string {
   )
     return false;
   if (/^[0-9.]+$/.test(new URL(value).hostname)) return false;
+  // Match Engine Registration.safePublicUrl and STAGING catalog_read.safe_url.
+  // A complete five-word lowercase slug is descriptive rather than opaque.
+  const readableSlug = /^[a-z]{3,24}(-[a-z]{3,24}){4,12}$/;
   return !value
     .split("/")
     .some(
       (segment) =>
         /[A-Za-z0-9_-]{32}/.test(segment) &&
         !/^[a-z]{2,24}(-[a-z]{2,24}){3,12}-20[2-9][0-9]$/.test(segment) &&
-        // Match Engine Registration.safePublicUrl / reviewed STAGING catalog_read.safe_url:
-        // complete five-or-more-word lowercase slugs are human-readable, not opaque tokens.
-        !/^[a-z]{3,24}(-[a-z]{3,24}){4,12}$/.test(segment),
+        !readableSlug.test(segment),
     );
 }
 export function isRegistrationDestination(method: unknown, value: unknown): method is RegistrationMethod {
