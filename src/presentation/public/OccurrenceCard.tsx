@@ -6,6 +6,8 @@ import {
   languageLabel,
   locationRoleLabels,
   locationText,
+  needsWhatsAppMeetingPointConfirmation,
+  whatsAppMeetingPointReminder,
   madridShortDate,
   madridStart,
   occurrenceHref,
@@ -47,6 +49,12 @@ export function OccurrenceCard({ occurrence }: { occurrence: PublicOccurrence })
           <div>
             <dt>Lugar</dt>
             <dd>Lugar por confirmar</dd>
+          </div>
+        )}
+        {needsWhatsAppMeetingPointConfirmation(occurrence) && (
+          <div>
+            <dt>Punto de encuentro</dt>
+            <dd>{whatsAppMeetingPointReminder}</dd>
           </div>
         )}
         <div>
