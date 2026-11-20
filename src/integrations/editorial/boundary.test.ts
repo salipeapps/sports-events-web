@@ -307,6 +307,18 @@ it("requires a boolean explicit registration attestation when present", () => {
   ).toThrow();
 });
 
+it("rejects multichannel opt-in when only the legacy Engine SHA is pinned", async () => {
+  expect(editorialB1Enabled(env)).toBe(true);
+  expect(editorialB1Enabled({ ...env, EDITORIAL_REGISTRATION_ENABLED: "disabled" })).toBe(true);
+
+  const mispaired = { ...env, EDITORIAL_REGISTRATION_ENABLED: "enabled" };
+  expect(editorialB1Enabled(mispaired)).toBe(false);
+  const ctx = setup("admin", mispaired);
+  expect((await ctx.run("inspect")).status).toBe(404);
+  expect(ctx.getAccess).not.toHaveBeenCalled();
+  expect(ctx.fetcher).not.toHaveBeenCalled();
+});
+
 it("requires the exact coordinated Engine SHA and explicit registration gate", () => {
   const proposed = { ...env, EDITORIAL_ENGINE_REVIEWED_SHA: "fd593be3d44c48080fd211c2b390e0a055133e3a" };
   expect(editorialB1Enabled(proposed)).toBe(false);
