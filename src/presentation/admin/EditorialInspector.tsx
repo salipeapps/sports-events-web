@@ -33,6 +33,10 @@ const errors: Record<string, string> = {
     "Este candidato conserva un enlace de inscripción que no se puede reenviar con exactitud. Solicita la corrección al operador.",
   RATE_LIMITED: "Demasiadas solicitudes. Inténtalo más tarde.",
   WRITE_UNAVAILABLE: "No se ha podido confirmar la operación. Puedes reintentar con la misma clave.",
+  UNCERTAIN_REFRESHED:
+    "No recibimos el justificante de la decisión. La candidatura ha cambiado y hemos actualizado sus datos sin repetir la operación. Revisa el nuevo estado; no vuelvas a confirmar esta misma decisión.",
+  RECEIPT_CONFIRMED_REFRESH_FAILED:
+    "El Engine confirmó la decisión, pero no se pudo actualizar la ficha. Recarga la página; no repitas la operación.",
   INCOMPATIBLE_CONTRACT: "El servicio editorial ha devuelto una respuesta incompatible.",
 };
 // A read never writes: an unanswered read is not an uncertain decision.
@@ -242,6 +246,8 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
     setBusy(true);
     setError("");
     setResult("");
+    // Until a matching Engine receipt is returned, even a 2xx with malformed JSON is an uncertain write.
+    let outcomeUnknown = true;
     try {
       const response = await fetch("/api/internal/editorial/candidates/" + candidateId + "/commands", {
         method: "POST",
@@ -253,9 +259,11 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
       const value = (await response.json()) as Record<string, unknown>;
       if (!response.ok) {
         const code = String(value.code ?? "");
+        if (["INVALID_REQUEST", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "UNAUTHENTICATED", "RATE_LIMITED"].includes(code))
+          outcomeUnknown = false;
         if (["INVALID_REQUEST", "FORBIDDEN", "NOT_FOUND", "CONFLICT"].includes(code)) pending.current = null;
         if (code === "CONFLICT") {
-          // Reload version, revision and data before allowing another intent; a retry would only conflict again.
+          // A conflict is a definitive rejection, not a successful replay of the original decision.
           const fresh = await refresh().catch(() => null);
           if (fresh) {
             syncForm(fresh);
@@ -266,15 +274,43 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
         }
         throw new Error(errors[code] ?? "Error al enviar la decisión.");
       }
-      // A successful receipt is mandatory; never infer success from a timeout or 2xx without a receipt.
+      // Only an exact receipt can confirm the operation; a fresh GET on its own never can.
       if (value.commandKey !== submittedKey || !Array.isArray(value.candidateIds))
         throw new Error(errors.INCOMPATIBLE_CONTRACT);
+      outcomeUnknown = false;
       pending.current = null;
       setResult("Decisión confirmada por Engine: " + String(value.status));
-      syncForm(await refresh());
       setReason("");
+      // A failed post-receipt GET must not downgrade a confirmed decision to an uncertain one.
+      const fresh = await refresh().catch(() => null);
+      if (fresh) syncForm(fresh);
+      else setError(errors.RECEIPT_CONFIRMED_REFRESH_FAILED);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : errors.WRITE_UNAVAILABLE);
+      if (!outcomeUnknown) {
+        setError(cause instanceof Error ? cause.message : errors.WRITE_UNAVAILABLE);
+      } else {
+        // Read only: an Engine timeout may happen AFTER the transaction has committed.
+        // Never auto-submit or infer that the original command succeeded from a changed snapshot.
+        const fresh = await refresh().catch(() => null);
+        const changed =
+          fresh &&
+          fresh.candidateId === candidate.candidateId &&
+          (fresh.candidateVersion !== candidate.candidateVersion ||
+            fresh.revision !== candidate.revision ||
+            fresh.status !== candidate.status ||
+            fresh.publicationId !== candidate.publicationId ||
+            fresh.publicationStatus !== candidate.publicationStatus);
+        if (changed) {
+          syncForm(fresh);
+          setReason("");
+          // The old version/revision is no longer current; this exact payload must not be replayed.
+          pending.current = null;
+          setError(errors.UNCERTAIN_REFRESHED);
+        } else {
+          // No observable change or read unavailable: retain the same key for an explicit, identical retry.
+          setError(errors.WRITE_UNAVAILABLE);
+        }
+      }
     } finally {
       setBusy(false);
     }
@@ -345,7 +381,14 @@ export function EditorialInspector({ candidateId, role }: { candidateId: string;
             </dd>
             <dt>Inscripción</dt>
             <dd>
-              {candidate.data.registrationUri ? (
+              {candidate.registrationSupported && candidate.data.registration ? (
+                <>
+                  {candidate.data.registration.method} · {candidate.data.registration.destination}
+                  {candidate.data.registration.organizerPublished
+                    ? " · Canal declarado público por el organizador"
+                    : " · Publicación del canal sin confirmar"}
+                </>
+              ) : candidate.data.registrationUri ? (
                 <a href={candidate.data.registrationUri} target="_blank" rel="noopener noreferrer">
                   Consultar información de inscripción
                 </a>
