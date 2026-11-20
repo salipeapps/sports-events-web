@@ -10,7 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "format:check": "prettier e2e/editorial-inspector.spec.ts --write && git diff -- e2e/editorial-inspector.spec.ts && git diff --exit-code -- e2e/editorial-inspector.spec.ts && prettier --check .",
+    "format:check": "prettier --check .",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
