@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import type { PublicOccurrence } from "@/domain/publicCatalog";
+import { OccurrenceCard } from "./OccurrenceCard";
 import { OccurrenceDetail, occurrenceStructuredData, serializeStructuredData } from "./OccurrenceDetail";
 
 type Detail = PublicOccurrence & { status: "upcoming" | "in_progress" };
@@ -113,6 +114,49 @@ describe("public occurrence detail (#52)", () => {
     expect(html).toContain("12,00");
     expect(html).toContain("Transporte incluido");
   });
+  it("clarifies WhatsApp meeting-point details in card and detail without inventing an address", () => {
+    const approximate: Detail = {
+      ...base,
+      title: "Yoga y cuencos tibetanos",
+      registration: { method: "WHATSAPP", destination: "+34627546891", action: "COPY_NUMBER" },
+      locations: [
+        {
+          role: "activity",
+          municipality: "València",
+          neighborhood: null,
+          pointName: "Jardín del Turia · Tramo VIII",
+          address: null,
+          latitude: null,
+          longitude: null,
+        },
+      ],
+    };
+    const reminder = "Confirma con el organizador por WhatsApp el punto de encuentro exacto antes de acudir.";
+    const detail = renderToStaticMarkup(<OccurrenceDetail occurrence={approximate} />);
+    const card = renderToStaticMarkup(<OccurrenceCard occurrence={approximate} />);
+
+    expect(detail).toContain("Jardín del Turia");
+    expect(card).toContain("Jardín del Turia");
+    expect(detail).toContain(reminder);
+    expect(card).toContain(reminder);
+    expect(detail).not.toContain("dirección exacta verificada");
+    expect(card).not.toContain("dirección exacta verificada");
+
+    const email: Detail = {
+      ...approximate,
+      registration: { method: "EMAIL", destination: "info@example.org", action: "COMPOSE_EMAIL" },
+    };
+    expect(renderToStaticMarkup(<OccurrenceDetail occurrence={email} />)).not.toContain(reminder);
+    expect(renderToStaticMarkup(<OccurrenceCard occurrence={email} />)).not.toContain(reminder);
+
+    const withStreet: Detail = {
+      ...approximate,
+      locations: [{ ...approximate.locations[0], address: "Calle de ejemplo, 1" }],
+    };
+    expect(renderToStaticMarkup(<OccurrenceDetail occurrence={withStreet} />)).not.toContain(reminder);
+    expect(renderToStaticMarkup(<OccurrenceCard occurrence={withStreet} />)).not.toContain(reminder);
+  });
+
   it("builds structured data without offers or availability and escapes markup", () => {
     const data = occurrenceStructuredData({ ...base, title: "TEST </script><b>" });
     expect(data).not.toHaveProperty("offers");
