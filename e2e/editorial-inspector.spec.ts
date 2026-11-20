@@ -261,32 +261,34 @@ test("a confirmed receipt is not downgraded when its subsequent read fails", asy
   expect(reads).toBe(2);
 });
 
-test.each([
+for (const [method, destination] of [
   ["WEB", "https://example.org/inscripcion"],
   ["PHONE", "+34600111222"],
   ["WHATSAPP", "+34600111222"],
   ["EMAIL", "hockeyplus@example.org"],
-] as const)("shows %s registration without legacy URI", async ({ page }, method, destination) => {
-  const inspection = withData(
-    { ...candidate, registrationSupported: true },
-    {
-      ...candidate.data,
-      registrationUri: null,
-      registration: {
-        method,
-        destination,
-        evidenceUrl: "https://example.org/convocatoria",
-        organizerPublished: true,
+] as const) {
+  test(`shows ${method} registration without legacy URI`, async ({ page }) => {
+    const inspection = withData(
+      { ...candidate, registrationSupported: true },
+      {
+        ...candidate.data,
+        registrationUri: null,
+        registration: {
+          method,
+          destination,
+          evidenceUrl: "https://example.org/convocatoria",
+          organizerPublished: true,
+        },
       },
-    },
-  );
-  await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
-  await page.goto("/admin/editorial/" + candidateId);
-  await expect(
-    page.locator("dt").filter({ hasText: "Inscripción" }).locator("xpath=following-sibling::dd[1]"),
-  ).toContainText(method + " · " + destination);
-  await expect(page.getByText("Por confirmar", { exact: true })).toHaveCount(0);
-});
+    );
+    await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
+    await page.goto("/admin/editorial/" + candidateId);
+    await expect(
+      page.locator("dt").filter({ hasText: "Inscripción" }).locator("xpath=following-sibling::dd[1]"),
+    ).toContainText(method + " · " + destination);
+    await expect(page.getByText("Por confirmar", { exact: true })).toHaveCount(0);
+  });
+}
 
 const valenciaOrganizerId = "f5225129-1df5-4a37-b12f-41aa27c83943";
 const unassigned = withData(
