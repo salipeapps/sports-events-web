@@ -168,7 +168,8 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
   await page.getByRole("button", { name: "Confirmar decisión" }).click();
   await expect(page.getByRole("alert").filter({ hasText: "No se ha podido confirmar la operación" })).toBeVisible();
   await expect(page.getByText(/Decisión confirmada por Engine/)).toHaveCount(0);
-  expect(reads.readCount()).toBe(initialReads);
+  // An uncertain write triggers a read-only reconciliation, but the snapshot remains unchanged.
+  expect(reads.readCount()).toBe(initialReads + 1);
 
   // Returning to the unchanged payload must retain the key of the uncertain command.
   await action.selectOption("CORRECT_ORGANIZER");
@@ -181,7 +182,112 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
   expect(requests).toHaveLength(2);
   expect(requests[0].key).toMatch(/^[0-9a-f-]{36}$/);
   expect(requests[1]).toEqual(requests[0]);
-  expect(reads.readCount()).toBe(initialReads + 1);
+  expect(reads.readCount()).toBe(initialReads + 2);
+});
+
+test("a timeout after Engine commit refreshes the current snapshot without claiming a receipt or repeating CORRECT", async ({
+  page,
+}) => {
+  let inspection: EditorialInspection = withData(
+    { ...candidate, registrationSupported: true, status: "candidate" },
+    { ...candidate.data, registrationUri: null, registration: null },
+  );
+  const submissions: { key: string; body: string | null }[] = [];
+  let reads = 0;
+  await page.route("**" + inspectionPath, (route) => {
+    reads++;
+    return route.fulfill({ json: inspection });
+  });
+  await page.route("**" + inspectionPath + "/commands", (route) => {
+    const request = route.request();
+    submissions.push({ key: request.headers()["idempotency-key"], body: request.postData() });
+    const payload = request.postDataJSON();
+    inspection = withData(
+      { ...inspection, candidateVersion: 2, revision: 1, status: "in_review" },
+      payload.correction,
+    );
+    // Simulate Engine COMMIT with the response lost at the BFF: no receipt reaches this browser.
+    return route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE" } });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Decisión", { exact: true }).selectOption("CORRECT_REGISTRATION");
+  await page.getByLabel("Motivo obligatorio").fill("Corrección con evidencia");
+  await page.getByLabel("Canal de inscripción", { exact: true }).selectOption("EMAIL");
+  await page.getByLabel("Destino de inscripción publicado").fill("hockeyplus@example.org");
+  await page.getByLabel("URL de la evidencia de inscripción").fill("https://example.org/current");
+  await page
+    .getByLabel("El organizador publica este canal y destino para inscripción y autoriza su uso público.")
+    .check();
+  const initialReads = reads;
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "La candidatura ha cambiado" }),
+  ).toContainText("sin repetir la operación");
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine" })).toHaveCount(0);
+  await expect(page.getByText("in_review", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Motivo obligatorio")).toHaveValue("");
+  await expect(page.getByLabel("Canal de inscripción", { exact: true })).toHaveValue("EMAIL");
+  await expect(page.getByLabel("Destino de inscripción publicado")).toHaveValue("hockeyplus@example.org");
+  await expect(
+    page.locator("dt").filter({ hasText: "Inscripción" }).locator("xpath=following-sibling::dd[1]"),
+  ).toContainText("EMAIL · hockeyplus@example.org");
+  expect(submissions).toHaveLength(1);
+  expect(reads).toBe(initialReads + 1);
+
+  // Even if an admin tries to save the same correction again, it is now a no-op before the BFF.
+  await page.getByLabel("Motivo obligatorio").fill("Corrección con evidencia");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "No hay cambios confirmados que guardar" })).toBeVisible();
+  expect(submissions).toHaveLength(1);
+});
+
+test("a confirmed receipt is not downgraded when its subsequent read fails", async ({ page }) => {
+  let reads = 0;
+  await page.route("**" + inspectionPath, (route) => {
+    reads++;
+    return reads === 1
+      ? route.fulfill({ json: candidate })
+      : route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE" } });
+  });
+  const keys: string[] = [];
+  await page.route("**" + inspectionPath + "/commands", (route) => {
+    const key = route.request().headers()["idempotency-key"];
+    keys.push(key);
+    return route.fulfill({ json: receipt(key, "accepted") });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Motivo obligatorio").fill("Motivo verificado");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine" })).toHaveText(
+    "Decisión confirmada por Engine: accepted",
+  );
+  await expect(page.getByRole("alert").filter({ hasText: "no se pudo actualizar la ficha" })).toBeVisible();
+  expect(keys).toHaveLength(1);
+  expect(reads).toBe(2);
+});
+
+test.each([
+  ["WEB", "https://example.org/inscripcion"],
+  ["PHONE", "+34600111222"],
+  ["WHATSAPP", "+34600111222"],
+  ["EMAIL", "hockeyplus@example.org"],
+] as const)("the Admin inspection summary displays the real %s registration when legacy URI is absent", async ({
+  page,
+}, method, destination) => {
+  const inspection = withData(
+    { ...candidate, registrationSupported: true },
+    {
+      ...candidate.data,
+      registrationUri: null,
+      registration: { method, destination, evidenceUrl: "https://example.org/convocatoria", organizerPublished: true },
+    },
+  );
+  await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
+  await page.goto("/admin/editorial/" + candidateId);
+  await expect(
+    page.locator("dt").filter({ hasText: "Inscripción" }).locator("xpath=following-sibling::dd[1]"),
+  ).toContainText(method + " · " + destination);
+  await expect(page.getByText("Por confirmar", { exact: true })).toHaveCount(0);
 });
 
 const valenciaOrganizerId = "f5225129-1df5-4a37-b12f-41aa27c83943";
