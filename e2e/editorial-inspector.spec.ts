@@ -185,6 +185,68 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
   expect(reads.readCount()).toBe(initialReads + 2);
 });
 
+test("a transport failure with an unreadable GET keeps the same key for an explicit retry", async ({ page }) => {
+  let reads = 0;
+  let unavailable = false;
+  const requests: { key: string; body: string | null }[] = [];
+  await page.route("**" + inspectionPath, (route) => {
+    reads++;
+    return unavailable
+      ? route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE" } })
+      : route.fulfill({ json: candidate });
+  });
+  await page.route("**" + inspectionPath + "/commands", (route) => {
+    const request = route.request();
+    requests.push({ key: request.headers()["idempotency-key"], body: request.postData() });
+    if (requests.length === 1) {
+      unavailable = true;
+      return route.abort("failed");
+    }
+    unavailable = false;
+    return route.fulfill({ json: receipt(request.headers()["idempotency-key"], "REJECTED") });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await expect(page.getByText(candidate.title, { exact: true })).toBeVisible();
+  await page.getByLabel("Motivo obligatorio").fill("Rechazo revisado");
+  const initialReads = reads;
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "No se ha podido confirmar la operación" })).toBeVisible();
+  await expect(page.getByText(/Decisión confirmada por Engine/)).toHaveCount(0);
+  expect(reads).toBeGreaterThan(initialReads);
+  expect(requests).toHaveLength(1);
+
+  // The browser must not replay on its own; only this explicit click retries the exact original intent.
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine" })).toContainText(
+    "REJECTED",
+  );
+  expect(requests).toHaveLength(2);
+  expect(requests[1]).toEqual(requests[0]);
+});
+
+test("another editor advancing the revision during a lost response never confirms our command", async ({ page }) => {
+  let inspection: EditorialInspection = candidate;
+  let writes = 0;
+  await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
+  await page.route("**" + inspectionPath + "/commands", (route) => {
+    writes++;
+    // A different editor updates the review while this REJECT response is lost.
+    // Our REJECT cannot be treated as committed: the observed status is still in_review.
+    inspection = { ...inspection, revision: 1, status: "in_review" };
+    return route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE" } });
+  });
+  await page.goto("/admin/editorial/" + candidateId);
+  await page.getByLabel("Motivo obligatorio").fill("Rechazar tras revisión");
+  await page.getByRole("button", { name: "Confirmar decisión" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "La candidatura ha cambiado" })).toContainText(
+    "No recibimos el justificante",
+  );
+  await expect(page.getByText("in_review", { exact: true })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine" })).toHaveCount(0);
+  await expect(page.getByLabel("Motivo obligatorio")).toHaveValue("");
+  expect(writes).toBe(1);
+});
+
 test("reconciles a lost Engine receipt without replaying CORRECT", async ({ page }) => {
   let inspection: EditorialInspection = withData(
     { ...candidate, registrationSupported: true, status: "candidate" },
