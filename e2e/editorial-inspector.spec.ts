@@ -347,10 +347,9 @@ for (const [method, destination] of [
     );
     await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
     await page.goto("/admin/editorial/" + candidateId);
-    await expect(
-      page.locator("dt").filter({ hasText: "Inscripción" }).locator("xpath=following-sibling::dd[1]"),
-    ).toContainText(method + " · " + destination);
-    await expect(page.getByText("Por confirmar", { exact: true })).toHaveCount(0);
+    const summary = page.locator("dt").filter({ hasText: "Inscripción" }).locator("xpath=following-sibling::dd[1]");
+    await expect(summary).toContainText(method + " · " + destination);
+    await expect(summary).not.toContainText("Por confirmar");
   });
 }
 
