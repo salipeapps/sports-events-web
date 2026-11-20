@@ -155,6 +155,13 @@ describe("public occurrence detail (#52)", () => {
     };
     expect(renderToStaticMarkup(<OccurrenceDetail occurrence={withStreet} />)).not.toContain(reminder);
     expect(renderToStaticMarkup(<OccurrenceCard occurrence={withStreet} />)).not.toContain(reminder);
+
+    const withCoordinates: Detail = {
+      ...approximate,
+      locations: [{ ...approximate.locations[0], latitude: 39.48, longitude: -0.37 }],
+    };
+    expect(renderToStaticMarkup(<OccurrenceDetail occurrence={withCoordinates} />)).not.toContain(reminder);
+    expect(renderToStaticMarkup(<OccurrenceCard occurrence={withCoordinates} />)).not.toContain(reminder);
   });
 
   it("builds structured data without offers or availability and escapes markup", () => {
