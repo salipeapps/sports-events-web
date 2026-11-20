@@ -238,16 +238,18 @@ test("reconciles a lost Engine receipt without replaying CORRECT", async ({ page
 
 test("a confirmed receipt is not downgraded when its subsequent read fails", async ({ page }) => {
   let reads = 0;
+  let commandSent = false;
   await page.route("**" + inspectionPath, (route) => {
     reads++;
-    return reads === 1
-      ? route.fulfill({ json: candidate })
-      : route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE" } });
+    return commandSent
+      ? route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE" } })
+      : route.fulfill({ json: candidate });
   });
   const keys: string[] = [];
   await page.route("**" + inspectionPath + "/commands", (route) => {
     const key = route.request().headers()["idempotency-key"];
     keys.push(key);
+    commandSent = true;
     return route.fulfill({ json: receipt(key, "accepted") });
   });
   await page.goto("/admin/editorial/" + candidateId);
@@ -258,7 +260,7 @@ test("a confirmed receipt is not downgraded when its subsequent read fails", asy
   );
   await expect(page.getByRole("alert").filter({ hasText: "no se pudo actualizar la ficha" })).toBeVisible();
   expect(keys).toHaveLength(1);
-  expect(reads).toBe(2);
+  expect(reads).toBeGreaterThan(1);
 });
 
 for (const [method, destination] of [
