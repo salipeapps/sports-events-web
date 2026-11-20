@@ -185,9 +185,7 @@ test("an uncertain outcome can be retried with the same payload and idempotency 
   expect(reads.readCount()).toBe(initialReads + 2);
 });
 
-test("a timeout after Engine commit refreshes the current snapshot without claiming a receipt or repeating CORRECT", async ({
-  page,
-}) => {
+test("reconciles a lost Engine receipt without replaying CORRECT", async ({ page }) => {
   let inspection: EditorialInspection = withData(
     { ...candidate, registrationSupported: true, status: "candidate" },
     { ...candidate.data, registrationUri: null, registration: null },
@@ -220,9 +218,9 @@ test("a timeout after Engine commit refreshes the current snapshot without claim
     .check();
   const initialReads = reads;
   await page.getByRole("button", { name: "Confirmar decisión" }).click();
-  await expect(
-    page.getByRole("alert").filter({ hasText: "La candidatura ha cambiado" }),
-  ).toContainText("sin repetir la operación");
+  await expect(page.getByRole("alert").filter({ hasText: "La candidatura ha cambiado" })).toContainText(
+    "sin repetir la operación",
+  );
   await expect(page.getByRole("status").filter({ hasText: "Decisión confirmada por Engine" })).toHaveCount(0);
   await expect(page.getByText("in_review", { exact: true })).toBeVisible();
   await expect(page.getByLabel("Motivo obligatorio")).toHaveValue("");
@@ -271,15 +269,18 @@ test.each([
   ["PHONE", "+34600111222"],
   ["WHATSAPP", "+34600111222"],
   ["EMAIL", "hockeyplus@example.org"],
-] as const)("the Admin inspection summary displays the real %s registration when legacy URI is absent", async ({
-  page,
-}, method, destination) => {
+] as const)("shows %s registration without legacy URI", async ({ page }, method, destination) => {
   const inspection = withData(
     { ...candidate, registrationSupported: true },
     {
       ...candidate.data,
       registrationUri: null,
-      registration: { method, destination, evidenceUrl: "https://example.org/convocatoria", organizerPublished: true },
+      registration: {
+        method,
+        destination,
+        evidenceUrl: "https://example.org/convocatoria",
+        organizerPublished: true,
+      },
     },
   );
   await page.route("**" + inspectionPath, (route) => route.fulfill({ json: inspection }));
