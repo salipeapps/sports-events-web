@@ -69,6 +69,25 @@ export function locationText(location: PublicLocation): string {
   );
 }
 
+/**
+ * A named area (park, neighbourhood, square) is not proof of the exact meeting point.
+ * Only add a WhatsApp reminder when the published arrival locations have neither
+ * an address nor coordinates. Do not infer or expose a private meeting location.
+ */
+export function needsWhatsAppMeetingPointConfirmation(
+  occurrence: Pick<PublicOccurrence, "locations" | "registration">,
+): boolean {
+  if (occurrence.registration?.method !== "WHATSAPP") return false;
+  const arrivalLocations = occurrence.locations.filter((location) => location.role !== "destination");
+  return (
+    arrivalLocations.length > 0 &&
+    arrivalLocations.every((location) => !location.address && location.latitude === null && location.longitude === null)
+  );
+}
+
+export const whatsAppMeetingPointReminder =
+  "Confirma con el organizador por WhatsApp el punto de encuentro exacto antes de acudir.";
+
 export function categoryLabel(category: string | null): string {
   return category ? (categoryLabels[category] ?? category) : "Categoría por confirmar";
 }

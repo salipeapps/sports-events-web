@@ -6,6 +6,8 @@ import {
   languageLabel,
   locationRoleLabels,
   locationText,
+  needsWhatsAppMeetingPointConfirmation,
+  whatsAppMeetingPointReminder,
   madridShortDate,
   madridStart,
   madridTime,
@@ -123,6 +125,12 @@ export function OccurrenceDetail({ occurrence }: { occurrence: DetailOccurrence 
           <div>
             <dt>Salida y destino</dt>
             <dd>El destino de la excursión no es el punto de encuentro: acude a la salida indicada.</dd>
+          </div>
+        )}
+        {needsWhatsAppMeetingPointConfirmation(occurrence) && (
+          <div>
+            <dt>Punto de encuentro</dt>
+            <dd>{whatsAppMeetingPointReminder}</dd>
           </div>
         )}
         <div>
