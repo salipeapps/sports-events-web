@@ -200,10 +200,7 @@ test("reconciles a lost Engine receipt without replaying CORRECT", async ({ page
     const request = route.request();
     submissions.push({ key: request.headers()["idempotency-key"], body: request.postData() });
     const payload = request.postDataJSON();
-    inspection = withData(
-      { ...inspection, candidateVersion: 2, revision: 1, status: "in_review" },
-      payload.correction,
-    );
+    inspection = withData({ ...inspection, candidateVersion: 2, revision: 1, status: "in_review" }, payload.correction);
     // Simulate Engine COMMIT with the response lost at the BFF: no receipt reaches this browser.
     return route.fulfill({ status: 503, json: { code: "WRITE_UNAVAILABLE" } });
   });
