@@ -361,7 +361,7 @@ export async function handleEditorialB1(
       headers["Content-Type"] = type!;
       if (reason !== undefined) headers["X-Editorial-Reason"] = reason;
     }
-    const upstream = await callEngine(deps, config, current, {
+    const call: EngineCall = {
       method: operation === "inspect" ? "GET" : "POST",
       path:
         operation === "import"
@@ -372,14 +372,17 @@ export async function handleEditorialB1(
       timeoutMs: upstreamTimeoutMs(operation),
       maxBytes: operation === "inspect" ? 65536 : 8192,
       trace: { requestId, op: "b1." + operation, commandKey: key, target: candidateId },
+    };
+    const upstream = await callEngine(deps, config, current, call);
+    return settle(call, upstream, () => {
+      if (!upstream.ok) return engineFailure(upstream, requestId);
+      if (operation === "inspect") {
+        const inspection = normalizeInspection(upstream.result, candidateId!);
+        if (registrationContract && !inspection.registrationSupported) fail("INCOMPATIBLE_CONTRACT");
+        return respond(inspection, 200, requestId);
+      }
+      return respond(normalizeReceipt(upstream.result), 200, requestId);
     });
-    if (!upstream.ok) return engineFailure(upstream, requestId);
-    if (operation === "inspect") {
-      const inspection = normalizeInspection(upstream.result, candidateId!);
-      if (registrationContract && !inspection.registrationSupported) fail("INCOMPATIBLE_CONTRACT");
-      return respond(inspection, 200, requestId);
-    }
-    return respond(normalizeReceipt(upstream.result), 200, requestId);
   } catch (error) {
     return failure(error, requestId);
   }
@@ -432,6 +435,8 @@ interface EngineResult {
   status: number;
   ok: boolean;
   result: unknown;
+  /** `performance.now()` when the call began, for the diagnostic line written by `settle`. */
+  started: number;
 }
 
 /**
@@ -474,7 +479,7 @@ async function callEngine(
     if (call.probe) {
       await upstream.body?.cancel();
       recordEngineCall(call, phase, httpStatus, started);
-      return { status: upstream.status, ok: upstream.ok, result: null };
+      return { status: upstream.status, ok: upstream.ok, result: null, started };
     }
     if (
       !/^application\/json(?:;|$)/i.test(upstream.headers.get("content-type") ?? "") ||
@@ -489,8 +494,8 @@ async function callEngine(
       fail("INCOMPATIBLE_CONTRACT");
     }
     if (upstream.ok && upstream.status !== 200) fail("INCOMPATIBLE_CONTRACT");
-    recordEngineCall(call, phase, httpStatus, started);
-    return { status: upstream.status, ok: upstream.ok, result };
+    // Not logged here: the outcome is final only after the operation's own contract check (`settle`).
+    return { status: upstream.status, ok: upstream.ok, result, started };
   } catch (error) {
     recordEngineCall(call, phase, httpStatus, started, error);
     throw error;
@@ -513,6 +518,7 @@ const errorCode = /^[A-Z][A-Z0-9_]{0,39}$/;
 function engineCallOutcome(httpStatus: number | null, error: unknown): { outcome: string; cause: string } {
   if (error === undefined) return { outcome: httpStatus === 200 ? "ok" : "http_error", cause: "none" };
   if (error instanceof EditorialBffError) return { outcome: "rejected", cause: error.code };
+  if (error instanceof EditorialInspectionError) return { outcome: "rejected", cause: "INCOMPATIBLE_CONTRACT" };
   const name = error instanceof Error ? error.name : "";
   if (name === "TimeoutError") return { outcome: "timeout", cause: "none" };
   if (name === "AbortError") return { outcome: "aborted", cause: "none" };
@@ -555,6 +561,21 @@ function recordEngineCall(
   // A 4xx is a definite Engine answer; a 5xx, a timeout or an unreadable answer leaves a write uncertain.
   if (outcome === "ok" || (outcome === "http_error" && httpStatus! < 500)) console.info(line);
   else console.error(line);
+}
+
+/**
+ * Turns an Engine answer into the BFF response and writes its diagnostic line with the FINAL outcome: a 200 whose
+ * receipt or inspection fails the contract check, or a malformed error envelope, is logged as uncertain, never as ok.
+ */
+function settle(call: EngineCall, upstream: EngineResult, finish: () => Response): Response {
+  try {
+    const response = finish();
+    recordEngineCall(call, "response", upstream.status, upstream.started);
+    return response;
+  } catch (error) {
+    recordEngineCall(call, "response", upstream.status, upstream.started, error);
+    throw error;
+  }
 }
 
 /**
@@ -753,7 +774,7 @@ export async function handleEditorialTrust(
     if (editorialTrustConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
     const trace = { requestId, op: "trust." + operation, commandKey: key, target: targetId };
     await warmEngine(deps, config, current, trace);
-    const upstream = await callEngine(deps, config, current, {
+    const call: EngineCall = {
       method: trustMethod(operation),
       path: "/api/editorial/v1" + trustPath(operation, targetId),
       headers: { "Idempotency-Key": key, "Content-Type": "application/json" },
@@ -761,14 +782,17 @@ export async function handleEditorialTrust(
       timeoutMs: upstreamTimeoutMs("command"),
       maxBytes: 8192,
       trace,
+    };
+    const upstream = await callEngine(deps, config, current, call);
+    return settle(call, upstream, () => {
+      if (!upstream.ok)
+        return engineFailure(
+          upstream,
+          requestId,
+          upstream.status === 409 ? conflictDetail(operation, upstream.result) : {},
+        );
+      return respond(normalizeTrustReceipt(upstream.result, operation, targetId, key, body), 200, requestId);
     });
-    if (!upstream.ok)
-      return engineFailure(
-        upstream,
-        requestId,
-        upstream.status === 409 ? conflictDetail(operation, upstream.result) : {},
-      );
-    return respond(normalizeTrustReceipt(upstream.result, operation, targetId, key, body), 200, requestId);
   } catch (error) {
     return failure(error, requestId);
   }
@@ -851,7 +875,7 @@ export async function handleEditorialOrganizerCreation(
     if (editorialOrganizerConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
     const trace = { requestId, op: "organizer.create", commandKey: key, target: null };
     await warmEngine(deps, config, current, trace);
-    const upstream = await callEngine(deps, config, current, {
+    const call: EngineCall = {
       method: "POST",
       path: "/api/editorial/v1" + organizerPath,
       headers: { "Idempotency-Key": key, "Content-Type": "application/json" },
@@ -859,14 +883,17 @@ export async function handleEditorialOrganizerCreation(
       timeoutMs: upstreamTimeoutMs("command"),
       maxBytes: 8192,
       trace,
+    };
+    const upstream = await callEngine(deps, config, current, call);
+    return settle(call, upstream, () => {
+      if (!upstream.ok)
+        return engineFailure(
+          upstream,
+          requestId,
+          upstream.status === 409 ? conflictDetail("organizer", upstream.result) : {},
+        );
+      return respond(normalizeOrganizerReceipt(upstream.result, key, body), 200, requestId);
     });
-    if (!upstream.ok)
-      return engineFailure(
-        upstream,
-        requestId,
-        upstream.status === 409 ? conflictDetail("organizer", upstream.result) : {},
-      );
-    return respond(normalizeOrganizerReceipt(upstream.result, key, body), 200, requestId);
   } catch (error) {
     return failure(error, requestId);
   }

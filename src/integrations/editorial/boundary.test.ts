@@ -676,6 +676,31 @@ describe("Engine call diagnostics (#88)", () => {
     }
   });
 
+  it("logs a 200 with an invalid receipt or inspection, or a malformed error envelope, as uncertain", async () => {
+    const log = capture();
+    try {
+      const badReceipt = setup();
+      badReceipt.fetcher.mockResolvedValue(upstream({}));
+      expect((await badReceipt.run("command")).status).toBe(503);
+      const badInspection = setup();
+      badInspection.fetcher.mockResolvedValue(upstream({}));
+      expect((await badInspection.run("inspect")).status).toBe(503);
+      const badEnvelope = setup();
+      badEnvelope.fetcher.mockResolvedValue(upstream({ code: "SOMETHING_ELSE" }, 409));
+      expect((await badEnvelope.run("command")).status).toBe(503);
+      expect(lines(log.info)).toEqual([]);
+      const errors = lines(log.error);
+      expect(errors).toHaveLength(3);
+      for (const line of errors) {
+        expect(field(line, "outcome")).toBe("rejected");
+        expect(field(line, "cause")).toBe("INCOMPATIBLE_CONTRACT");
+        expect(field(line, "sent")).toBe("yes");
+      }
+    } finally {
+      log.restore();
+    }
+  });
+
   it("writes no token, reason, body, URL or contact data", async () => {
     const log = capture();
     try {
