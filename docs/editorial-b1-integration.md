@@ -41,6 +41,37 @@ No se muestran fixtures ni se anuncia éxito antes de recibir el recibo del Engi
 - Los códigos de error públicos permitidos son 400/401/403/404/409/429/503.
   No se interpreta un timeout/HTML/JSON inesperado como operación completada.
 
+### Diagnóstico de cada llamada al Engine (#88)
+
+`callEngine` escribe **una línea por llamada** (B1 inspect/command/import, comandos V026, alta de
+organizador y sus sondas de calentamiento). Va a `console.error` si el resultado queda incierto
+(timeout, red, 5xx o respuesta ilegible) y a `console.info` si hay recibo o una respuesta 4xx
+definitiva:
+
+```text
+MOUMEET_EDITORIAL_ENGINE_CALL request_id=<uuid> op=b1.command method=POST phase=fetch sent=unknown
+  outcome=timeout cause=none http_status=none elapsed_ms=12003 budget_ms=12000
+  command_key=<Idempotency-Key> target=<candidato>
+```
+
+- `request_id` coincide con la cabecera `X-Request-ID` de la respuesta que recibe el panel.
+- `phase` y `sent` separan **acuse del BFF** de **persistencia en el Engine**. Con `prepare` o
+  `workload_token` y `sent=no`, el comando no salió del BFF. Con `fetch` y `sent=unknown`, se envió o
+  pudo enviarse, pero no llegó respuesta: es el caso de #88. Con `response` y `sent=yes`, el Engine
+  respondió.
+- `outcome` puede ser `ok`, `http_error`, `timeout`, `aborted`, `network_error` (con el código de
+  sistema en `cause`, p. ej. `ECONNRESET`), `rejected` (con el código BFF en `cause`) o `unexpected`.
+  `elapsed_ms` frente a `budget_ms` permite evaluar el límite de 12 s con datos reales.
+- La línea solo lleva UUID opacos, enumeraciones y números. No escribe tokens, cabeceras, URL,
+  cuerpos, motivos ni datos de contacto, y un test lo comprueba.
+
+**Correlación ante un resultado incierto**: busca en los logs de Vercel `command_key=<clave>`. Une
+esa clave con `public.editorial_receipts.command_key` (solo lectura) para saber si el Engine
+persistió el comando. Después compara la hora y `elapsed_ms` con el log de peticiones de Cloud Run
+para `/api/editorial/v1/candidates/<target>/commands`, que da la latencia y el código reales. Un
+recibo con `sent=unknown` confirma que se perdió el acuse y no la escritura. Recarga la ficha (GET)
+y no repitas el comando con una clave nueva.
+
 ## Activación por puerta explícita (sin ejecutar aún)
 
 `EDITORIAL_B1_ENABLED=disabled` por defecto. El código exige simultáneamente:

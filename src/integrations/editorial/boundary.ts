@@ -232,14 +232,15 @@ async function bounded(request: Request | Response, maximum: number): Promise<st
     reader.releaseLock();
   }
 }
-function respond(value: unknown, code: number) {
+function respond(value: unknown, code: number, requestId: string) {
   return Response.json(value, {
     status: code,
     headers: {
       "Cache-Control": "private, no-store, max-age=0",
       "X-Content-Type-Options": "nosniff",
       "Referrer-Policy": "no-referrer",
-      "X-Request-ID": randomUUID(),
+      // The same ID is in the server log line of the Engine call, so an uncertain outcome can be traced.
+      "X-Request-ID": requestId,
       ...(code === 401 ? { "WWW-Authenticate": "Bearer" } : {}),
     },
   });
@@ -321,6 +322,7 @@ export async function handleEditorialB1(
   candidateId: string | null,
   deps: Dependencies = defaults,
 ): Promise<Response> {
+  const requestId = randomUUID();
   try {
     const config = editorialConfig(deps.env);
     const registrationContract = deps.env.EDITORIAL_REGISTRATION_ENABLED === "enabled";
@@ -369,20 +371,21 @@ export async function handleEditorialB1(
       body: rawBody,
       timeoutMs: upstreamTimeoutMs(operation),
       maxBytes: operation === "inspect" ? 65536 : 8192,
+      trace: { requestId, op: "b1." + operation, commandKey: key, target: candidateId },
     });
-    if (!upstream.ok) return engineFailure(upstream);
+    if (!upstream.ok) return engineFailure(upstream, requestId);
     if (operation === "inspect") {
       const inspection = normalizeInspection(upstream.result, candidateId!);
       if (registrationContract && !inspection.registrationSupported) fail("INCOMPATIBLE_CONTRACT");
-      return respond(inspection, 200);
+      return respond(inspection, 200, requestId);
     }
-    return respond(normalizeReceipt(upstream.result), 200);
+    return respond(normalizeReceipt(upstream.result), 200, requestId);
   } catch (error) {
-    return failure(error);
+    return failure(error, requestId);
   }
 }
 
-function failure(error: unknown): Response {
+function failure(error: unknown, requestId: string): Response {
   const err =
     error instanceof EditorialBffError
       ? error
@@ -391,7 +394,7 @@ function failure(error: unknown): Response {
         : error instanceof SyntaxError
           ? new EditorialBffError("INVALID_REQUEST")
           : new EditorialBffError("WRITE_UNAVAILABLE");
-  return respond({ code: err.code }, status[err.code]);
+  return respond({ code: err.code }, status[err.code], requestId);
 }
 
 /** Two reads of the live session with the same subject; `allow` throws when the role may not act. */
@@ -416,6 +419,14 @@ interface EngineCall {
   body?: string;
   timeoutMs: number;
   maxBytes: number;
+  trace: EngineTrace;
+}
+/** Correlation fields of the diagnostic line. Opaque UUIDs only: never tokens, reasons, bodies or contact data. */
+interface EngineTrace {
+  requestId: string;
+  op: string;
+  commandKey: string | null;
+  target: string | null;
 }
 interface EngineResult {
   status: number;
@@ -434,42 +445,116 @@ async function callEngine(
   access: Access,
   call: EngineCall,
 ): Promise<EngineResult> {
-  // The user's JWT never travels on the readiness probe: it is a public Engine endpoint.
-  const headers: Record<string, string> = call.probe
-    ? {}
-    : { Accept: "application/json", Authorization: "Bearer " + access.accessToken, ...call.headers };
-  if (config.idTokenAudience) {
-    // Cloud Run invoker IAM (phase P): the Google ID token travels only here; the user's JWT stays in Authorization.
-    const workload = await deps.getWorkloadToken(deps.env, config.idTokenAudience);
-    if (!jwtShape.test(workload)) fail("WRITE_UNAVAILABLE");
-    headers["X-Serverless-Authorization"] = "Bearer " + workload;
-  }
-  const upstream = await deps.fetcher(config.origin + call.path, {
-    method: call.method,
-    headers,
-    body: call.body,
-    cache: "no-store",
-    redirect: "error",
-    signal: AbortSignal.timeout(call.timeoutMs),
-  });
-  if (call.probe) {
-    await upstream.body?.cancel();
-    return { status: upstream.status, ok: upstream.ok, result: null };
-  }
-  if (
-    !/^application\/json(?:;|$)/i.test(upstream.headers.get("content-type") ?? "") ||
-    !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(upstream.headers.get("cache-control") ?? "")
-  )
-    fail("INCOMPATIBLE_CONTRACT");
-  let result: unknown;
+  const started = performance.now();
+  let phase: EnginePhase = "prepare";
+  let httpStatus: number | null = null;
   try {
-    result = JSON.parse(await bounded(upstream, call.maxBytes));
-  } catch {
-    // An unreadable Engine answer is never the caller's INVALID_REQUEST: a write may have happened.
-    fail("INCOMPATIBLE_CONTRACT");
+    // The user's JWT never travels on the readiness probe: it is a public Engine endpoint.
+    const headers: Record<string, string> = call.probe
+      ? {}
+      : { Accept: "application/json", Authorization: "Bearer " + access.accessToken, ...call.headers };
+    if (config.idTokenAudience) {
+      phase = "workload_token";
+      // Cloud Run invoker IAM (phase P): the Google ID token travels only here; the user's JWT stays in Authorization.
+      const workload = await deps.getWorkloadToken(deps.env, config.idTokenAudience);
+      if (!jwtShape.test(workload)) fail("WRITE_UNAVAILABLE");
+      headers["X-Serverless-Authorization"] = "Bearer " + workload;
+    }
+    phase = "fetch";
+    const upstream = await deps.fetcher(config.origin + call.path, {
+      method: call.method,
+      headers,
+      body: call.body,
+      cache: "no-store",
+      redirect: "error",
+      signal: AbortSignal.timeout(call.timeoutMs),
+    });
+    phase = "response";
+    httpStatus = upstream.status;
+    if (call.probe) {
+      await upstream.body?.cancel();
+      recordEngineCall(call, phase, httpStatus, started);
+      return { status: upstream.status, ok: upstream.ok, result: null };
+    }
+    if (
+      !/^application\/json(?:;|$)/i.test(upstream.headers.get("content-type") ?? "") ||
+      !/(?:^|,)\s*no-store\s*(?:,|$)/i.test(upstream.headers.get("cache-control") ?? "")
+    )
+      fail("INCOMPATIBLE_CONTRACT");
+    let result: unknown;
+    try {
+      result = JSON.parse(await bounded(upstream, call.maxBytes));
+    } catch {
+      // An unreadable Engine answer is never the caller's INVALID_REQUEST: a write may have happened.
+      fail("INCOMPATIBLE_CONTRACT");
+    }
+    if (upstream.ok && upstream.status !== 200) fail("INCOMPATIBLE_CONTRACT");
+    recordEngineCall(call, phase, httpStatus, started);
+    return { status: upstream.status, ok: upstream.ok, result };
+  } catch (error) {
+    recordEngineCall(call, phase, httpStatus, started, error);
+    throw error;
   }
-  if (upstream.ok && upstream.status !== 200) fail("INCOMPATIBLE_CONTRACT");
-  return { status: upstream.status, ok: upstream.ok, result };
+}
+
+/**
+ * Where the Engine call stopped. It tells whether the command could have reached the Engine (#88): nothing was sent
+ * before `fetch`; a throw during `fetch` (timeout, reset) leaves it unknown; in `response` the Engine answered.
+ */
+type EnginePhase = "prepare" | "workload_token" | "fetch" | "response";
+const sentByPhase: Record<EnginePhase, "no" | "unknown" | "yes"> = {
+  prepare: "no",
+  workload_token: "no",
+  fetch: "unknown",
+  response: "yes",
+};
+const errorCode = /^[A-Z][A-Z0-9_]{0,39}$/;
+
+function engineCallOutcome(httpStatus: number | null, error: unknown): { outcome: string; cause: string } {
+  if (error === undefined) return { outcome: httpStatus === 200 ? "ok" : "http_error", cause: "none" };
+  if (error instanceof EditorialBffError) return { outcome: "rejected", cause: error.code };
+  const name = error instanceof Error ? error.name : "";
+  if (name === "TimeoutError") return { outcome: "timeout", cause: "none" };
+  if (name === "AbortError") return { outcome: "aborted", cause: "none" };
+  // undici reports transport failures as TypeError("fetch failed") with a system code (ECONNRESET, UND_ERR_*) as cause.
+  const code = error instanceof Error && isRecord(error.cause) ? error.cause.code : undefined;
+  if (error instanceof TypeError)
+    return { outcome: "network_error", cause: str(code) && errorCode.test(code) ? code : "none" };
+  return { outcome: "unexpected", cause: "none" };
+}
+
+/**
+ * One line per Engine call, so an uncertain write can be traced to its phase, latency and budget and joined to
+ * `editorial_receipts.command_key` and the Cloud Run request log by time (#88). Only opaque UUIDs, enumerations and
+ * numbers are written: no token, header, URL, body, reason or contact data.
+ */
+function recordEngineCall(
+  call: EngineCall,
+  phase: EnginePhase,
+  httpStatus: number | null,
+  started: number,
+  error?: unknown,
+): void {
+  const { outcome, cause } = engineCallOutcome(httpStatus, error);
+  const id = (value: string | null) => (isUuid(value) ? value : "none");
+  const line = [
+    "MOUMEET_EDITORIAL_ENGINE_CALL",
+    "request_id=" + id(call.trace.requestId),
+    "op=" + call.trace.op,
+    "method=" + call.method,
+    "phase=" + phase,
+    "sent=" + sentByPhase[phase],
+    "outcome=" + outcome,
+    "cause=" + cause,
+    "http_status=" + (httpStatus ?? "none"),
+    "elapsed_ms=" + Math.round(performance.now() - started),
+    "budget_ms=" + call.timeoutMs,
+    "command_key=" + id(call.trace.commandKey),
+    "target=" + id(call.trace.target),
+  ].join(" ");
+  // A 4xx is a definite Engine answer; a 5xx, a timeout or an unreadable answer leaves a write uncertain.
+  if (outcome === "ok" || (outcome === "http_error" && httpStatus! < 500)) console.info(line);
+  else console.error(line);
 }
 
 /**
@@ -477,7 +562,12 @@ async function callEngine(
  * fails (timeout, network, redirect) throws before the command is sent: reported as WRITE_UNAVAILABLE and retried
  * with the same Idempotency-Key, which is harmless because nothing reached the Engine's command endpoint.
  */
-async function warmEngine(deps: Dependencies, config: EditorialConfig, access: Access): Promise<void> {
+async function warmEngine(
+  deps: Dependencies,
+  config: EditorialConfig,
+  access: Access,
+  trace: EngineTrace,
+): Promise<void> {
   await callEngine(deps, config, access, {
     method: "GET",
     path: engineWarmupPath,
@@ -485,6 +575,7 @@ async function warmEngine(deps: Dependencies, config: EditorialConfig, access: A
     timeoutMs: engineWarmupTimeoutMs,
     maxBytes: 0,
     probe: true,
+    trace: { ...trace, op: trace.op + ".probe" },
   });
 }
 
@@ -498,10 +589,10 @@ const engineErrors: Record<number, ErrorCode> = {
   503: "WRITE_UNAVAILABLE",
 };
 /** Closed list: only a known status with its matching code is relayed, and only the code. */
-function engineFailure(upstream: EngineResult, extra: Record<string, unknown> = {}): Response {
+function engineFailure(upstream: EngineResult, requestId: string, extra: Record<string, unknown> = {}): Response {
   if (!isRecord(upstream.result) || upstream.result.code !== engineErrors[upstream.status])
     fail("INCOMPATIBLE_CONTRACT");
-  return respond({ code: upstream.result.code, ...extra }, upstream.status);
+  return respond({ code: upstream.result.code, ...extra }, upstream.status, requestId);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -644,6 +735,7 @@ export async function handleEditorialTrust(
   targetId: string,
   deps: Dependencies = defaults,
 ): Promise<Response> {
+  const requestId = randomUUID();
   try {
     if (!trustOperations.includes(operation)) fail("INVALID_REQUEST");
     const config = editorialTrustConfig(deps.env);
@@ -659,7 +751,8 @@ export async function handleEditorialTrust(
       if (access.role !== "admin") fail("FORBIDDEN");
     });
     if (editorialTrustConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
-    await warmEngine(deps, config, current);
+    const trace = { requestId, op: "trust." + operation, commandKey: key, target: targetId };
+    await warmEngine(deps, config, current, trace);
     const upstream = await callEngine(deps, config, current, {
       method: trustMethod(operation),
       path: "/api/editorial/v1" + trustPath(operation, targetId),
@@ -667,12 +760,17 @@ export async function handleEditorialTrust(
       body: JSON.stringify(body),
       timeoutMs: upstreamTimeoutMs("command"),
       maxBytes: 8192,
+      trace,
     });
     if (!upstream.ok)
-      return engineFailure(upstream, upstream.status === 409 ? conflictDetail(operation, upstream.result) : {});
-    return respond(normalizeTrustReceipt(upstream.result, operation, targetId, key, body), 200);
+      return engineFailure(
+        upstream,
+        requestId,
+        upstream.status === 409 ? conflictDetail(operation, upstream.result) : {},
+      );
+    return respond(normalizeTrustReceipt(upstream.result, operation, targetId, key, body), 200, requestId);
   } catch (error) {
-    return failure(error);
+    return failure(error, requestId);
   }
 }
 
@@ -737,6 +835,7 @@ export async function handleEditorialOrganizerCreation(
   request: Request,
   deps: Dependencies = defaults,
 ): Promise<Response> {
+  const requestId = randomUUID();
   try {
     const config = editorialOrganizerConfig(deps.env);
     validateRequest(request, "POST", deps.env);
@@ -750,7 +849,8 @@ export async function handleEditorialOrganizerCreation(
       if (access.role !== "admin") fail("FORBIDDEN");
     });
     if (editorialOrganizerConfig(deps.env).origin !== config.origin) fail("NOT_CONFIGURED");
-    await warmEngine(deps, config, current);
+    const trace = { requestId, op: "organizer.create", commandKey: key, target: null };
+    await warmEngine(deps, config, current, trace);
     const upstream = await callEngine(deps, config, current, {
       method: "POST",
       path: "/api/editorial/v1" + organizerPath,
@@ -758,11 +858,16 @@ export async function handleEditorialOrganizerCreation(
       body: JSON.stringify(body),
       timeoutMs: upstreamTimeoutMs("command"),
       maxBytes: 8192,
+      trace,
     });
     if (!upstream.ok)
-      return engineFailure(upstream, upstream.status === 409 ? conflictDetail("organizer", upstream.result) : {});
-    return respond(normalizeOrganizerReceipt(upstream.result, key, body), 200);
+      return engineFailure(
+        upstream,
+        requestId,
+        upstream.status === 409 ? conflictDetail("organizer", upstream.result) : {},
+      );
+    return respond(normalizeOrganizerReceipt(upstream.result, key, body), 200, requestId);
   } catch (error) {
-    return failure(error);
+    return failure(error, requestId);
   }
 }
