@@ -3,6 +3,7 @@ import type { DiscoveryTokenResult } from "@/integrations/auth/discoveryToken";
 import {
   editorialB1Enabled,
   editorialConfig,
+  engineWarmupTimeoutMs,
   handleEditorialB1,
   upstreamTimeoutMs,
   validateEditorialCommand,
@@ -87,10 +88,14 @@ function setup(role: "admin" | "reviewer" = "admin", deployment: NodeJS.ProcessE
     .mockResolvedValue({ status: "authorized", role, subject: actor, accessToken: "private-jwt" });
   const getWorkloadToken = vi.fn(async () => "private-workload-token");
   const fetcher = vi.fn<typeof fetch>().mockResolvedValue(upstream(receipt));
-  const deps = { env: deployment, getAccess, getWorkloadToken, fetcher };
+  // The readiness probe that precedes every write answers here; `fetcher` only sees the Engine API call itself.
+  const warmup = vi.fn<typeof fetch>(async () => new Response("{}", { status: 200 }));
+  const route: typeof fetch = (input, init) =>
+    String(input).endsWith("/actuator/health/readiness") ? warmup(input, init) : fetcher(input, init);
+  const deps = { env: deployment, getAccess, getWorkloadToken, fetcher: route };
   const run = (operation: "inspect" | "command" | "import", req = request(operation)) =>
     handleEditorialB1(req, operation, operation === "import" ? null : id, deps);
-  return { getAccess, getWorkloadToken, fetcher, run, deps };
+  return { getAccess, getWorkloadToken, fetcher, warmup, run, deps };
 }
 
 describe("B1 deployment and request constraints", () => {
@@ -495,6 +500,80 @@ it("forwards an organizer-only CORRECT verbatim to admins and never for reviewer
   expect(forwarded.correction.locations.every((location: { verified: boolean }) => !location.verified)).toBe(true);
 });
 
+describe("B1 readiness probe before every write (#88 cold start)", () => {
+  const importRequest = () => request("import", "a,b\n", { "X-Editorial-Reason": "Reviewed import" });
+
+  it("probes readiness once, without the user token, before a command or an import", async () => {
+    for (const [operation, req] of [
+      ["command", request("command")],
+      ["import", importRequest()],
+    ] as const) {
+      const ctx = setup();
+      const order: string[] = [];
+      ctx.warmup.mockImplementation(async () => (order.push("probe"), new Response("{}", { status: 200 })));
+      ctx.fetcher.mockImplementation(async () => (order.push(operation), upstream(receipt)));
+      expect((await ctx.run(operation, req)).status).toBe(200);
+      expect(order).toEqual(["probe", operation]);
+      const [url, init] = ctx.warmup.mock.calls[0];
+      expect(url).toBe(engine + "/actuator/health/readiness");
+      expect(init).toMatchObject({ method: "GET", cache: "no-store", redirect: "error" });
+      expect(init?.headers).toEqual({});
+      expect(init?.body).toBeUndefined();
+    }
+  });
+
+  it("never probes before a read, which has its own cold-start budget", async () => {
+    const ctx = setup();
+    ctx.fetcher.mockResolvedValue(upstream(inspectionFixture));
+    await ctx.run("inspect");
+    expect(ctx.warmup).not.toHaveBeenCalled();
+  });
+
+  it("gives the probe room for a cold start within the 60 s limit of the command and import routes", async () => {
+    const spy = vi.spyOn(AbortSignal, "timeout");
+    await setup().run("command");
+    expect(spy.mock.calls.map(([ms]) => ms)).toEqual([engineWarmupTimeoutMs, upstreamTimeoutMs("command")]);
+    spy.mockRestore();
+    for (const route of [
+      await import("@/app/api/internal/editorial/candidates/[id]/commands/route"),
+      await import("@/app/api/internal/editorial/imports/route"),
+    ])
+      expect(route.maxDuration * 1000).toBeGreaterThanOrEqual(
+        engineWarmupTimeoutMs + upstreamTimeoutMs("command") + 10_000,
+      );
+  });
+
+  it("accepts any HTTP answer from the probe and discards it", async () => {
+    const ctx = setup();
+    ctx.warmup.mockResolvedValue(new Response("<html>down</html>", { status: 503 }));
+    expect((await ctx.run("command")).status).toBe(200);
+    expect(ctx.fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it("never sends the command when the probe fails, so the same-key retry is harmless", async () => {
+    for (const error of [
+      new DOMException("The operation was aborted due to timeout", "TimeoutError"),
+      new TypeError("fetch failed"),
+    ]) {
+      const ctx = setup();
+      ctx.warmup.mockRejectedValue(error);
+      const response = await ctx.run("command");
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ code: "WRITE_UNAVAILABLE" });
+      expect(ctx.fetcher).not.toHaveBeenCalled();
+    }
+  });
+
+  it("never probes before the session and role checks pass", async () => {
+    const reviewer = setup("reviewer");
+    expect((await reviewer.run("import", importRequest())).status).toBe(403);
+    expect(reviewer.warmup).not.toHaveBeenCalled();
+    const off = setup("admin", { ...env, EDITORIAL_B1_ENABLED: "disabled" });
+    expect((await off.run("command")).status).toBe(404);
+    expect(off.warmup).not.toHaveBeenCalled();
+  });
+});
+
 describe("upstream time budget (#54 cold start)", () => {
   it("gives idempotent reads room for an Engine cold start and keeps commands short", () => {
     expect(upstreamTimeoutMs("inspect")).toBe(45_000);
@@ -571,5 +650,163 @@ describe("Cloud Run invoker IAM (phase P, Engine #125)", () => {
     }
     expect(editorialConfig(withAudience(engine)).idTokenAudience).toBe(engine);
     expect(editorialConfig(env).idTokenAudience).toBeNull();
+  });
+});
+
+describe("Engine call diagnostics (#88)", () => {
+  const email = "organizer-private@example.org";
+  const correct = {
+    ...reject,
+    action: "CORRECT",
+    reason: "Private reason " + email,
+    correction: { registration: { method: "EMAIL", destination: email } },
+  };
+  function lines(spy: { mock: { calls: unknown[][] } }) {
+    // The readiness probe has its own line (`op=<op>.probe`); these tests look at the Engine API call.
+    return spy.mock.calls
+      .map((call) => String(call[0]))
+      .filter((line) => line.startsWith("MOUMEET_EDITORIAL_") && !/ op=\S+\.probe /.test(line));
+  }
+  function capture() {
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    return { info, error, restore: () => (info.mockRestore(), error.mockRestore()) };
+  }
+  function field(line: string, name: string) {
+    return line
+      .split(" ")
+      .find((part) => part.startsWith(name + "="))
+      ?.slice(name.length + 1);
+  }
+
+  it("traces a command that timed out after it was sent with the response's request ID and its key", async () => {
+    const log = capture();
+    try {
+      const ctx = setup();
+      ctx.fetcher.mockRejectedValue(new DOMException("The operation was aborted due to timeout", "TimeoutError"));
+      const response = await ctx.run("command", request("command", correct));
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ code: "WRITE_UNAVAILABLE" });
+      const [line] = lines(log.error);
+      expect(lines(log.info)).toEqual([]);
+      expect(field(line, "request_id")).toBe(response.headers.get("x-request-id"));
+      expect(field(line, "op")).toBe("b1.command");
+      expect(field(line, "phase")).toBe("fetch");
+      expect(field(line, "sent")).toBe("unknown");
+      expect(field(line, "outcome")).toBe("timeout");
+      expect(field(line, "budget_ms")).toBe("12000");
+      expect(field(line, "elapsed_ms")).toMatch(/^\d+$/);
+      expect(field(line, "command_key")).toBe(key);
+      expect(field(line, "target")).toBe(id);
+    } finally {
+      log.restore();
+    }
+  });
+
+  it("names the transport failure code and says nothing was sent when the identity failed first", async () => {
+    const log = capture();
+    try {
+      const reset = setup();
+      reset.fetcher.mockRejectedValue(new TypeError("fetch failed", { cause: { code: "ECONNRESET" } }));
+      await reset.run("command");
+      const noIdentity = setup("admin", { ...env, EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE: engine });
+      noIdentity.getWorkloadToken.mockRejectedValue(new Error("sts down"));
+      await noIdentity.run("command");
+      const [network] = lines(log.error);
+      expect([field(network, "outcome"), field(network, "cause"), field(network, "sent")]).toEqual([
+        "network_error",
+        "ECONNRESET",
+        "unknown",
+      ]);
+      // The probe needs the same ID token, so it is the probe that stops: the command never leaves the BFF.
+      const identity = log.error.mock.calls.map((call) => String(call[0])).at(-1)!;
+      expect([field(identity, "op"), field(identity, "phase"), field(identity, "sent")]).toEqual([
+        "b1.command.probe",
+        "workload_token",
+        "no",
+      ]);
+      expect(noIdentity.fetcher).not.toHaveBeenCalled();
+      expect(noIdentity.warmup).not.toHaveBeenCalled();
+    } finally {
+      log.restore();
+    }
+  });
+
+  it("separates an Engine 503 or unreadable answer (error) from a receipt or a definite 409 (info)", async () => {
+    const log = capture();
+    try {
+      const unavailable = setup();
+      unavailable.fetcher.mockResolvedValue(upstream({ code: "WRITE_UNAVAILABLE" }, 503));
+      expect((await unavailable.run("command")).status).toBe(503);
+      const html = setup();
+      html.fetcher.mockResolvedValue(new Response("<html>", { status: 200, headers: { "Content-Type": "text/html" } }));
+      expect((await html.run("command")).status).toBe(503);
+      const conflict = setup();
+      conflict.fetcher.mockResolvedValue(upstream({ code: "CONFLICT" }, 409));
+      expect((await conflict.run("command")).status).toBe(409);
+      const ok = setup();
+      const response = await ok.run("command");
+      expect(response.status).toBe(200);
+      const [engine503, unreadable] = lines(log.error);
+      expect([field(engine503, "outcome"), field(engine503, "http_status"), field(engine503, "sent")]).toEqual([
+        "http_error",
+        "503",
+        "yes",
+      ]);
+      expect([field(unreadable, "outcome"), field(unreadable, "cause")]).toEqual(["rejected", "INCOMPATIBLE_CONTRACT"]);
+      const [definite, receipt] = lines(log.info);
+      expect(field(definite, "http_status")).toBe("409");
+      expect([field(receipt, "outcome"), field(receipt, "request_id")]).toEqual([
+        "ok",
+        response.headers.get("x-request-id"),
+      ]);
+    } finally {
+      log.restore();
+    }
+  });
+
+  it("logs a 200 with an invalid receipt or inspection, or a malformed error envelope, as uncertain", async () => {
+    const log = capture();
+    try {
+      const badReceipt = setup();
+      badReceipt.fetcher.mockResolvedValue(upstream({}));
+      expect((await badReceipt.run("command")).status).toBe(503);
+      const badInspection = setup();
+      badInspection.fetcher.mockResolvedValue(upstream({}));
+      expect((await badInspection.run("inspect")).status).toBe(503);
+      const badEnvelope = setup();
+      badEnvelope.fetcher.mockResolvedValue(upstream({ code: "SOMETHING_ELSE" }, 409));
+      expect((await badEnvelope.run("command")).status).toBe(503);
+      expect(lines(log.info)).toEqual([]);
+      const errors = lines(log.error);
+      expect(errors).toHaveLength(3);
+      for (const line of errors) {
+        expect(field(line, "outcome")).toBe("rejected");
+        expect(field(line, "cause")).toBe("INCOMPATIBLE_CONTRACT");
+        expect(field(line, "sent")).toBe("yes");
+      }
+    } finally {
+      log.restore();
+    }
+  });
+
+  it("writes no token, reason, body, URL or contact data", async () => {
+    const log = capture();
+    try {
+      const ctx = setup("admin", { ...env, EDITORIAL_ENGINE_ID_TOKEN_AUDIENCE: engine });
+      ctx.getWorkloadToken.mockResolvedValue("aaa.bbb.ccc");
+      await ctx.run("command", request("command", correct));
+      ctx.fetcher.mockRejectedValue(new TypeError("fetch failed " + email, { cause: { code: email } }));
+      await ctx.run("command", request("command", correct));
+      const all = [...lines(log.info), ...lines(log.error)];
+      expect(all).toHaveLength(2);
+      for (const line of all) {
+        for (const secret of ["private-jwt", "aaa.bbb.ccc", email, "Private reason", engine, "registration"])
+          expect(line).not.toContain(secret);
+        expect(line).toMatch(/^MOUMEET_EDITORIAL_ENGINE_CALL( [a-z_]+=[A-Za-z0-9._-]+)+$/);
+      }
+    } finally {
+      log.restore();
+    }
   });
 });

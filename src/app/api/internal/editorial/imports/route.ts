@@ -4,6 +4,8 @@ import { handleEditorialB1 } from "@/integrations/editorial/boundary";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+// Readiness probe (38 s) + command (12 s) + margin within the Hobby 60 s limit.
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const response = await handleEditorialB1(request, "import", null);
