@@ -32,6 +32,14 @@ No se muestran fixtures ni se anuncia éxito antes de recibir el recibo del Engi
   públicos sin SQL/secretos. Si la lectura no responde, el inspector lo dice como
   lectura (no como operación incierta), avisa a los 3 s de que el servicio puede
   estar arrancando y ofrece «Reintentar lectura».
+- **Calentamiento antes de cada comando e importación (#88)**: la lectura del inspector no basta
+  para mantener despierta una instancia 0..1 mientras el admin rellena el formulario. El 20/11 un
+  CORRECT se persistió pero su acuse no llegó dentro de los 12 s. Por eso, después de validar la
+  petición, la sesión y el rol, el BFF envía la misma sonda `GET /actuator/health/readiness` que los
+  comandos V026: tiene 38 s de margen, no lleva el JWT del usuario y descarta su respuesta. Si la
+  sonda falla, el comando **no se envía** y se responde `WRITE_UNAVAILABLE`, así que reintentar con
+  la misma clave es inocuo. Las rutas de comandos e importaciones fijan `maxDuration = 60`
+  (38 s + 12 s + 10 s de margen). Las lecturas no hacen sonda, porque ya tienen 45 s.
 - La clave de idempotencia pertenece a la **intención** y se conserva durante
   reintentos inciertos para el mismo payload. El panel solo la renueva al
   cambiar la intención o recibir confirmación; no genera eventos inventados.

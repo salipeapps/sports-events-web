@@ -301,7 +301,7 @@ function validateRequest(request: Request, method: "GET" | "POST" | "PUT", env: 
  * A cold Engine instance took ~14 s to answer its first read in STAGING (#54) and ~31 s on
  * 2026-11-14 (Cloud Run 0..1 instances, ~22 s of Spring startup). Reads are idempotent, so they
  * get room for a cold start; commands keep the short budget because an uncertain outcome is
- * already retried with the same Idempotency-Key, and the inspector read warms the instance first.
+ * already retried with the same Idempotency-Key, and a readiness probe (`warmEngine`) wakes the instance first.
  */
 export function upstreamTimeoutMs(operation: Operation): number {
   return operation === "inspect" ? 45_000 : 12_000;
@@ -309,9 +309,11 @@ export function upstreamTimeoutMs(operation: Operation): number {
 
 /**
  * The trust panel has no inspector read before its commands, so the first command of a window met a cold Engine and
- * its 12 s budget expired while the Engine still wrote (STAGING 15/11 and 16/11, Engine #125). Every trust and
- * organizer command is therefore preceded by an unauthenticated readiness probe with room for a cold start. The
- * route budget is 38 s (probe) + 12 s (command) + 10 s margin = the 60 s Hobby limit.
+ * its 12 s budget expired while the Engine still wrote (STAGING 15/11 and 16/11, Engine #125). B1 commands met the
+ * same answer-lost-after-commit on 20/11 (#88): the inspector read does not keep a 0..1 instance warm while the admin
+ * fills a form. Every B1 command and import, and every trust and organizer command, is therefore preceded by an
+ * unauthenticated readiness probe with room for a cold start. The route budget is 38 s (probe) + 12 s (command) +
+ * 10 s margin = the 60 s Hobby limit.
  */
 export const engineWarmupTimeoutMs = 38_000;
 const engineWarmupPath = "/actuator/health/readiness";
@@ -373,6 +375,8 @@ export async function handleEditorialB1(
       maxBytes: operation === "inspect" ? 65536 : 8192,
       trace: { requestId, op: "b1." + operation, commandKey: key, target: candidateId },
     };
+    // A write is never sent to a cold Engine with only its 12 s budget (#88); a read has its own 45 s instead.
+    if (operation !== "inspect") await warmEngine(deps, config, current, call.trace);
     const upstream = await callEngine(deps, config, current, call);
     return settle(call, upstream, () => {
       if (!upstream.ok) return engineFailure(upstream, requestId);
