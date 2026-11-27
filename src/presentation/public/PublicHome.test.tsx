@@ -207,3 +207,70 @@ describe("public cards and availability", () => {
     expect(html).toContain("Ver más actividades");
   });
 });
+
+describe("combinable filters UI (#51)", () => {
+  const at = new Date("2026-10-22T10:00:00Z");
+  const advanced = selectCatalog(
+    {
+      periodo: "finde",
+      q: "ruta turia",
+      categoria: ["hiking", "running"],
+      municipio: "València, Alboraia",
+      idioma: ["es", "ca"],
+      gratis: "1",
+      "precio-max": "15",
+    },
+    at,
+  )!;
+  const ready = { status: "ready" as const, items: [], nextCursor: null };
+
+  it("v1/v2 keep one value per dimension and never offer filters they cannot apply", () => {
+    const html = renderToStaticMarkup(<PublicHome selection={selection} result={ready} />);
+    expect(html).toContain('name="categoria"');
+    expect(html).not.toContain('name="q"');
+    expect(html).not.toContain('name="barrio"');
+    expect(html).not.toContain('name="nivel"');
+    expect(html).not.toContain('name="gratis"');
+    expect(html).not.toContain('name="precio-max"');
+    expect(html).not.toContain('type="checkbox"');
+  });
+  it("v3 offers text, multi-select and the new filters, prefilled from the shared URL", () => {
+    const html = renderToStaticMarkup(<PublicHome selection={advanced} result={ready} advanced />);
+    expect(html).toContain('name="q"');
+    expect(html).toContain('value="ruta turia"');
+    expect(html.match(/type="checkbox" name="categoria" checked="" value="(hiking|running)"/g)).toHaveLength(2);
+    expect(html).toMatch(/type="checkbox" name="categoria" value="yoga"\/>/);
+    expect(html.match(/name="idioma" checked="" value="(es|ca)"/g)).toHaveLength(2);
+    expect(html).toContain('value="València, Alboraia"');
+    expect(html).toMatch(/name="gratis" checked="" value="1"/);
+    expect(html).toContain('name="precio-max"');
+    expect(html).toContain('<input type="hidden" name="periodo" value="finde"/>');
+    expect(html).toContain("Idioma de la actividad");
+    expect(html).toContain("no se deduce de la dirección");
+  });
+  it("summarises OR within a dimension and AND across dimensions, and empties honestly", () => {
+    const html = renderToStaticMarkup(<PublicHome selection={advanced} result={ready} advanced />);
+    expect(html).toContain("Texto: «ruta turia»");
+    expect(html).toContain("Municipio: València o Alboraia");
+    expect(html).toContain("Gratis por sesión");
+    expect(html).toMatch(/Hasta 15(,00)?\s€ por sesión/);
+    expect(html).toContain("No hay actividades que cumplan estos filtros");
+    expect(html).toContain("Los datos desconocidos no cumplen filtros exactos");
+    expect(html).toContain('href="/?periodo=finde#activities"');
+  });
+  it("period tabs and pagination keep every repeated value", () => {
+    const html = renderToStaticMarkup(
+      <PublicHome selection={advanced} result={{ ...ready, nextCursor: "v3_next" }} advanced />,
+    );
+    expect(html).toContain(
+      "/?periodo=hoy&amp;q=ruta+turia&amp;categoria=hiking&amp;categoria=running&amp;municipio=Val%C3%A8ncia&amp;municipio=Alboraia",
+    );
+    expect(html).toMatch(/categoria=hiking&amp;categoria=running[^"]*cursor=v3_next/);
+  });
+  it("month navigation carries repeated filters as separate hidden fields", () => {
+    const month = selectCatalog({ month: "2026-11", categoria: ["yoga", "running"] }, at)!;
+    const html = renderToStaticMarkup(<PublicHome selection={month} result={ready} advanced />);
+    expect(html).toContain('<input type="hidden" name="categoria" value="yoga"/>');
+    expect(html).toContain('<input type="hidden" name="categoria" value="running"/>');
+  });
+});

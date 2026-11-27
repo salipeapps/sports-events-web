@@ -90,3 +90,14 @@ it("selects v2 explicitly in STAGING and fails closed for invalid or PROD versio
   expect(getPublicCatalogConfig({ ...remote, PUBLIC_CATALOG_CONTRACT_VERSION: "v2" })).toBeNull();
   expect(getPublicCatalogConfig({ ...remote, APP_ENV: "production", PUBLIC_CATALOG_CONTRACT_VERSION: "2" })).toBeNull();
 });
+
+it("selects v3 only in development/STAGING, never in PROD", () => {
+  expect(getPublicCatalogConfig({ ...remote, PUBLIC_CATALOG_CONTRACT_VERSION: "3" })).toMatchObject({
+    contractVersion: 3,
+  });
+  expect(getPublicCatalogConfig({ ...local, PUBLIC_CATALOG_CONTRACT_VERSION: "3" })).toMatchObject({
+    contractVersion: 3,
+  });
+  expect(getPublicCatalogConfig({ ...remote, APP_ENV: "production", PUBLIC_CATALOG_CONTRACT_VERSION: "3" })).toBeNull();
+  expect(getPublicCatalogConfig({ ...remote, PUBLIC_CATALOG_CONTRACT_VERSION: "4" })).toBeNull();
+});

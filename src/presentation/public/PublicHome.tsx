@@ -4,6 +4,7 @@ import {
   catalogHref,
   catalogLanguages,
   emptyFilters,
+  filterEntries,
   hasFilters,
   type CatalogFilters,
   type CatalogScope,
@@ -19,16 +20,24 @@ const priceFilterLabels = {
   "sin-sesion": "Sin precio por sesión publicado",
 };
 
+const euros = new Intl.NumberFormat("es-ES", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+const either = (values: string[]) => values.join(" o ");
+
 function activeFilterLabels(filters: CatalogFilters): string[] {
   return [
-    filters.categoria && categoryLabel(filters.categoria),
-    filters.municipio && `Municipio: ${filters.municipio}`,
-    filters.idioma && `Idioma: ${languageLabel(filters.idioma)}`,
+    filters.q && `Texto: «${filters.q}»`,
+    filters.categorias.length > 0 && either(filters.categorias.map(categoryLabel)),
+    filters.municipios.length > 0 && `Municipio: ${either(filters.municipios)}`,
+    filters.barrios.length > 0 && `Barrio: ${either(filters.barrios)}`,
+    filters.idiomas.length > 0 && `Idioma: ${either(filters.idiomas.map(languageLabel))}`,
+    filters.niveles.length > 0 && `Nivel: ${either(filters.niveles)}`,
+    filters.gratis && "Gratis por sesión",
+    filters.precioMax !== null && `Hasta ${euros.format(filters.precioMax)} por sesión`,
     filters.precio && priceFilterLabels[filters.precio],
   ].filter((label): label is string => Boolean(label));
 }
 
-function FilterForm({ selection }: { selection: CatalogSelection }) {
+function FilterForm({ selection, advanced }: { selection: CatalogSelection; advanced: boolean }) {
   const { filters } = selection;
   const active = activeFilterLabels(filters).length;
   // Collapsed on phones so results start on the first screen; always expanded on wider screens (catalog.css).
@@ -38,20 +47,56 @@ function FilterForm({ selection }: { selection: CatalogSelection }) {
         Filtrar actividades
         {active > 0 && <span className="public-filter-count">{active === 1 ? "1 activo" : `${active} activos`}</span>}
       </summary>
-      <FilterFields selection={selection} />
+      {advanced ? <AdvancedFilterFields selection={selection} /> : <FilterFields selection={selection} />}
     </details>
   );
 }
 
+function ScopeFields({ selection }: { selection: CatalogSelection }) {
+  return (
+    <>
+      {selection.month && <input type="hidden" name="month" value={selection.month} />}
+      {selection.period && <input type="hidden" name="periodo" value={selection.period} />}
+    </>
+  );
+}
+
+function FilterActions({ selection }: { selection: CatalogSelection }) {
+  return (
+    <div className="public-filter-actions">
+      <button type="submit">Aplicar filtros</button>
+      {hasFilters(selection.filters) && (
+        <a href={catalogHref({ month: selection.month, period: selection.period })}>Limpiar filtros</a>
+      )}
+    </div>
+  );
+}
+
+function PriceSelect({ filters }: { filters: CatalogFilters }) {
+  return (
+    <div>
+      <label htmlFor="filter-price">Precio</label>
+      <select id="filter-price" name="precio" defaultValue={filters.precio ?? ""} aria-describedby="filter-price-hint">
+        <option value="">Cualquiera</option>
+        <option value="sesion">{priceFilterLabels.sesion}</option>
+        <option value="sin-sesion">{priceFilterLabels["sin-sesion"]}</option>
+      </select>
+      <small id="filter-price-hint">
+        «Sin precio por sesión» no significa gratis: incluye cuotas, donaciones y precios por confirmar.
+      </small>
+    </div>
+  );
+}
+
+/** Contracts v1/v2: one value per dimension, exactly what those RPCs can filter server-side. */
 function FilterFields({ selection }: { selection: CatalogSelection }) {
   const { filters } = selection;
   return (
     <CleanGetForm className="public-filters" action="/#activities" aria-label="Filtrar actividades">
-      {selection.month && <input type="hidden" name="month" value={selection.month} />}
-      {selection.period && <input type="hidden" name="periodo" value={selection.period} />}
+      <ScopeFields selection={selection} />
       <div>
         <label htmlFor="filter-category">Categoría</label>
-        <select id="filter-category" name="categoria" defaultValue={filters.categoria ?? ""}>
+        <select id="filter-category" name="categoria" defaultValue={filters.categorias[0] ?? ""}>
           <option value="">Todas</option>
           {catalogCategories.map((category) => (
             <option key={category} value={category}>
@@ -67,7 +112,7 @@ function FilterFields({ selection }: { selection: CatalogSelection }) {
           name="municipio"
           type="text"
           maxLength={100}
-          defaultValue={filters.municipio ?? ""}
+          defaultValue={filters.municipios[0] ?? ""}
           placeholder="Ej.: València"
           aria-describedby="filter-municipality-hint"
           autoComplete="off"
@@ -78,7 +123,7 @@ function FilterFields({ selection }: { selection: CatalogSelection }) {
       </div>
       <div>
         <label htmlFor="filter-language">Idioma de la actividad</label>
-        <select id="filter-language" name="idioma" defaultValue={filters.idioma ?? ""}>
+        <select id="filter-language" name="idioma" defaultValue={filters.idiomas[0] ?? ""}>
           <option value="">Cualquiera</option>
           {catalogLanguages.map((language) => (
             <option key={language} value={language}>
@@ -87,28 +132,138 @@ function FilterFields({ selection }: { selection: CatalogSelection }) {
           ))}
         </select>
       </div>
-      <div>
-        <label htmlFor="filter-price">Precio</label>
-        <select
-          id="filter-price"
-          name="precio"
-          defaultValue={filters.precio ?? ""}
-          aria-describedby="filter-price-hint"
-        >
-          <option value="">Cualquiera</option>
-          <option value="sesion">{priceFilterLabels.sesion}</option>
-          <option value="sin-sesion">{priceFilterLabels["sin-sesion"]}</option>
-        </select>
-        <small id="filter-price-hint">
-          «Sin precio por sesión» no significa gratis: incluye cuotas, donaciones y precios por confirmar.
+      <PriceSelect filters={filters} />
+      <FilterActions selection={selection} />
+    </CleanGetForm>
+  );
+}
+
+function TextListField(props: {
+  id: string;
+  name: string;
+  label: string;
+  values: string[];
+  placeholder: string;
+  hint: string;
+}) {
+  return (
+    <div>
+      <label htmlFor={props.id}>{props.label}</label>
+      <input
+        id={props.id}
+        name={props.name}
+        type="text"
+        maxLength={1100}
+        defaultValue={props.values.join(", ")}
+        placeholder={props.placeholder}
+        aria-describedby={`${props.id}-hint`}
+        autoComplete="off"
+      />
+      <small id={`${props.id}-hint`}>{props.hint}</small>
+    </div>
+  );
+}
+
+/**
+ * Contract v3: free text, several options per dimension (OR) and dimensions combined with AND.
+ * Every value travels in the URL, so the same search can be shared, reloaded and paginated.
+ */
+function AdvancedFilterFields({ selection }: { selection: CatalogSelection }) {
+  const { filters } = selection;
+  return (
+    <CleanGetForm className="public-filters" action="/#activities" aria-label="Filtrar actividades">
+      <ScopeFields selection={selection} />
+      <div className="public-filter-search">
+        <label htmlFor="filter-q">Buscar</label>
+        <input
+          id="filter-q"
+          name="q"
+          type="search"
+          minLength={2}
+          maxLength={100}
+          defaultValue={filters.q ?? ""}
+          placeholder="Actividad, organizador o lugar"
+          aria-describedby="filter-q-hint"
+          autoComplete="off"
+        />
+        <small id="filter-q-hint">
+          Hasta 6 palabras de al menos 2 letras; deben aparecer todas. No distingue mayúsculas ni tildes.
         </small>
       </div>
-      <div className="public-filter-actions">
-        <button type="submit">Aplicar filtros</button>
-        {hasFilters(filters) && (
-          <a href={catalogHref({ month: selection.month, period: selection.period })}>Limpiar filtros</a>
-        )}
+      <fieldset className="public-filter-options">
+        <legend>Categoría</legend>
+        {catalogCategories.map((category) => (
+          <label key={category}>
+            <input
+              type="checkbox"
+              name="categoria"
+              value={category}
+              defaultChecked={filters.categorias.includes(category)}
+            />
+            {categoryLabel(category)}
+          </label>
+        ))}
+      </fieldset>
+      <fieldset className="public-filter-options">
+        <legend>Idioma de la actividad</legend>
+        {catalogLanguages.map((language) => (
+          <label key={language}>
+            <input type="checkbox" name="idioma" value={language} defaultChecked={filters.idiomas.includes(language)} />
+            {languageLabel(language)}
+          </label>
+        ))}
+        <small>Es el idioma en que se imparte, no el de esta web. Las fichas sin idioma publicado no aparecen.</small>
+      </fieldset>
+      <TextListField
+        id="filter-municipality"
+        name="municipio"
+        label="Municipio"
+        values={filters.municipios}
+        placeholder="Ej.: València, Alboraia"
+        hint="Separa varios con comas. Lugar, salida o punto de encuentro; nunca el destino de una excursión."
+      />
+      <TextListField
+        id="filter-neighborhood"
+        name="barrio"
+        label="Barrio"
+        values={filters.barrios}
+        placeholder="Ej.: Benimaclet"
+        hint="Solo aparecen fichas que publican su barrio; no se deduce de la dirección."
+      />
+      <TextListField
+        id="filter-level"
+        name="nivel"
+        label="Nivel"
+        values={filters.niveles}
+        placeholder="Ej.: Iniciación"
+        hint="Tal como lo publica la ficha. Las fichas sin nivel publicado no aparecen."
+      />
+      <div>
+        <label htmlFor="filter-max-price">Precio máximo por sesión (EUR)</label>
+        <input
+          id="filter-max-price"
+          name="precio-max"
+          type="number"
+          inputMode="decimal"
+          min={0}
+          max={10000}
+          step={0.01}
+          defaultValue={filters.precioMax ?? ""}
+          aria-describedby="filter-max-price-hint"
+        />
+        <small id="filter-max-price-hint">
+          Solo cuenta un precio fijo por sesión en euros o la entrada gratuita. «Desde», cuotas y bonos no.
+        </small>
       </div>
+      <div className="public-filter-check">
+        <label>
+          <input type="checkbox" name="gratis" value="1" defaultChecked={filters.gratis} />
+          Solo gratis por sesión
+        </label>
+        <small>Pruebas gratuitas, donaciones o fichas sin precio no cuentan como gratis.</small>
+      </div>
+      <PriceSelect filters={filters} />
+      <FilterActions selection={selection} />
     </CleanGetForm>
   );
 }
@@ -117,10 +272,13 @@ export function PublicHome({
   result,
   selection,
   demo = false,
+  advanced = false,
 }: {
   result: CatalogResult | { status: "loading" };
   selection: CatalogSelection | null;
   demo?: boolean;
+  /** The configured contract is v3: offer text search, multi-select and the new filters. */
+  advanced?: boolean;
 }) {
   const calendarMonth = selection?.month ?? selection?.currentMonth ?? null;
   const filters = selection?.filters ?? emptyFilters;
@@ -205,7 +363,7 @@ export function PublicHome({
               </nav>
             )}
           </div>
-          {selection && <FilterForm selection={selection} />}
+          {selection && <FilterForm selection={selection} advanced={advanced} />}
           {selection?.month && (
             <nav className="public-month-nav" aria-label="Mes del calendario">
               {selection.previousMonth ? (
@@ -214,9 +372,9 @@ export function PublicHome({
                 <span />
               )}
               <form method="get" action="/#activities">
-                {Object.entries(filters).map(([name, value]) =>
-                  value ? <input key={name} type="hidden" name={name} value={value} /> : null,
-                )}
+                {filterEntries(filters).map(([name, value]) => (
+                  <input key={`${name}=${value}`} type="hidden" name={name} value={value} />
+                ))}
                 <label htmlFor="catalog-month">Elegir mes</label>
                 <input
                   id="catalog-month"

@@ -53,11 +53,58 @@ export interface CatalogQuery {
   hasta: string;
   cursor: string | null;
   limit: number;
-  /** Optional H2 server-side filters; omitted keys mean "no filter" (RPC defaults null). */
-  municipio?: string;
-  categoria?: string;
-  idioma?: string;
+  /**
+   * Optional server-side filters; omitted keys mean "no filter" (RPC defaults null). Values of one
+   * dimension combine with OR, dimensions with AND. Contracts v1/v2 accept at most one value of
+   * `categorias`/`municipios`/`idiomas` plus `precioComparable`; anything else needs v3 and is
+   * rejected, never silently dropped, on older contracts.
+   */
+  q?: string;
+  categorias?: string[];
+  municipios?: string[];
+  barrios?: string[];
+  idiomas?: string[];
+  niveles?: string[];
+  gratis?: true;
+  precioMax?: number;
   precioComparable?: boolean;
+}
+
+export const catalogCategories = ["yoga", "running", "hiking", "cycling", "fitness", "swimming", "dance", "other"];
+export const catalogLanguages = ["es", "en", "ca", "other"];
+/** Engine V035 bounds for `catalog_occurrences_v3`. */
+export const catalogFilterLimits = {
+  categorias: catalogCategories.length,
+  idiomas: catalogLanguages.length,
+  municipios: 10,
+  barrios: 10,
+  niveles: 10,
+  valueLength: 100,
+  qLength: 100,
+  qTerms: 6,
+  precioMax: 10_000,
+} as const;
+
+export const unsafeCatalogText = /[\u0000-\u001f\u007f<>]/;
+
+/** Mirrors Engine V035: 2–100 characters, 1–6 whitespace-separated terms of at least 2 characters. */
+export function isCatalogSearchText(value: unknown): value is string {
+  if (typeof value !== "string" || value.length > catalogFilterLimits.qLength || unsafeCatalogText.test(value))
+    return false;
+  const terms = value.trim().split(/\s+/).filter(Boolean);
+  return (
+    terms.length >= 1 && terms.length <= catalogFilterLimits.qTerms && terms.every((term) => [...term].length >= 2)
+  );
+}
+
+export function isCatalogMaxPrice(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    value <= catalogFilterLimits.precioMax &&
+    Math.abs(Math.round(value * 100) - value * 100) < 1e-6
+  );
 }
 
 export interface CatalogPage {

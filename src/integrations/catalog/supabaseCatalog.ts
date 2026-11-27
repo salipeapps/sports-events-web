@@ -1,7 +1,15 @@
 import "server-only";
 import { decodePublicRegistration, isSafeRegistrationUrl } from "@/domain/registration";
 
-import { isCatalogInstant } from "@/domain/publicCatalog";
+import {
+  catalogCategories,
+  catalogFilterLimits,
+  catalogLanguages,
+  isCatalogInstant,
+  isCatalogMaxPrice,
+  isCatalogSearchText,
+  unsafeCatalogText,
+} from "@/domain/publicCatalog";
 
 import type {
   CatalogPage,
@@ -210,6 +218,19 @@ function occurrence(
   };
 }
 
+function validValues(values: unknown, max: number, valid: (value: string) => boolean): boolean {
+  return (
+    values === undefined ||
+    (Array.isArray(values) &&
+      values.length >= 1 &&
+      values.length <= max &&
+      values.every((value) => typeof value === "string" && valid(value)))
+  );
+}
+
+const freeText = (value: string) =>
+  value.trim() !== "" && value.length <= catalogFilterLimits.valueLength && !unsafeCatalogText.test(value);
+
 export function validateCatalogQuery(query: CatalogQuery) {
   const from = Date.parse(query.desde);
   const to = Date.parse(query.hasta);
@@ -222,23 +243,68 @@ export function validateCatalogQuery(query: CatalogQuery) {
     query.limit < 1 ||
     query.limit > 100 ||
     (query.cursor !== null && !cursorPattern.test(query.cursor)) ||
-    (query.categoria !== undefined &&
-      !["yoga", "running", "hiking", "cycling", "fitness", "swimming", "dance", "other"].includes(query.categoria)) ||
-    (query.idioma !== undefined && !["es", "en", "ca", "other"].includes(query.idioma)) ||
-    (query.municipio !== undefined &&
-      (typeof query.municipio !== "string" ||
-        !query.municipio.trim() ||
-        query.municipio.length > 100 ||
-        /[\u0000-\u001f\u007f<>]/.test(query.municipio))) ||
+    (query.q !== undefined && !isCatalogSearchText(query.q)) ||
+    !validValues(query.categorias, catalogFilterLimits.categorias, (value) => catalogCategories.includes(value)) ||
+    !validValues(query.idiomas, catalogFilterLimits.idiomas, (value) => catalogLanguages.includes(value)) ||
+    !validValues(query.municipios, catalogFilterLimits.municipios, freeText) ||
+    !validValues(query.barrios, catalogFilterLimits.barrios, freeText) ||
+    !validValues(query.niveles, catalogFilterLimits.niveles, freeText) ||
+    (query.gratis !== undefined && query.gratis !== true) ||
+    (query.precioMax !== undefined && !isCatalogMaxPrice(query.precioMax)) ||
     (query.precioComparable !== undefined && typeof query.precioComparable !== "boolean")
   )
     throw new CatalogReadError("INVALID_REQUEST");
 }
 
-export function decodeCatalogPage(value: unknown, query: CatalogQuery, now: Date, version: 1 | 2 = 1): CatalogPage {
+/**
+ * RPC body for the configured contract. v1/v2 take one scalar per dimension; a query they cannot
+ * express exactly fails as INVALID_REQUEST instead of being widened by dropping a filter.
+ */
+export function catalogRpcBody(query: CatalogQuery, version: 1 | 2 | 3): Record<string, unknown> {
+  const base = { desde: query.desde, hasta: query.hasta, cursor: query.cursor, limit: query.limit };
+  const optional = (entries: [string, unknown][]) =>
+    Object.fromEntries(entries.filter(([, value]) => value !== undefined));
+  if (version === 3)
+    return {
+      ...base,
+      ...optional([
+        ["q", query.q],
+        ["categorias", query.categorias],
+        ["municipios", query.municipios],
+        ["barrios", query.barrios],
+        ["idiomas", query.idiomas],
+        ["niveles", query.niveles],
+        ["gratis", query.gratis],
+        ["precioMax", query.precioMax],
+        ["precioComparable", query.precioComparable],
+      ]),
+    };
+  if (
+    query.q !== undefined ||
+    query.barrios !== undefined ||
+    query.niveles !== undefined ||
+    query.gratis !== undefined ||
+    query.precioMax !== undefined ||
+    [query.categorias, query.municipios, query.idiomas].some((values) => values !== undefined && values.length !== 1)
+  )
+    throw new CatalogReadError("INVALID_REQUEST");
+  return {
+    ...base,
+    ...optional([
+      ["municipio", query.municipios?.[0]],
+      ["categoria", query.categorias?.[0]],
+      ["idioma", query.idiomas?.[0]],
+      ["precioComparable", query.precioComparable],
+    ]),
+  };
+}
+
+/** v3 only changes the list envelope (filters and cursor); its items keep the exact v2 shape. */
+export function decodeCatalogPage(value: unknown, query: CatalogQuery, now: Date, version: 1 | 2 | 3 = 1): CatalogPage {
   const data = record(value);
   if (data.contractVersion !== version) return incompatible();
-  const items = array(data.items, query.limit, (value) => occurrence(value, version));
+  const itemVersion = version === 3 ? 2 : version;
+  const items = array(data.items, query.limit, (value) => occurrence(value, itemVersion));
   const nextCursor = data.nextCursor === null ? null : text(data.nextCursor, 2048);
   if (nextCursor !== null && (!cursorPattern.test(nextCursor) || nextCursor === query.cursor || items.length === 0))
     return incompatible();
@@ -329,7 +395,7 @@ async function readBoundedJson(response: Response): Promise<unknown> {
 /** H2 public RPC contract, verified directly in STAGING by Engine #139. */
 export class SupabasePublicCatalogRepository implements PublicCatalogRepository {
   constructor(
-    private readonly config: { url: string; key: string; contractVersion?: 1 | 2 },
+    private readonly config: { url: string; key: string; contractVersion?: 1 | 2 | 3 },
     private readonly request: typeof fetch = fetch,
     private readonly clock: () => Date = () => new Date(),
   ) {
@@ -353,7 +419,7 @@ export class SupabasePublicCatalogRepository implements PublicCatalogRepository 
   async list(query: CatalogQuery): Promise<CatalogPage> {
     validateCatalogQuery(query);
     const version = this.config.contractVersion ?? 1;
-    return this.post(`catalog_occurrences_v${version}`, query, (json) =>
+    return this.post(`catalog_occurrences_v${version}`, catalogRpcBody(query, version), (json) =>
       decodeCatalogPage(json, query, this.clock(), version),
     );
   }
@@ -361,7 +427,8 @@ export class SupabasePublicCatalogRepository implements PublicCatalogRepository 
   /** Detail RPC. Unknown and no-longer-public occurrences both surface as NOT_FOUND. */
   async get(id: string): Promise<PublicOccurrence & { status: "upcoming" | "in_progress" }> {
     if (!uuid.test(id)) throw new CatalogReadError("NOT_FOUND");
-    const version = this.config.contractVersion ?? 1;
+    // Engine V035 adds no v3 detail: `catalog_occurrence_v2` stays the current detail contract.
+    const version = this.config.contractVersion === 3 ? 2 : (this.config.contractVersion ?? 1);
     return this.post(
       `catalog_occurrence_v${version}`,
       { id },

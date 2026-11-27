@@ -1,5 +1,14 @@
 import type { CatalogQuery } from "@/domain/publicCatalog";
-import { isCatalogInstant } from "@/domain/publicCatalog";
+import {
+  catalogCategories,
+  catalogFilterLimits,
+  catalogLanguages,
+  isCatalogInstant,
+  isCatalogMaxPrice,
+  isCatalogSearchText,
+} from "@/domain/publicCatalog";
+
+export { catalogCategories, catalogLanguages };
 
 export type CatalogSearchParams = Record<string, string | string[] | undefined>;
 const zone = "Europe/Madrid";
@@ -38,19 +47,35 @@ export function monthKey(year: number, month: number) {
 export type CatalogPeriod = "hoy" | "manana" | "finde";
 export type CatalogPrice = "sesion" | "sin-sesion";
 
-/** Only the dimensions the H2 RPC filters server-side. Nothing is filtered or invented in the browser. */
+/**
+ * Server-side filters only. Values of one dimension are OR, dimensions are AND; nothing is
+ * filtered or invented in the browser. Empty arrays/null/false mean "no filter".
+ */
 export interface CatalogFilters {
-  categoria: string | null;
-  municipio: string | null;
-  idioma: string | null;
+  q: string | null;
+  categorias: string[];
+  municipios: string[];
+  barrios: string[];
+  idiomas: string[];
+  niveles: string[];
+  gratis: boolean;
+  precioMax: number | null;
   precio: CatalogPrice | null;
 }
 
-export const catalogCategories = ["yoga", "running", "hiking", "cycling", "fitness", "swimming", "dance", "other"];
-export const catalogLanguages = ["es", "en", "ca", "other"];
 const periods: CatalogPeriod[] = ["hoy", "manana", "finde"];
 const periodLabels: Record<CatalogPeriod, string> = { hoy: "Hoy", manana: "Mañana", finde: "Este fin de semana" };
-export const emptyFilters: CatalogFilters = { categoria: null, municipio: null, idioma: null, precio: null };
+export const emptyFilters: CatalogFilters = {
+  q: null,
+  categorias: [],
+  municipios: [],
+  barrios: [],
+  idiomas: [],
+  niveles: [],
+  gratis: false,
+  precioMax: null,
+  precio: null,
+};
 
 export interface CatalogScope {
   month?: string | null;
@@ -72,32 +97,129 @@ export interface CatalogSelection {
   hasTail: boolean;
 }
 
+const collapse = (value: string) => value.trim().replace(/\s+/g, " ");
+
 /** A single optional string; an empty form field means "no filter". Repeated values are rejected. */
 function optional(value: string | string[] | undefined): string | null | undefined {
   if (value === undefined) return null;
   if (typeof value !== "string") return undefined;
-  const trimmed = value.trim().replace(/\s+/g, " ");
+  const trimmed = collapse(value);
   return trimmed === "" ? null : trimmed;
+}
+
+/**
+ * Repeated parameters and comma-separated text both add values (`municipio=València,Alboraia`).
+ * Exact duplicates collapse and empty entries are ignored; too many or any invalid value rejects.
+ */
+function many(value: string | string[] | undefined, max: number, valid: (value: string) => boolean): string[] | null {
+  if (value === undefined) return [];
+  const values: string[] = [];
+  for (const raw of typeof value === "string" ? [value] : value)
+    for (const piece of raw.split(",")) {
+      const item = collapse(piece);
+      if (item && !values.includes(item)) values.push(item);
+    }
+  return values.length <= max && values.every(valid) ? values : null;
+}
+
+// Conservative public place names: a letter first, then letters, spaces and name punctuation.
+const placeName = /^[\p{L}\p{M}][\p{L}\p{M} .'’()·-]*$/u;
+// Editorial level labels may carry digits ("Nivel 2") or ranges ("iniciación/intermedio").
+const levelName = /^[\p{L}\p{N}][\p{L}\p{M}\p{N} .'’()·/+-]*$/u;
+const bounded = (pattern: RegExp) => (value: string) =>
+  value.length <= catalogFilterLimits.valueLength && pattern.test(value);
+
+function maxPrice(value: string | string[] | undefined): number | null | undefined {
+  const text = optional(value);
+  if (text === null || text === undefined) return text;
+  if (!/^\d{1,5}(?:[.,]\d{1,2})?$/.test(text)) return undefined;
+  const amount = Number(text.replace(",", "."));
+  return isCatalogMaxPrice(amount) ? amount : undefined;
 }
 
 /** Validated filters, or null when any value is malformed (the page then shows "búsqueda no válida"). */
 export function parseFilters(params: CatalogSearchParams): CatalogFilters | null {
-  const categoria = optional(params.categoria);
-  const municipio = optional(params.municipio);
-  const idioma = optional(params.idioma);
+  const q = optional(params.q);
+  const categorias = many(params.categoria, catalogFilterLimits.categorias, (value) =>
+    catalogCategories.includes(value),
+  );
+  const idiomas = many(params.idioma, catalogFilterLimits.idiomas, (value) => catalogLanguages.includes(value));
+  const municipios = many(params.municipio, catalogFilterLimits.municipios, bounded(placeName));
+  const barrios = many(params.barrio, catalogFilterLimits.barrios, bounded(placeName));
+  const niveles = many(params.nivel, catalogFilterLimits.niveles, bounded(levelName));
+  const gratis = optional(params.gratis);
+  const precioMax = maxPrice(params["precio-max"]);
   const precio = optional(params.precio);
-  if (categoria === undefined || municipio === undefined || idioma === undefined || precio === undefined) return null;
-  if (categoria !== null && !catalogCategories.includes(categoria)) return null;
-  if (idioma !== null && !catalogLanguages.includes(idioma)) return null;
-  if (precio !== null && precio !== "sesion" && precio !== "sin-sesion") return null;
-  // Same conservative shape the RPC accepts: letters, spaces and name punctuation, at most 100 characters.
-  if (municipio !== null && (municipio.length > 100 || !/^[\p{L}\p{M}][\p{L}\p{M} .'’()-]*$/u.test(municipio)))
+  if (
+    q === undefined ||
+    (q !== null && !isCatalogSearchText(q)) ||
+    !categorias ||
+    !idiomas ||
+    !municipios ||
+    !barrios ||
+    !niveles ||
+    (gratis !== null && gratis !== "1") ||
+    precioMax === undefined ||
+    precio === undefined ||
+    (precio !== null && precio !== "sesion" && precio !== "sin-sesion")
+  )
     return null;
-  return { categoria, municipio, idioma, precio: precio as CatalogPrice | null };
+  return {
+    q,
+    categorias,
+    municipios,
+    barrios,
+    idiomas,
+    niveles,
+    gratis: gratis === "1",
+    precioMax,
+    precio: precio as CatalogPrice | null,
+  };
+}
+
+/** Canonical URL entries, also used for hidden fields so every form and link keeps the search. */
+export function filterEntries(filters: CatalogFilters): [string, string][] {
+  const entries: [string, string][] = [];
+  if (filters.q) entries.push(["q", filters.q]);
+  for (const value of filters.categorias) entries.push(["categoria", value]);
+  for (const value of filters.municipios) entries.push(["municipio", value]);
+  for (const value of filters.barrios) entries.push(["barrio", value]);
+  for (const value of filters.idiomas) entries.push(["idioma", value]);
+  for (const value of filters.niveles) entries.push(["nivel", value]);
+  if (filters.gratis) entries.push(["gratis", "1"]);
+  if (filters.precioMax !== null) entries.push(["precio-max", String(filters.precioMax)]);
+  if (filters.precio) entries.push(["precio", filters.precio]);
+  return entries;
 }
 
 export function hasFilters(filters: CatalogFilters): boolean {
-  return Object.values(filters).some((value) => value !== null);
+  return filterEntries(filters).length > 0;
+}
+
+/** True when the search needs `catalog_occurrences_v3` (text, OR within a dimension or new filters). */
+export function needsAdvancedFilters(filters: CatalogFilters): boolean {
+  return (
+    filters.q !== null ||
+    filters.barrios.length > 0 ||
+    filters.niveles.length > 0 ||
+    filters.gratis ||
+    filters.precioMax !== null ||
+    [filters.categorias, filters.municipios, filters.idiomas].some((values) => values.length > 1)
+  );
+}
+
+function filterQuery(filters: CatalogFilters): Partial<CatalogQuery> {
+  return {
+    ...(filters.q !== null ? { q: filters.q } : {}),
+    ...(filters.categorias.length ? { categorias: filters.categorias } : {}),
+    ...(filters.municipios.length ? { municipios: filters.municipios } : {}),
+    ...(filters.barrios.length ? { barrios: filters.barrios } : {}),
+    ...(filters.idiomas.length ? { idiomas: filters.idiomas } : {}),
+    ...(filters.niveles.length ? { niveles: filters.niveles } : {}),
+    ...(filters.gratis ? { gratis: true as const } : {}),
+    ...(filters.precioMax !== null ? { precioMax: filters.precioMax } : {}),
+    ...(filters.precio !== null ? { precioComparable: filters.precio === "sesion" } : {}),
+  };
 }
 
 function weekday(date: Date): number {
@@ -163,10 +285,7 @@ export function selectCatalog(params: CatalogSearchParams, now = new Date()): Ca
       hasta: (tail ? to : boundary).toISOString(),
       cursor,
       limit: 24,
-      ...(filters.municipio !== null ? { municipio: filters.municipio } : {}),
-      ...(filters.categoria !== null ? { categoria: filters.categoria } : {}),
-      ...(filters.idioma !== null ? { idioma: filters.idioma } : {}),
-      ...(filters.precio !== null ? { precioComparable: filters.precio === "sesion" } : {}),
+      ...filterQuery(filters),
     },
     month,
     period,
@@ -205,10 +324,7 @@ export function catalogHref(
   const params = new URLSearchParams();
   if (month) params.set("month", month);
   if (period) params.set("periodo", period);
-  if (filters.categoria) params.set("categoria", filters.categoria);
-  if (filters.municipio) params.set("municipio", filters.municipio);
-  if (filters.idioma) params.set("idioma", filters.idioma);
-  if (filters.precio) params.set("precio", filters.precio);
+  for (const [name, value] of filterEntries(filters)) params.append(name, value);
   if (cursor) params.set("cursor", cursor);
   if (at) params.set("at", at);
   if (tail) params.set("tail", "1");
