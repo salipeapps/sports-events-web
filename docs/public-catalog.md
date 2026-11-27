@@ -229,7 +229,7 @@ STAGING publication rendered in a browser; see Web #54 for that gated test.
 Local browser evidence: `.next-e2e-catalog-live/evidence/result.json` and
 `home-390.png`, `home-768.png`, `home-1440.png` in the same ignored directory.
 
-## Search filters and period presets — Web #51 (partial)
+## Search filters and period presets — Web #51
 
 The home sends **only the filters the H2 RPC evaluates server-side**; nothing is
 filtered, inferred or completed in the browser. Each URL parameter is validated:
@@ -260,12 +260,53 @@ detail page has a "Saltar al contenido" link, and "Volver a la agenda" returns t
 the same-origin home search the visitor came from (month, period, filters, page),
 falling back to `/#activities`.
 
-**Not implementable in Web alone (Engine contract gaps for #51):** free-text search
-(activity/organizer/place), several values in one dimension (OR), "gratis" and
-maximum price, neighbourhood, level, accent-insensitive municipality ("Valencia" vs
-"València" are different strings for the RPC). Implementing them client-side would
-filter only the current page and break the cursor, so they are left to a versioned
-RPC change.
+### Combinable filters with contract v3 (Engine V035)
+
+`PUBLIC_CATALOG_CONTRACT_VERSION=3` (development/STAGING only, like v2) makes the
+home call `api.catalog_occurrences_v3` from Engine PR
+[salipeapps/sports-events-engine#347](https://github.com/salipeapps/sports-events-engine/pull/347).
+That RPC is opt-in and **not applied to STAGING** until its operator gate.
+Detail keeps `catalog_occurrence_v2` because V035 adds no v3 detail, and v3 list
+items keep the exact v2 shape. A missing RPC, a v2 envelope or a v3 item fails
+closed, with no fallback.
+
+| URL parameter              | v3 argument        | Semantics (Engine V035)                                                                                          |
+| -------------------------- | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `q`                        | `q`                | 2–100 chars, 1–6 terms of ≥ 2 chars; **all** must appear in title ES/EN, organizer or an allowed place           |
+| `categoria` (repeatable)   | `categorias`       | 1–8 codes, OR                                                                                                    |
+| `idioma` (repeatable)      | `idiomas`          | activity language (not the UI language), OR; unknown never matches                                               |
+| `municipio` (repeatable)   | `municipios`       | ≤ 10, OR; accent/case-insensitive; `activity`/`departure`/`meeting_point` only, never an excursion destination   |
+| `barrio` (repeatable)      | `barrios`          | ≤ 10, OR; only rows that publish a neighbourhood, never inferred from the address                                |
+| `nivel` (repeatable)       | `niveles`          | ≤ 10, OR; normalized equality with `level.es` or `level.en`; unknown never matches                               |
+| `gratis=1`                 | `gratis: true`     | a current `free` **per-session** option; trials, donations or missing prices are not free                        |
+| `precio-max`               | `precioMax`        | 0–10000 EUR, 2 decimals (`12,5` accepted); current `free` or `fixed` per-session EUR ≤ max; "desde" never counts |
+| `precio=sesion/sin-sesion` | `precioComparable` | as in v2                                                                                                         |
+
+Values within a dimension combine with OR, and dimensions with AND. A repeated key
+and comma-separated text both add values. Exact duplicates collapse. Too many values,
+an unsafe or unknown value, or an extreme parameter (see the tests) shows "No
+podemos mostrar esta búsqueda" before any RPC call. `catalogHref` serializes the
+filters canonically, one key per value. So pagination, period tabs, the month form
+(one hidden field per value) and shared links reproduce the same search, and the v3
+cursor, sealed to the normalized filters, stays valid.
+
+With v3 the form offers:
+
+- a full-width search box;
+- checkboxes for categories and activity languages;
+- comma-separated text fields for municipality, neighbourhood and level;
+- a maximum per-session price;
+- "Solo gratis por sesión".
+
+With v1/v2 the form keeps one value per dimension and never shows filters the
+contract cannot apply. A hand-written URL that needs v3 (`q`, `barrio`, `nivel`,
+`gratis`, `precio-max` or several values in one dimension) is rejected by the
+adapter as `INVALID_REQUEST`. It is never widened by dropping a filter.
+
+Levels are free editorial text. Without a facet RPC the form cannot list the
+published values, so the hint says to type the level as the activity publishes it.
+E2E checks with real data (shared URL, reset, paginated AND/OR without repeats)
+depend on #54 and on the V035 gate.
 
 ## Indexability, robots and sitemap — Web #53 (partial)
 

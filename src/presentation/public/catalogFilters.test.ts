@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { catalogHref, catalogReturnHref, parseFilters, periodRange, selectCatalog } from "./catalogQuery";
+import {
+  catalogHref,
+  catalogReturnHref,
+  filterEntries,
+  needsAdvancedFilters,
+  parseFilters,
+  periodRange,
+  selectCatalog,
+  type CatalogSearchParams,
+} from "./catalogQuery";
 
 // Thursday 22/10/2026 12:00 Madrid (CEST).
 const thursday = new Date("2026-10-22T10:00:00.000Z");
@@ -49,38 +58,91 @@ describe("Madrid period presets (#51)", () => {
   );
 });
 
-describe("server-side filters supported by the H2 RPC (#51)", () => {
-  it("maps validated filters to the RPC body only when present", () => {
+/** Next.js searchParams: a repeated key becomes an array. */
+function searchParams(href: string): CatalogSearchParams {
+  const params: CatalogSearchParams = {};
+  for (const [key, value] of new URL(href, "http://localhost").searchParams) {
+    const previous = params[key];
+    params[key] = previous === undefined ? value : [...(typeof previous === "string" ? [previous] : previous), value];
+  }
+  return params;
+}
+
+describe("server-side filters (#51)", () => {
+  it("maps validated filters to the RPC query only when present", () => {
     const { query } = selectCatalog(
       { categoria: "yoga", municipio: "  València  ", idioma: "en", precio: "sin-sesion" },
       thursday,
     )!;
     expect(query).toMatchObject({
-      categoria: "yoga",
-      municipio: "València",
-      idioma: "en",
+      categorias: ["yoga"],
+      municipios: ["València"],
+      idiomas: ["en"],
       precioComparable: false,
     });
     expect(selectCatalog({ precio: "sesion" }, thursday)!.query.precioComparable).toBe(true);
-    const plain = selectCatalog({ categoria: "", municipio: " ", idioma: "", precio: "" }, thursday)!.query;
+    const plain = selectCatalog(
+      { q: " ", categoria: "", municipio: " ", barrio: "", nivel: "", idioma: "", precio: "", "precio-max": "" },
+      thursday,
+    )!.query;
     expect(Object.keys(plain).sort()).toEqual(["cursor", "desde", "hasta", "limit"]);
   });
   it.each([
     { categoria: "boxeo" },
-    { categoria: ["yoga", "running"] },
+    { categoria: ["yoga", "boxeo"] },
     { idioma: "de" },
     { precio: "gratis" },
     { municipio: "<script>" },
     { municipio: "https://example.org" },
     { municipio: "600111222" },
     { municipio: "a".repeat(101) },
-  ])("rejects unsupported or unsafe filter %j instead of guessing", (params) => {
+    { municipio: Array.from({ length: 11 }, (_, index) => `Pueblo ${String.fromCharCode(65 + index)}`) },
+    { barrio: "Ruzafa <b>" },
+    { nivel: "-- drop" },
+    { q: "a" },
+    { q: "yoga a" },
+    { q: "aa bb cc dd ee ff gg" },
+    { q: "x".repeat(101) },
+    { q: ["yoga", "running"] },
+    { gratis: "0" },
+    { gratis: "true" },
+    { "precio-max": "-1" },
+    { "precio-max": "10000.01" },
+    { "precio-max": "12.345" },
+    { "precio-max": "1e3" },
+    { "precio-max": ["10", "20"] },
+  ])("rejects unsupported, unsafe or extreme filter %j instead of guessing", (params) => {
     expect(parseFilters(params)).toBeNull();
     expect(selectCatalog(params, thursday)).toBeNull();
   });
   it("accepts real Valencian place names", () => {
     for (const municipio of ["València", "L'Eliana", "Alboraia", "Sant Antoni de Benagéber", "El Puig de Santa Maria"])
-      expect(parseFilters({ municipio })?.municipio).toBe(municipio);
+      expect(parseFilters({ municipio })?.municipios).toEqual([municipio]);
+    expect(parseFilters({ barrio: "Sant Marcel·lí" })?.barrios).toEqual(["Sant Marcel·lí"]);
+  });
+  it("collects several values per dimension from repeated keys and commas, without duplicates", () => {
+    const filters = parseFilters({
+      categoria: ["yoga", "running", "yoga"],
+      municipio: "València, Alboraia,,",
+      idioma: ["es", "ca"],
+      nivel: "Iniciación/intermedio, Nivel 2",
+      barrio: ["Benimaclet", "Russafa"],
+    })!;
+    expect(filters).toMatchObject({
+      categorias: ["yoga", "running"],
+      municipios: ["València", "Alboraia"],
+      idiomas: ["es", "ca"],
+      niveles: ["Iniciación/intermedio", "Nivel 2"],
+      barrios: ["Benimaclet", "Russafa"],
+    });
+    expect(needsAdvancedFilters(filters)).toBe(true);
+    expect(needsAdvancedFilters(parseFilters({ categoria: "yoga", municipio: "València" })!)).toBe(false);
+  });
+  it("maps text, free and maximum price to the v3 query", () => {
+    const { query } = selectCatalog({ q: "  Yoga   Turia ", gratis: "1", "precio-max": "12,5" }, thursday)!;
+    expect(query).toMatchObject({ q: "Yoga Turia", gratis: true, precioMax: 12.5 });
+    expect(selectCatalog({ "precio-max": "0" }, thursday)!.query.precioMax).toBe(0);
+    expect(selectCatalog({ "precio-max": "10000" }, thursday)!.query.precioMax).toBe(10_000);
   });
   it("a shared link reproduces period, filters and cursor exactly", () => {
     const first = selectCatalog({ periodo: "finde", categoria: "hiking", municipio: "València" }, thursday)!;
@@ -92,6 +154,33 @@ describe("server-side filters supported by the H2 RPC (#51)", () => {
     const next = selectCatalog(Object.fromEntries(link.searchParams), new Date("2026-10-22T10:05:00Z"))!;
     expect(next.query).toEqual({ ...first.query, cursor: "page_2" });
     expect(next.filters).toEqual(first.filters);
+  });
+  it("a shared multi-value v3 link round-trips every dimension in canonical order", () => {
+    const first = selectCatalog(
+      {
+        periodo: "finde",
+        q: "ruta turia",
+        categoria: ["hiking", "running"],
+        municipio: "València, Alboraia",
+        barrio: "Benimaclet",
+        idioma: ["es", "en"],
+        nivel: "Iniciación",
+        gratis: "1",
+        "precio-max": "15",
+        precio: "sesion",
+      },
+      thursday,
+    )!;
+    const href = catalogHref({ period: first.period, filters: first.filters }, "page_2", first.at);
+    expect(href).toBe(
+      "/?periodo=finde&q=ruta+turia&categoria=hiking&categoria=running&municipio=Val%C3%A8ncia&municipio=Alboraia" +
+        "&barrio=Benimaclet&idioma=es&idioma=en&nivel=Iniciaci%C3%B3n&gratis=1&precio-max=15&precio=sesion" +
+        `&cursor=page_2&at=${encodeURIComponent(first.at)}#activities`,
+    );
+    const next = selectCatalog(searchParams(href), new Date("2026-10-22T10:05:00Z"))!;
+    expect(next.query).toEqual({ ...first.query, cursor: "page_2" });
+    expect(next.filters).toEqual(first.filters);
+    expect(filterEntries(next.filters)).toEqual(filterEntries(first.filters));
   });
   it("reset keeps the period but drops every filter", () => {
     expect(catalogHref({ period: "hoy" })).toBe("/?periodo=hoy#activities");

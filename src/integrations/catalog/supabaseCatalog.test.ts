@@ -56,8 +56,8 @@ describe("H2 public RPC adapter (unit fixtures; real PostgREST tested across rep
       method: "POST",
       cache: "no-store",
       redirect: "error",
-      body: JSON.stringify(query),
     });
+    expect(JSON.parse(String(options?.body))).toEqual(query);
     expect(options?.headers).toEqual({
       apikey: "sb_publishable_test",
       "Content-Type": "application/json",
@@ -422,26 +422,140 @@ describe("public detail RPC (#52)", () => {
   });
 });
 
-describe("H2 server-side filters (#51)", () => {
-  it("sends only validated filters in the RPC body", async () => {
-    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json(envelope([])));
-    const repository = new SupabasePublicCatalogRepository(
-      { url: "https://test.supabase.co", key: "sb_publishable_test" },
+describe("server-side filters (#51)", () => {
+  const repository = (request: typeof fetch, contractVersion?: 1 | 2 | 3) =>
+    new SupabasePublicCatalogRepository(
+      { url: "https://test.supabase.co", key: "sb_publishable_test", contractVersion },
       request,
       () => now,
     );
-    const filtered = { ...query, categoria: "yoga", municipio: "Valencia", idioma: "es", precioComparable: false };
-    await repository.list(filtered);
-    expect(JSON.parse(String(request.mock.calls[0][1]?.body))).toEqual(filtered);
+  const body = (request: ReturnType<typeof vi.fn<typeof fetch>>) =>
+    JSON.parse(String(request.mock.calls[0][1]?.body)) as Record<string, unknown>;
+
+  it("translates single values to the v1/v2 scalar parameters", async () => {
+    const request = vi.fn<typeof fetch>().mockResolvedValue(Response.json(envelope([])));
+    await repository(request).list({
+      ...query,
+      categorias: ["yoga"],
+      municipios: ["Valencia"],
+      idiomas: ["es"],
+      precioComparable: false,
+    });
+    expect(body(request)).toEqual({
+      ...query,
+      municipio: "Valencia",
+      categoria: "yoga",
+      idioma: "es",
+      precioComparable: false,
+    });
   });
   it.each([
-    { categoria: "boxeo" },
-    { idioma: "de" },
-    { municipio: "" },
-    { municipio: "a".repeat(101) },
-    { municipio: "<b>x</b>" },
+    { q: "yoga" },
+    { categorias: ["yoga", "running"] },
+    { municipios: ["València", "Alboraia"] },
+    { idiomas: ["es", "en"] },
+    { barrios: ["Benimaclet"] },
+    { niveles: ["Iniciación"] },
+    { gratis: true },
+    { precioMax: 10 },
+  ] as Partial<CatalogQuery>[])("never drops a filter v1/v2 cannot apply: %j", async (extra) => {
+    for (const version of [1, 2] as const) {
+      const request = vi.fn<typeof fetch>();
+      await expect(repository(request, version).list({ ...query, ...extra })).rejects.toMatchObject({
+        code: "INVALID_REQUEST",
+      });
+      expect(request).not.toHaveBeenCalled();
+    }
+  });
+  it("sends arrays, text and prices to the explicit v3 endpoint and decodes v2 items", async () => {
+    const item = occurrence({
+      contractVersion: 2,
+      registration: { method: "WHATSAPP", destination: "+34600111222", action: "COPY_NUMBER" },
+      sourceUrl: "https://example.org/activity",
+    });
+    const request = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ contractVersion: 3, items: [item], nextCursor: "v3_next" }));
+    const filtered: CatalogQuery = {
+      ...query,
+      q: "yoga turia",
+      categorias: ["yoga", "running"],
+      municipios: ["València"],
+      barrios: ["Benimaclet"],
+      idiomas: ["es", "ca"],
+      niveles: ["Iniciación"],
+      gratis: true,
+      precioMax: 12.5,
+      precioComparable: true,
+    };
+    const page = await repository(request, 3).list(filtered);
+    expect(request.mock.calls[0][0]).toBe("https://test.supabase.co/rest/v1/rpc/catalog_occurrences_v3");
+    expect(body(request)).toEqual(filtered);
+    expect(page).toMatchObject({
+      nextCursor: "v3_next",
+      items: [{ id: item.id, sourceUrl: "https://example.org/activity" }],
+    });
+  });
+  it("v3 rejects v2 envelopes, v3 items and missing endpoints without falling back", async () => {
+    const v2Item = occurrence({
+      contractVersion: 2,
+      registration: { method: "WHATSAPP", destination: "+34600111222", action: "COPY_NUMBER" },
+      sourceUrl: "https://example.org/activity",
+    });
+    expect(() => decodeCatalogPage({ contractVersion: 2, items: [v2Item], nextCursor: null }, query, now, 3)).toThrow();
+    expect(() =>
+      decodeCatalogPage(
+        { contractVersion: 3, items: [{ ...v2Item, contractVersion: 3 }], nextCursor: null },
+        query,
+        now,
+        3,
+      ),
+    ).toThrow();
+    const request = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 404 }));
+    await expect(repository(request, 3).list(query)).rejects.toMatchObject({ code: "READ_UNAVAILABLE" });
+    expect(request).toHaveBeenCalledTimes(1);
+    request.mockResolvedValue(new Response(null, { status: 400 }));
+    await expect(repository(request, 3).list({ ...query, q: "yoga" })).rejects.toMatchObject({
+      code: "INVALID_REQUEST",
+    });
+  });
+  it("v3 keeps the v2 detail RPC (Engine V035 adds no v3 detail)", async () => {
+    const id = "00000000-0000-4000-8000-000000000001";
+    const request = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({
+        contractVersion: 2,
+        item: occurrence({
+          contractVersion: 2,
+          registration: { method: "WHATSAPP", destination: "+34600111222", action: "COPY_NUMBER" },
+          sourceUrl: "https://example.org/activity",
+        }),
+      }),
+    );
+    await repository(request, 3).get(id);
+    expect(request.mock.calls[0][0]).toBe("https://test.supabase.co/rest/v1/rpc/catalog_occurrence_v2");
+  });
+  it.each([
+    { categorias: ["boxeo"] },
+    { categorias: [] },
+    { categorias: ["yoga", null] },
+    { idiomas: ["de"] },
+    { municipios: [""] },
+    { municipios: ["a".repeat(101)] },
+    { municipios: ["<b>x</b>"] },
+    { municipios: Array.from({ length: 11 }, (_, index) => `M${index}`) },
+    { barrios: "Benimaclet" },
+    { niveles: [42] },
+    { q: "a" },
+    { q: "yoga a" },
+    { q: "aa bb cc dd ee ff gg" },
+    { q: "yoga\u0000" },
+    { gratis: false },
+    { precioMax: -1 },
+    { precioMax: 10_000.01 },
+    { precioMax: 1.005 },
+    { precioMax: Number.NaN },
     { precioComparable: "true" },
   ])("rejects %j before any request", (extra) => {
-    expect(() => validateCatalogQuery({ ...query, ...extra } as CatalogQuery)).toThrow("INVALID_REQUEST");
+    expect(() => validateCatalogQuery({ ...query, ...extra } as unknown as CatalogQuery)).toThrow("INVALID_REQUEST");
   });
 });

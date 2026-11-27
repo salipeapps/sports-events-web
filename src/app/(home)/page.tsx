@@ -16,11 +16,13 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 export default async function HomePage({ searchParams }: Props) {
   const selection = selectCatalog(await searchParams);
   const result = await loadPublicCatalog(selection?.query ?? null);
+  const config = getPublicCatalogConfig();
   return (
     <PublicHome
       result={result}
       selection={selection}
-      demo={process.env.PUBLIC_CATALOG_MODE === "local-rpc" && getPublicCatalogConfig() !== null}
+      demo={process.env.PUBLIC_CATALOG_MODE === "local-rpc" && config !== null}
+      advanced={config !== null && "contractVersion" in config && config.contractVersion === 3}
     />
   );
 }
